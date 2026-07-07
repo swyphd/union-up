@@ -19,10 +19,10 @@ const GlobalStyle = () => (
 // ---------- CONSTANTS ----------
 const TOTAL_TURNS = 12;
 const START_LOCATIONS = [
-  { id: "downtown", name: "DOWNTOWN HUB", workers: 12, manager: "hostile", morale: 40, trueSupport: 32, visibility: 5, recruited: 0, legalRisk: 0, fear: 0, status: "organizing", abandonedTurns: 0, electionTurn: null, grievance: null, antiUnion: { active: false, turnsLeft: 0 }, buyOff: { active: false, turnsLeft: 0 }, committee: { active: false, strikes: 0 } },
-  { id: "suburban", name: "SUBURBAN MALL", workers: 10, manager: "sympathetic", morale: 40, trueSupport: 34, visibility: 5, recruited: 0, legalRisk: 0, fear: 0, status: "organizing", abandonedTurns: 0, electionTurn: null, grievance: null, antiUnion: { active: false, turnsLeft: 0 }, buyOff: { active: false, turnsLeft: 0 }, committee: { active: false, strikes: 0 } },
-  { id: "airport", name: "AIRPORT TERMINAL", workers: 9, manager: "neutral", morale: 40, trueSupport: 33, visibility: 5, recruited: 0, legalRisk: 0, fear: 0, status: "organizing", abandonedTurns: 0, electionTurn: null, grievance: null, antiUnion: { active: false, turnsLeft: 0 }, buyOff: { active: false, turnsLeft: 0 }, committee: { active: false, strikes: 0 } },
-  { id: "university", name: "UNIVERSITY", workers: 8, manager: "neutral", morale: 40, trueSupport: 33, visibility: 5, recruited: 0, legalRisk: 0, fear: 0, status: "organizing", abandonedTurns: 0, electionTurn: null, grievance: null, antiUnion: { active: false, turnsLeft: 0 }, buyOff: { active: false, turnsLeft: 0 }, committee: { active: false, strikes: 0 } },
+  { id: "downtown", name: "CORE STUDIO", workers: 12, manager: "hostile", morale: 40, trueSupport: 32, visibility: 5, recruited: 0, legalRisk: 0, fear: 0, status: "organizing", abandonedTurns: 0, electionTurn: null, grievance: null, antiUnion: { active: false, turnsLeft: 0 }, buyOff: { active: false, turnsLeft: 0 }, committee: { active: false, strikes: 0 } },
+  { id: "suburban", name: "QA DIVISION", workers: 10, manager: "sympathetic", morale: 40, trueSupport: 34, visibility: 5, recruited: 0, legalRisk: 0, fear: 0, status: "organizing", abandonedTurns: 0, electionTurn: null, grievance: null, antiUnion: { active: false, turnsLeft: 0 }, buyOff: { active: false, turnsLeft: 0 }, committee: { active: false, strikes: 0 } },
+  { id: "airport", name: "PUBLISHING WING", workers: 9, manager: "neutral", morale: 40, trueSupport: 33, visibility: 5, recruited: 0, legalRisk: 0, fear: 0, status: "organizing", abandonedTurns: 0, electionTurn: null, grievance: null, antiUnion: { active: false, turnsLeft: 0 }, buyOff: { active: false, turnsLeft: 0 }, committee: { active: false, strikes: 0 } },
+  { id: "university", name: "REMOTE TEAM", workers: 8, manager: "neutral", morale: 40, trueSupport: 33, visibility: 5, recruited: 0, legalRisk: 0, fear: 0, status: "organizing", abandonedTurns: 0, electionTurn: null, grievance: null, antiUnion: { active: false, turnsLeft: 0 }, buyOff: { active: false, turnsLeft: 0 }, committee: { active: false, strikes: 0 } },
 ];
 
 const COMMITTEE_COST = 3;
@@ -30,16 +30,16 @@ const COMMITTEE_MORALE_REQ = 55;
 const COMMITTEE_RECRUIT_PCT_REQ = 0.4;
 
 const GRIEVANCE_META = {
-  legal: { label: "Unpaid overtime", action: "File a wage claim", cost: 2, icon: FileWarning, tone: "text-red-400 border-red-800", desc: "CrewOptix undercounted overtime hours again. Clear-cut legal violation, but the system doesn't take appeals." },
-  material: { label: "Faulty equipment", action: "Push it through", cost: 1, icon: Wrench, tone: "text-amber-400 border-amber-800", desc: "A broken fryer, a busted register drawer — something management's been ignoring." },
-  noise: { label: "Rude customers", action: "Hear them out", cost: 1, icon: MessageCircle, tone: "text-stone-400 border-stone-700", desc: "Workers venting about customers. Real, but it doesn't build power on its own." },
+  legal: { label: "Misclassification", action: "File an exempt-status complaint", cost: 2, icon: FileWarning, tone: "text-red-400 border-red-800", desc: "PerfAxis flags after-hours Slack activity as 'low engagement' — but those are unpaid hours on an exempt salary. Clear-cut FLSA violation. Legal will stall, but it's on record." },
+  material: { label: "Unrenewed licenses", action: "Escalate to management", cost: 1, icon: Wrench, tone: "text-amber-400 border-amber-800", desc: "Key software licenses weren't renewed after the last round of cuts. Workers are expected to do the same job with fewer tools." },
+  noise: { label: "Difficult stakeholders", action: "Hear them out", cost: 1, icon: MessageCircle, tone: "text-stone-400 border-stone-700", desc: "Product is pushing for scope creep with no timeline adjustment. Real frustration, but venting about it doesn't build power." },
 };
 
 const EXTERNAL_EVENTS = [
   {
     id: "solidarity_wave",
     tone: "positive",
-    headline: "NATIONAL NEWS: A high-profile union win at a major retailer leads the news cycle. Workers everywhere are talking about it.",
+    headline: "NATIONAL NEWS: Workers at a major game studio vote to unionize in a closely watched campaign. Developers everywhere are talking about it.",
     moraleClimate: { tone: "positive", turnsLeft: 2 },
     immediateOrganizingMorale: 6,
     immediateCampaignFear: -10,
@@ -47,7 +47,7 @@ const EXTERNAL_EVENTS = [
   {
     id: "setback_news",
     tone: "negative",
-    headline: "NATIONAL NEWS: A closely watched union drive collapses after the company announces a plant closure. The story is everywhere.",
+    headline: "NATIONAL NEWS: A high-profile organizing drive at a tech company collapses when the company announces it's shifting work to contractors. The story is everywhere.",
     moraleClimate: { tone: "negative", turnsLeft: 2 },
     immediateOrganizingMorale: -6,
     immediateCampaignFear: 10,
@@ -63,14 +63,14 @@ const EXTERNAL_EVENTS = [
   {
     id: "pr_blitz",
     tone: "negative",
-    headline: "NATIONAL NEWS: CrewOptix's parent company launches a national ad campaign warning about ‘union bosses’ and ‘lost flexibility.’",
+    headline: "NATIONAL NEWS: The studio's parent company publishes a blog post on 'employee ownership culture' and the risks of 'third-party representation.' It's being forwarded around Slack.",
     seedAntiUnion: true,
     immediateCampaignFear: 8,
   },
   {
     id: "algo_exposed",
     tone: "positive",
-    headline: "NATIONAL NEWS: An investigative report on scheduling algorithms like CrewOptix goes viral — workers everywhere are furious to see their own experience described exactly.",
+    headline: "NATIONAL NEWS: An exposé on AI stack-ranking tools used in tech layoffs goes viral — workers everywhere recognize their own performance reviews in the screenshots.",
     moraleClimate: { tone: "positive", turnsLeft: 2 },
     immediateOrganizingMorale: 7,
     immediateCampaignFear: -8,
@@ -196,7 +196,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     steps.push({ label: "TURN START", sub: isBreakTurn ? "Organizer is on mandatory rest." : "Allocating organizer time...", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: isBreakTurn ? [`Organizer remains on break (${onBreak} turn(s) left).`] : [] });
 
     if (firedEvent) {
-      steps.push({ label: "NATIONAL NEWS", sub: "Something outside the franchise is shaping the week.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: [firedEvent.headline] });
+      steps.push({ label: "NATIONAL NEWS", sub: "Something outside the studio is shaping the week.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: [firedEvent.headline] });
     }
 
     let activeLocationCount = 0;
@@ -246,16 +246,16 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       if (newBuyOff.active) {
         if (r.reframe) {
           gain += 5; // successfully spun as proof the union already works
-          feedbackLines.push(`${l.name}: Organizer reframes the surprise raise as proof the union is already winning things. (buy-off neutralized)`);
+          feedbackLines.push(`${l.name}: Organizer reframes the retention bonus as proof collective pressure already works. (buy-off neutralized)`);
           newBuyOff = { active: false, turnsLeft: 0 };
         } else {
           gain = Math.round(gain * 0.6);
           const turnsLeft = newBuyOff.turnsLeft - 1;
           if (turnsLeft <= 0) {
             newBuyOff = { active: false, turnsLeft: 0 };
-            feedbackLines.push(`${l.name}: The glow from management's raise is finally wearing off.`);
+            feedbackLines.push(`${l.name}: The glow from the retention bonus is finally wearing off.`);
           } else {
-            feedbackLines.push(`${l.name}: Workers are still a little complacent after the raise. Organizing lands softer than usual.`);
+            feedbackLines.push(`${l.name}: Workers are still a little complacent after the retention bonus. Organizing lands softer than usual.`);
             newBuyOff = { active: true, turnsLeft };
           }
         }
@@ -438,7 +438,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       let updated = { ...l };
       if (l._watchRecovery && l.morale >= l._watchFloor) {
         sophisticationGain = 1;
-        retaliationLines.push(`Corporate notices firing didn't shut ${l.name} down. Expect subtler tactics franchise-wide from here.`);
+        retaliationLines.push(`Corporate notices firing didn't shut ${l.name} down. Expect subtler tactics company-wide from here.`);
         updated._watchRecovery = false;
       }
 
@@ -457,21 +457,21 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
           if (typeRoll < buyOffChance) {
             setBuyOff = true;
             visHit = -5;
-            note = `${l.name}: Corporate quietly announces a raise and new perks. No confrontation — just a chill descending over the break room.`;
+            note = `${l.name}: Corporate announces a surprise retention bonus and a new 'culture champion' Slack badge. No confrontation — just a chill settling over the channel.`;
           } else if (typeRoll < buyOffChance + fireChance) {
             targetCommittee = updated.committee?.active;
             moraleHit = targetCommittee ? 35 : 25;
             visHit = -20;
             legalHit = 15;
             note = targetCommittee
-              ? `${l.name}: Management targets a known committee member. This hits harder than an ordinary firing.`
-              : `${l.name}: A suspected organizer is fired. Workers are shaken.`;
+              ? `${l.name}: Management targets a known committee member. They're moved off the flagship project and put on a PIP the same week.`
+              : `${l.name}: A suspected organizer is put on a performance improvement plan. No one in the room thinks it's about performance.`;
           } else if (typeRoll < buyOffChance + fireChance + 30) {
             moraleHit = 10; visHit = 0; legalHit = 5;
-            note = `${l.name}: Manager holds a mandatory anti-union meeting.`;
+            note = `${l.name}: A town hall is scheduled to talk about 'direct feedback channels' and 'working better together.' Attendance is not optional.`;
           } else {
             moraleHit = 5; visHit = -10; legalHit = 8;
-            note = `${l.name}: Schedules get cut. Quiet pressure on suspected organizers.`;
+            note = `${l.name}: Calendar invites to key planning meetings stop going to suspected organizers. Repo access quietly changes.`;
           }
 
           retaliationLines.push(note);
@@ -489,7 +489,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
             if (strikes >= 2) {
               updated.committee = { active: false, strikes: 0 };
               updated.morale = clamp(updated.morale - 15);
-              retaliationLines.push(`${l.name}: The committee can't absorb a second hit like that. It dissolves.`);
+              retaliationLines.push(`${l.name}: The committee can't absorb a second targeting like that. It dissolves.`);
             } else {
               updated.committee = { ...updated.committee, strikes };
             }
@@ -661,7 +661,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       <div className="border-b-2 border-stone-800 bg-stone-900 px-4 py-3 sm:px-6 flex items-center justify-between flex-wrap gap-2">
         <div>
           <div className="font-stencil text-2xl sm:text-3xl tracking-wide text-amber-400">UNION UP</div>
-          <div className="text-[10px] sm:text-xs tracking-[0.2em] text-stone-500">ORGANIZING SIMULATION — FAST FOOD FRANCHISE CAMPAIGN</div>
+          <div className="text-[10px] sm:text-xs tracking-[0.2em] text-stone-500">ORGANIZING SIMULATION — GAME STUDIO CAMPAIGN</div>
         </div>
         {phase !== "intro" && (
           <div className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm">
@@ -686,12 +686,12 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         <div className="max-w-2xl mx-auto px-6 py-16 text-center anim-rise">
           <div className="font-stencil text-4xl text-amber-400 mb-4">THERE'S NO CONTINUE</div>
           <p className="text-stone-400 leading-relaxed mb-2">
-            You proved it could be done at one shop. Now four more locations across the franchise, twelve weeks,
+            You proved it could be done at one studio. Now four more under the same PE-owned parent, twelve weeks,
             and you're coordinating instead of doing every conversation yourself.
           </p>
           <p className="text-stone-500 text-sm leading-relaxed mb-2">
-            CrewOptix runs all four of these sites the same way it ran the first one — same scheduling algorithm,
-            same efficiency scores, same nobody-to-appeal-to. What worked once wasn't a fluke. It's a system, and
+            PerfAxis runs all four of these studios the same way it ran the first one — same stack-ranking algorithm,
+            same engagement scores, same nobody-to-appeal-to. What worked once wasn't a fluke. It's a system, and
             systems can be organized against at scale.
           </p>
           <p className="text-stone-500 text-sm leading-relaxed mb-4">
@@ -722,7 +722,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           {employerEmboldened && (
             <div className="mb-4 flex items-center gap-2 text-red-400 text-xs border border-red-900 bg-red-950/40 px-3 py-2">
-              <AlertTriangle size={14} /> Management across the franchise is on high alert after a lost election elsewhere. Retaliation is more likely everywhere.
+              <AlertTriangle size={14} /> Management across the company is on high alert after a lost election elsewhere. Retaliation is more likely everywhere.
             </div>
           )}
           {locations.some(l => l.status === "campaign") && unionizedCount < 2 && (
@@ -822,10 +822,10 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
           </div>
           <p className="text-stone-400 mb-6 leading-relaxed">
             {phase === "gameover-win"
-              ? `Two or more locations voted to unionize. Workers have a contract to negotiate — and leverage they didn't have twelve weeks ago.`
+              ? `Two or more studios voted to unionize. Workers have a contract to negotiate — and leverage they didn't have twelve weeks ago.`
               : organizer.breaksTaken >= 2
                 ? `The organizer burned out for a second time and left the campaign. There was no one left to carry it forward.`
-                : `Twelve weeks came and went without enough locations reaching a contract. The campaign didn't build the power it needed in time.`}
+                : `Twelve weeks came and went without enough studios reaching a contract. The campaign didn't build the power it needed in time.`}
           </p>
           <div className="grid grid-cols-4 gap-2 mb-8 text-xs">
             {locations.map(l => (
@@ -917,7 +917,7 @@ function FeedbackControls({ loc, response, onToggle }) {
         <label className="flex items-center gap-2 text-[10px] border border-teal-800 text-teal-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.reframe} onChange={() => onToggle("reframe")} className="accent-amber-500" />
           <HandCoins size={12} />
-          <span className="flex-1"><span className="font-bold">Management just handed out raises.</span> Reframe it as a union win (1 action)</span>
+          <span className="flex-1"><span className="font-bold">Management just announced a retention bonus.</span> Reframe it as a union win (1 action)</span>
         </label>
       )}
       {committeeEligible && (
@@ -1137,17 +1137,17 @@ const BURN_NARRATIVES = [
 ];
 
 const ACT1_WORKERS_SEED = [
-  { id: 1, name: "Marisol", hook: "Single mom, two kids. The system changes her shifts with two days' notice, and daycare doesn't work like that.", ties: [6, 9], stage: "hostile", trait: "committee" },
-  { id: 2, name: "Dante", hook: "New here, still on probation, trying hard to prove himself.", ties: [6], stage: "hostile", trait: "morale" },
-  { id: 3, name: "Priya", hook: "Community college part-time, running on no sleep.", ties: [9], stage: "skeptical", trait: "legal" },
-  { id: 4, name: "Wendell", hook: "20 years on the floor. Remembers when this job had real benefits, before it all got ‘optimized’ away.", ties: [9], stage: "skeptical", trait: "legal" },
-  { id: 5, name: "Ashanti", hook: "Loud about everything. First to complain, first to post about it.", ties: [6], stage: "skeptical", trait: "antiunion" },
-  { id: 6, name: "Miguel", hook: "Quiet. Everyone asks him to cover shifts. He never says no.", ties: [9], stage: "hostile", trait: "committee" },
-  { id: 7, name: "Brianna", hook: "Transferred in last month. Still learning who's who.", ties: [4], stage: "hostile", trait: "morale" },
-  { id: 8, name: "Tyrell", hook: "Got flagged last month for a dip in his ‘efficiency score.’ Never met the person who wrote him up. There wasn't one.", ties: [4, 11], stage: "skeptical", trait: "antiunion" },
-  { id: 9, name: "Sofia", hook: "Everyone's work-mom. Brings snacks. Remembers birthdays.", ties: [4], stage: "hostile", trait: "committee" },
-  { id: 10, name: "Jake", hook: "The system keeps cutting his hours here without warning, so he picked up a second job just to make rent.", ties: [4], stage: "hostile", trait: "morale" },
-  { id: 11, name: "Camille", hook: "Was in a union at her last job. Doesn't talk about it much.", ties: [6], stage: "sympathetic", trait: "legal" },
+  { id: 1, name: "Marisol", hook: "Was coded as a senior engineer for six years. After coming back from parental leave, she got her first-ever 'needs improvement' review — same work, different score.", ties: [6, 9], stage: "hostile", trait: "committee" },
+  { id: 2, name: "Dante", hook: "New hire, six months in. Just happy to be here making games. Doesn't realize yet that being new makes him easy to cut first.", ties: [6], stage: "hostile", trait: "morale" },
+  { id: 3, name: "Priya", hook: "Works crunch every launch cycle. Her health is suffering but she's afraid saying no will tank her stack ranking.", ties: [9], stage: "skeptical", trait: "legal" },
+  { id: 4, name: "Wendell", hook: "Was here before the PE acquisition. Remembers when there was profit-sharing, real raises, and you could push back on a deadline.", ties: [9], stage: "skeptical", trait: "legal" },
+  { id: 5, name: "Ashanti", hook: "Posts about everything. First to call out problems publicly, first to get quietly 'counseled' about her tone.", ties: [6], stage: "skeptical", trait: "antiunion" },
+  { id: 6, name: "Miguel", hook: "The load-bearing engineer. Everyone routes their hardest problems to him. He does the work of two people and it shows on his face.", ties: [9], stage: "hostile", trait: "committee" },
+  { id: 7, name: "Brianna", hook: "Transferred in from the studio they acquired last year. Still learning how this one works.", ties: [4], stage: "hostile", trait: "morale" },
+  { id: 8, name: "Tyrell", hook: "His PerfAxis score dropped 12 points last quarter. He still doesn't know why. There's no one to ask.", ties: [4, 11], stage: "skeptical", trait: "antiunion" },
+  { id: 9, name: "Sofia", hook: "Unofficial team mom. The first to notice when people are struggling before anyone else does.", ties: [4], stage: "hostile", trait: "committee" },
+  { id: 10, name: "Jake", hook: "His hours are technically 40 but the Slack pings don't stop until midnight. He's been tracking it. Nobody's compensating him for it.", ties: [4], stage: "hostile", trait: "morale" },
+  { id: 11, name: "Camille", hook: "Was in a union at her last studio. Doesn't advertise it.", ties: [6], stage: "sympathetic", trait: "legal" },
 ];
 
 function generateRandomTies(ids) {
@@ -1442,11 +1442,12 @@ function ActOneGame({ onGraduate }) {
           <div className="font-stencil text-4xl text-amber-400 mb-4">ONE SHOP. ELEVEN PEOPLE.</div>
           <div className="text-left border border-red-900 bg-red-950/20 p-3 mb-6">
             <p className="text-stone-300 text-sm leading-relaxed">
-              Ownership stopped really listening a long time ago. Hours got cut. The benefits Wendell remembers
-              are gone. Two years ago, corporate stopped even pretending — they rolled out <span className="text-red-400 font-bold">CrewOptix</span>,
-              a scheduling and performance system that decides who works, how much, and who gets flagged.
-              Appeal it and you're not talking to a person. You're talking to a dashboard, optimizing for a
-              number nobody on this floor has ever seen.
+              Ownership stopped really listening a long time ago. Headcount got cut. The profit-sharing that
+              used to make this place feel different is gone. Two years ago, corporate stopped even pretending —
+              they rolled out <span className="text-red-400 font-bold">PerfAxis</span>, a productivity tracking
+              and performance evaluation system that decides who advances, who gets put on a PIP, and who gets
+              ranked out in the next RIF. Appeal it and you're not talking to a person. You're talking to a
+              model, optimizing for a metric nobody on this floor has ever seen.
             </p>
           </div>
           <p className="text-stone-600 text-xs leading-relaxed mb-8 italic">
@@ -1504,10 +1505,10 @@ function ActOneGame({ onGraduate }) {
           <p className="text-stone-400 mb-6 leading-relaxed">
             A supermajority stands behind this, and four people proved themselves as leaders along the way —
             not because they volunteered loudest, but because they came through when it mattered. Word is
-            starting to travel to other locations.
+            starting to travel to other studios.
           </p>
           <p className="text-stone-500 text-sm mb-6 leading-relaxed italic">
-            CrewOptix doesn't have a line item for this. A dashboard can flag an efficiency score, but it can't
+            PerfAxis doesn't have a line item for this. A model can rank an efficiency score, but it can't
             bargain with eleven people who've decided to move together.
           </p>
           <div className="text-left border border-teal-900 bg-teal-950/20 p-3 mb-8">
