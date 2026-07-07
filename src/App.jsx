@@ -91,6 +91,22 @@ const EXTERNAL_EVENTS = [
   },
 ];
 
+const ACT2_EFFORT_TIERS = [
+  { units: 0, label: "Hold back this week", cost: 0, desc: "Let this site rest — no organizer time spent here. Counts toward recovering stamina." },
+  { units: 1, label: "Check in briefly", cost: 1, desc: "A quick pulse-check with a few workers." },
+  { units: 2, label: "Have real conversations", cost: 2, desc: "Deeper one-on-ones, building trust and momentum." },
+  { units: 4, label: "Run a full organizing push", cost: 4, desc: "A serious block of organizer time here this week." },
+  { units: 6, label: "Go all-in here", cost: 6, desc: "Everything the organizer can give to this site this week." },
+];
+
+const ACT2_CAMPAIGN_TIERS = [
+  { units: 0, label: "Hold back this week", cost: 0, desc: "Skip it — fear creeps up and morale slips on its own." },
+  { units: 1, label: "Light presence", cost: 1, desc: "A quick show of support against the employer's counter-campaign." },
+  { units: 2, label: "Active campaigning", cost: 2, desc: "Real pushback against management's messaging." },
+  { units: 4, label: "Full doorknock push", cost: 4, desc: "A serious week of countering the counter-campaign." },
+  { units: 6, label: "All-in for the vote", cost: 6, desc: "Everything the organizer has, fighting for this election." },
+];
+
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
 const rand = (n) => Math.floor(Math.random() * n);
 const roll100 = () => rand(100) + 1;
@@ -753,38 +769,15 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
           </div>
 
           <div className="border-2 border-stone-800 bg-stone-900 p-4">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-1">
               <div className="font-stencil text-lg tracking-wide text-stone-200">ALLOCATE ORGANIZER TIME</div>
-              <div className={`text-sm font-bold ${remaining < 0 ? "text-red-500" : remaining === 0 ? "text-teal-400" : "text-amber-400"}`}>{remaining} ACTION{Math.abs(remaining) === 1 ? "" : "S"} UNASSIGNED</div>
+              <div className={`text-sm font-bold ${remaining < 0 ? "text-red-500" : remaining === 0 ? "text-teal-400" : "text-amber-400"}`}>{remaining} ACTION{Math.abs(remaining) === 1 ? "" : "S"} LEFT</div>
             </div>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {locations.filter(l => l.status === "organizing" || l.status === "campaign").map(loc => (
-                <div key={loc.id} className="border border-stone-800 px-3 py-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-stone-400 flex-1">{loc.name}{loc.status === "campaign" ? " (campaigning)" : ""}</span>
-                    <input
-                      type="range" min="0" max="10" value={allocations[loc.id]}
-                      onChange={(e) => updateAlloc(loc.id, parseInt(e.target.value))}
-                      className="w-24 accent-amber-500"
-                    />
-                    <span className="w-6 text-right font-bold text-stone-100">{allocations[loc.id]}</span>
-                  </div>
-                  {loc.status === "organizing" && (
-                    <FeedbackControls loc={loc} response={responses[loc.id] || {}} onToggle={(key) => toggleResponse(loc.id, key)} />
-                  )}
-                  {loc.status === "campaign" && (
-                    <div className="mt-2 text-[10px] text-red-300 border-t border-stone-800 pt-2">
-                      Election in {Math.max(0, loc.electionTurn - turn)} week{Math.max(0, loc.electionTurn - turn) === 1 ? "" : "s"}. Actions here fight the employer's counter-campaign directly — skip a week and fear creeps up and morale slips on its own.
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            <p className="text-[10px] text-stone-500 mt-3">Unassigned actions count as rest — they help the organizer recover stamina but do nothing for the campaign. Responding to what workers bring you costs actions too.</p>
+            <p className="text-[10px] text-stone-500 mb-3">Click a location above to choose what the organizer does there this week. Tap it again to change the plan. Unassigned actions count as rest — they help the organizer recover stamina but do nothing for the campaign.</p>
             <button
               onClick={resolveTurn}
               disabled={totalAllocated > 10}
-              className={`mt-4 w-full font-stencil text-lg py-2.5 tracking-wide transition-colors ${totalAllocated > 10 ? "bg-stone-800 text-stone-600 cursor-not-allowed" : "bg-amber-500 hover:bg-amber-400 text-stone-950"}`}
+              className={`w-full font-stencil text-lg py-2.5 tracking-wide transition-colors ${totalAllocated > 10 ? "bg-stone-800 text-stone-600 cursor-not-allowed" : "bg-amber-500 hover:bg-amber-400 text-stone-950"}`}
             >
               {totalAllocated > 10 ? "OVER BUDGET — REDUCE ALLOCATION" : `RESOLVE WEEK ${turn}`}
             </button>
@@ -846,9 +839,17 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         </div>
       )}
 
-      {/* LOCATION DETAIL DRAWER */}
+      {/* LOCATION ACTION PANEL */}
       {selectedLoc && (
-        <LocationDetail loc={locations.find(l => l.id === selectedLoc.id) || selectedLoc} onClose={() => setSelectedLoc(null)} />
+        <LocationActionModal
+          loc={locations.find(l => l.id === selectedLoc.id) || selectedLoc}
+          turn={turn}
+          allocation={allocations[selectedLoc.id] || 0}
+          response={responses[selectedLoc.id] || {}}
+          onSetUnits={(units) => updateAlloc(selectedLoc.id, units)}
+          onToggleResponse={(key) => toggleResponse(selectedLoc.id, key)}
+          onClose={() => setSelectedLoc(null)}
+        />
       )}
     </div>
   );
@@ -962,7 +963,7 @@ function LocationCard({ loc, allocation, turn, onSelect }) {
       )}
       <div className="flex items-center justify-between text-[10px] text-stone-500">
         <span className="flex items-center gap-1"><Users size={10} /> {loc.recruited}/{loc.workers} recruited</span>
-        {allocation > 0 && <span className="text-amber-400 font-bold">+{allocation} this week</span>}
+        {allocation > 0 && <span className="text-amber-400 font-bold">Planned: {(loc.status === "campaign" ? ACT2_CAMPAIGN_TIERS : ACT2_EFFORT_TIERS).find(t => t.units === allocation)?.label || `${allocation} action(s)`}</span>}
       </div>
       {!loc.committee?.active && loc.status === "organizing" && supportGap >= 20 && (
         <div className="text-[9px] text-amber-500 mt-1 italic">Organizer's gut says this reads better than it feels in the room.</div>
@@ -981,34 +982,64 @@ function LocationCard({ loc, allocation, turn, onSelect }) {
   );
 }
 
-function LocationDetail({ loc, onClose }) {
+function LocationActionModal({ loc, turn, allocation, response, onSetUnits, onToggleResponse, onClose }) {
   const meta = statusMeta[loc.status];
+  const isCampaign = loc.status === "campaign";
+  const isOrganizing = loc.status === "organizing";
+  const tiers = isCampaign ? ACT2_CAMPAIGN_TIERS : ACT2_EFFORT_TIERS;
+  const canAct = isCampaign || isOrganizing;
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" onClick={onClose}>
-      <div className="bg-stone-900 border-2 border-stone-700 max-w-md w-full p-5" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-stone-900 border-2 border-stone-700 max-w-md w-full p-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
           <div className="font-stencil text-2xl text-amber-400">{loc.name}</div>
           <button onClick={onClose}><X size={18} className="text-stone-500 hover:text-stone-200" /></button>
         </div>
         <div className={`text-xs font-bold mb-4 ${meta.color}`}>{meta.label}</div>
+
         <div className="space-y-3 mb-4">
           <Meter label="MORALE" value={loc.morale} icon={<CheckCircle2 size={11} />} colorClass="bg-teal-500" />
           {loc.committee?.active && <Meter label="TRUE SUPPORT (committee reported)" value={loc.trueSupport} icon={<UsersRound size={11} />} colorClass="bg-amber-500" />}
           <Meter label="VISIBILITY" value={loc.visibility} icon={<Eye size={11} />} danger={loc.visibility >= 60} />
           <Meter label="LEGAL RISK" value={loc.legalRisk} icon={<Scale size={11} />} danger={loc.legalRisk >= 60} />
-          {loc.status === "campaign" && <Meter label="WORKER FEAR" value={loc.fear} icon={<AlertTriangle size={11} />} danger={loc.fear >= 60} />}
+          {isCampaign && <Meter label="WORKER FEAR" value={loc.fear} icon={<AlertTriangle size={11} />} danger={loc.fear >= 60} />}
         </div>
-        <div className="text-xs text-stone-400 space-y-1 font-mono">
+
+        <div className="text-[10px] text-stone-500 space-y-1 font-mono mb-4">
           <div>Manager disposition: <span className="text-stone-200">{loc.manager}</span></div>
-          <div>Workforce: <span className="text-stone-200">{loc.workers}</span></div>
-          <div>Recruited: <span className="text-stone-200">{loc.recruited}</span> ({Math.round((loc.recruited / loc.workers) * 100)}%)</div>
-          {loc.status === "campaign" && <div>Election in: <span className="text-stone-200">week {loc.electionTurn}</span> — actions here still count, fighting the employer's counter-campaign week to week.</div>}
-          {loc.grievance && <div>Open issue: <span className="text-stone-200">{GRIEVANCE_META[loc.grievance.type].label}</span></div>}
+          <div>Recruited: <span className="text-stone-200">{loc.recruited}/{loc.workers}</span> ({Math.round((loc.recruited / loc.workers) * 100)}%)</div>
+          {isCampaign && <div>Election in <span className="text-stone-200">{Math.max(0, loc.electionTurn - turn)} week{Math.max(0, loc.electionTurn - turn) === 1 ? "" : "s"}</span> — actions here fight the employer's counter-campaign directly.</div>}
           {loc.antiUnion?.active && <div className="text-red-400">Anti-union talk is circulating ({loc.antiUnion.turnsLeft} week{loc.antiUnion.turnsLeft === 1 ? "" : "s"} left)</div>}
           {loc.buyOff?.active && <div className="text-teal-400">Workers just got a surprise raise ({loc.buyOff.turnsLeft} week{loc.buyOff.turnsLeft === 1 ? "" : "s"} of dampened organizing left)</div>}
           {loc.committee?.active && <div className="text-teal-400">Shop committee active{loc.committee.strikes > 0 ? ` (${loc.committee.strikes} strike${loc.committee.strikes === 1 ? "" : "s"} taken)` : ""}</div>}
-          {!loc.committee?.active && loc.status === "organizing" && <div className="text-stone-500 italic">No committee yet — true support here is a guess, not a certainty.</div>}
         </div>
+
+        {canAct ? (
+          <>
+            <div className="text-[10px] text-stone-500 font-bold mb-1 tracking-wide">WHAT SHOULD THE ORGANIZER DO HERE THIS WEEK?</div>
+            <div className="space-y-2 mb-2">
+              {tiers.map(t => (
+                <button
+                  key={t.units}
+                  onClick={() => onSetUnits(t.units)}
+                  className={`w-full text-left border-2 px-3 py-2 text-xs transition-colors ${allocation === t.units ? "border-amber-500 bg-amber-950/30" : "border-stone-700 hover:bg-stone-800/60"}`}
+                >
+                  <div className="font-stencil text-sm tracking-wide text-stone-100">{t.label} {t.cost > 0 ? `(${t.cost} action${t.cost > 1 ? "s" : ""})` : ""}</div>
+                  <div className="text-[10px] text-stone-400">{t.desc}</div>
+                </button>
+              ))}
+            </div>
+            {isOrganizing && (
+              <FeedbackControls loc={loc} response={response} onToggle={onToggleResponse} />
+            )}
+          </>
+        ) : (
+          <div className="text-xs text-stone-500 italic">This site is no longer active — nothing left to organize here.</div>
+        )}
+
+        <button onClick={onClose} className="mt-4 w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2 tracking-wide">
+          DONE
+        </button>
       </div>
     </div>
   );
