@@ -1562,10 +1562,6 @@ function ActOneGame({ onGraduate }) {
             not because they volunteered loudest, but because they came through when it mattered. Word is
             starting to travel to other studios.
           </p>
-          <p className="text-stone-500 text-sm mb-6 leading-relaxed italic">
-            PerfAxis doesn't have a line item for this. A model can rank an efficiency score, but it can't
-            bargain with eleven people who've decided to move together.
-          </p>
           <div className="text-left border border-teal-900 bg-teal-950/20 p-3 mb-8">
             <div className="text-[10px] text-teal-400 font-bold mb-2 tracking-wide">LEADERS WHO STEPPED UP:</div>
             {workers.filter(w => !w.burned && w.stage === "leader").map(w => (
