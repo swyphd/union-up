@@ -1441,13 +1441,19 @@ function ActOneGame({ onGraduate }) {
         <div className="max-w-2xl mx-auto px-6 py-16 text-center anim-rise">
           <div className="font-stencil text-4xl text-amber-400 mb-4">ONE SHOP. ELEVEN PEOPLE.</div>
           <div className="text-left border border-red-900 bg-red-950/20 p-3 mb-6">
+            <p className="text-stone-300 text-sm leading-relaxed mb-3">
+              Ownership stopped really listening a long time ago. Raises dried up. The studio used to feel like
+              something worth building — now it belongs to a private equity firm three acquisitions deep.
+            </p>
+            <p className="text-stone-300 text-sm leading-relaxed mb-3">
+              Two years ago, corporate stopped even pretending. They rolled out{" "}
+              <span className="text-red-400 font-bold">PerfAxis</span>, an AI system that watches how you work —
+              commit frequency, Slack response times, meeting attendance, how long you stay logged in — and turns
+              it into a score. That score decides who advances. And when the next round of layoffs comes, it
+              decides who goes. Not a manager. Not HR. An algorithm.
+            </p>
             <p className="text-stone-300 text-sm leading-relaxed">
-              Ownership stopped really listening a long time ago. Headcount got cut. The profit-sharing that
-              used to make this place feel different is gone. Two years ago, corporate stopped even pretending —
-              they rolled out <span className="text-red-400 font-bold">PerfAxis</span>, a productivity tracking
-              and performance evaluation system that decides who advances, who gets put on a PIP, and who gets
-              ranked out in the next RIF. Appeal it and you're not talking to a person. You're talking to a
-              model, optimizing for a metric nobody on this floor has ever seen.
+              Appeal it and there's no one to appeal to. Just a model, running numbers on work it's never played.
             </p>
           </div>
           <p className="text-stone-600 text-xs leading-relaxed mb-8 italic">
