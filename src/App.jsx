@@ -1468,14 +1468,31 @@ function ActOneGame({ onGraduate }) {
 
       {phase === "intro" && introStep === 1 && (
         <div className="max-w-2xl mx-auto px-6 py-16 text-center anim-rise">
-          <p className="text-stone-400 text-sm leading-relaxed mb-8">
-            You and your 11 coworkers poured your souls and spent all your sleepless nights working on this game.
-            It's time you take it back into your own hands. Conversations move people from hostile to skeptical to
-            sympathetic. Real leadership only comes from structure tests — asking someone to actually risk
-            something, and finding out if they deliver. Get a supermajority to sympathetic or better, with at
-            least four proven leaders, and the shop is won. Burn too many people testing them too hard, and it's
-            over.
+          <div className="font-stencil text-4xl text-amber-400 mb-4">HOW TO WIN THIS THING</div>
+          <p className="text-stone-400 text-sm leading-relaxed mb-6">
+            You and your 11 coworkers poured your souls into this game. It's time you take it back.
           </p>
+          <div className="text-left border border-amber-800 bg-amber-950/20 p-3 mb-3">
+            <div className="font-stencil text-sm tracking-wide text-amber-400 mb-1">CONVERSATIONS BUILD SYMPATHY</div>
+            <p className="text-stone-300 text-sm leading-relaxed">
+              One-on-ones move workers from hostile to skeptical to sympathetic. But sympathy alone doesn't win
+              elections.
+            </p>
+          </div>
+          <div className="text-left border border-teal-800 bg-teal-950/20 p-3 mb-3">
+            <div className="font-stencil text-sm tracking-wide text-teal-400 mb-1">STRUCTURE TESTS BUILD LEADERS</div>
+            <p className="text-stone-300 text-sm leading-relaxed">
+              Ask someone to actually risk something — wear the button, sign the card, speak up in the meeting.
+              Find out if they deliver. That's how leaders emerge.
+            </p>
+          </div>
+          <div className="text-left border border-stone-700 bg-stone-900/40 p-3 mb-8">
+            <div className="font-stencil text-sm tracking-wide text-stone-300 mb-1">WIN CONDITION</div>
+            <p className="text-stone-300 text-sm leading-relaxed">
+              Get a supermajority to sympathetic or better, with at least four proven leaders. Burn too many
+              people testing them too hard, and it's over.
+            </p>
+          </div>
           <button onClick={() => setPhase("plan")} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
             START ORGANIZING
           </button>
