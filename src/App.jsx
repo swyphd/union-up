@@ -1204,6 +1204,7 @@ function ActOneGame({ onGraduate }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedWorker, setSelectedWorker] = useState(null);
   const [introStep, setIntroStep] = useState(0);
+  const [confirmStartOver, setConfirmStartOver] = useState(false);
   const pendingRef = useRef(null);
 
   const burnedCount = workers.filter(w => w.burned).length;
@@ -1412,6 +1413,20 @@ function ActOneGame({ onGraduate }) {
     onGraduate(leaders);
   }
 
+  function startOver() {
+    setWeek(1);
+    setPhase("intro");
+    setIntroStep(0);
+    setWorkers(makeAct1Workers());
+    setPlan({});
+    setPlanMapping(false);
+    setShopVisibility(10);
+    setResolutionSteps([]);
+    setStepIndex(0);
+    setSelectedWorker(null);
+    setConfirmStartOver(false);
+  }
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-mono">
       <GlobalStyle />
@@ -1587,6 +1602,25 @@ function ActOneGame({ onGraduate }) {
           onChoose={(action) => { setAction(selectedWorker.id, action); setSelectedWorker(null); }}
           onClose={() => setSelectedWorker(null)}
         />
+      )}
+
+      {phase !== "intro" && (
+        <div className="fixed bottom-2 left-2 z-40">
+          {confirmStartOver ? (
+            <div className="flex items-center gap-2 bg-stone-900 border border-stone-700 px-2 py-1.5 text-[10px]">
+              <span className="text-stone-500">Restart Act One from scratch?</span>
+              <button onClick={startOver} className="text-red-400 hover:text-red-300 font-bold">YES</button>
+              <button onClick={() => setConfirmStartOver(false)} className="text-stone-500 hover:text-stone-300">CANCEL</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmStartOver(true)}
+              className="text-[10px] text-stone-600 hover:text-stone-400 underline transition-colors"
+            >
+              Start Over
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
