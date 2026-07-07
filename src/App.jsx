@@ -1203,6 +1203,7 @@ function ActOneGame({ onGraduate }) {
   const [resolutionSteps, setResolutionSteps] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedWorker, setSelectedWorker] = useState(null);
+  const [introStep, setIntroStep] = useState(0);
   const pendingRef = useRef(null);
 
   const burnedCount = workers.filter(w => w.burned).length;
@@ -1437,7 +1438,7 @@ function ActOneGame({ onGraduate }) {
         )}
       </div>
 
-      {phase === "intro" && (
+      {phase === "intro" && introStep === 0 && (
         <div className="max-w-2xl mx-auto px-6 py-16 text-center anim-rise">
           <div className="font-stencil text-4xl text-amber-400 mb-4">ONE SHOP. ELEVEN PEOPLE.</div>
           <div className="text-left border border-red-900 bg-red-950/20 p-3 mb-6">
@@ -1458,6 +1459,22 @@ function ActOneGame({ onGraduate }) {
           </div>
           <p className="text-stone-600 text-xs leading-relaxed mb-8 italic">
             There's no fixing a system that isn't listening by asking nicer. The only lever left is each other.
+          </p>
+          <button onClick={() => setIntroStep(1)} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
+            I'M FED UP
+          </button>
+        </div>
+      )}
+
+      {phase === "intro" && introStep === 1 && (
+        <div className="max-w-2xl mx-auto px-6 py-16 text-center anim-rise">
+          <p className="text-stone-400 text-sm leading-relaxed mb-8">
+            You and your 11 coworkers poured your souls and spent all your sleepless nights working on this game.
+            It's time you take it back into your own hands. Conversations move people from hostile to skeptical to
+            sympathetic. Real leadership only comes from structure tests — asking someone to actually risk
+            something, and finding out if they deliver. Get a supermajority to sympathetic or better, with at
+            least four proven leaders, and the shop is won. Burn too many people testing them too hard, and it's
+            over.
           </p>
           <button onClick={() => setPhase("plan")} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
             START ORGANIZING
