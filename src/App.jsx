@@ -1649,6 +1649,17 @@ function ActOneGame({ onGraduate }) {
           )}
         </div>
       )}
+
+      {phase !== "intro" && (
+        <div className="fixed bottom-2 right-2 z-40">
+          <button
+            onClick={graduate}
+            className="text-[10px] text-stone-600 hover:text-stone-400 underline transition-colors"
+          >
+            Skip to Phase 2 (playtest)
+          </button>
+        </div>
+      )}
     </div>
   );
 }
