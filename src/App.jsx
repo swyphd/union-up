@@ -1446,11 +1446,11 @@ function ActOneGame({ onGraduate }) {
               something worth building — now it belongs to a private equity firm three acquisitions deep.
             </p>
             <p className="text-stone-300 text-sm leading-relaxed mb-3">
-              Two years ago, corporate stopped even pretending. They rolled out{" "}
-              <span className="text-red-400 font-bold">PerfAxis</span>, an AI system that watches how you work —
-              commit frequency, Slack response times, meeting attendance, how long you stay logged in — and turns
-              it into a score. That score decides who advances. And when the next round of layoffs comes, it
-              decides who goes. Not a manager. Not HR. An algorithm.
+              Six months ago, corporate stopped even pretending. They rolled out{" "}
+              <span className="text-red-400 font-bold">PL-A-EYE</span>, an AI system that makes design decisions
+              for the game your studio has spent four years crafting. It pushes updates, overrides decisions from
+              your actual designers, and even contradicts your playtesters. Your management is convinced that it
+              knows best how to make a buck, so maybe lootboxes are back in.
             </p>
             <p className="text-stone-300 text-sm leading-relaxed">
               Appeal it and there's no one to appeal to. Just a model, running numbers on work it's never played.
