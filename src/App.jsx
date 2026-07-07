@@ -1761,12 +1761,11 @@ export default function PermadeathOrganizing() {
     setAct("shop");
   }
 
+  let content;
   if (act === "loading") {
-    return <div className="min-h-screen bg-stone-950" />;
-  }
-
-  if (act === "choice") {
-    return (
+    content = <div className="min-h-screen bg-stone-950" />;
+  } else if (act === "choice") {
+    content = (
       <div className="min-h-screen bg-stone-950 text-stone-200 font-mono flex items-center justify-center px-6">
         <GlobalStyle />
         <div className="max-w-md text-center anim-rise">
@@ -1789,10 +1788,18 @@ export default function PermadeathOrganizing() {
         </div>
       </div>
     );
+  } else if (act === "shop") {
+    content = <ActOneGame onGraduate={handleGraduate} />;
+  } else {
+    content = <ActTwoGame recruitedLeaders={recruitedLeaders} onFullRestart={handleFullRestart} />;
   }
 
-  if (act === "shop") {
-    return <ActOneGame onGraduate={handleGraduate} />;
-  }
-  return <ActTwoGame recruitedLeaders={recruitedLeaders} onFullRestart={handleFullRestart} />;
+  return (
+    <div>
+      {content}
+      <div className="text-center text-xs text-stone-600 py-4">
+        A <a href="https://permadeathmedia.com" target="_blank" rel="noopener noreferrer" className="hover:text-stone-400 transition-colors">Permadeath Studio</a> game
+      </div>
+    </div>
+  );
 }
