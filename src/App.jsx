@@ -218,7 +218,14 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     let activeLocationCount = 0;
 
     workingLocs = workingLocs.map(l => {
-      if (l.status === "won" || l.status === "lost" || l.status === "abandoned") return l;
+      if (l.status === "won" || l.status === "lost") return l;
+      if (l.status === "abandoned") {
+        // Nobody's left to counter anti-union talk here — it festers uncontested and can seed on its own.
+        let au = l.antiUnion || { active: false, turnsLeft: 0 };
+        if (au.active) au = { active: true, turnsLeft: au.turnsLeft };
+        else if (Math.random() < 0.12) au = { active: true, turnsLeft: 2 };
+        return { ...l, antiUnion: au };
+      }
 
       const units = isBreakTurn ? 0 : (allocations[l.id] || 0);
       if (units > 0) activeLocationCount++;
@@ -526,6 +533,37 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
 
     if (retaliationLines.length) {
       steps.push({ label: "EMPLOYER RESPONSE", sub: "Management notices organizing activity.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: retaliationLines });
+    }
+
+    // ---------- ANTI-UNION CONTAGION ----------
+    // An anti-union narrative that nobody pushes back on doesn't stay contained to one site —
+    // it travels through cross-site Slack channels, shared managers, and friend groups.
+    let contagionLines = [];
+    const contagionSources = workingLocs.filter(l => {
+      if (!l.antiUnion?.active) return false;
+      if (l.status === "abandoned") return true; // always uncontested
+      if (l.status !== "organizing") return false;
+      return !responses[l.id]?.counter; // unaddressed this turn
+    });
+    if (contagionSources.length) {
+      workingLocs = workingLocs.map(l => {
+        if (l.status === "won" || l.status === "lost" || l.antiUnion?.active) return l;
+        const availableSources = contagionSources.filter(s => s.id !== l.id);
+        if (!availableSources.length) return l;
+        const spreadChance = 0.12 + employerSophistication * 0.05 + (employerEmboldened ? 0.05 : 0);
+        if (Math.random() >= spreadChance) return l;
+        const source = availableSources[rand(availableSources.length)];
+        if (l.status === "campaign") {
+          const fearBump = 8;
+          contagionLines.push(`${l.name}: Anti-union messaging spreading out of ${source.name} reaches workers here too. (+${fearBump} fear)`);
+          return { ...l, fear: clamp(l.fear + fearBump) };
+        }
+        contagionLines.push(`${l.name}: Anti-union talk from ${source.name} spreads here through shared Slack channels and cross-site friend groups.`);
+        return { ...l, antiUnion: { active: true, turnsLeft: 2 } };
+      });
+    }
+    if (contagionLines.length) {
+      steps.push({ label: "ANTI-UNION CONTAGION", sub: "An unanswered narrative doesn't stay in one place.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: contagionLines });
     }
 
     // Stamina decay
