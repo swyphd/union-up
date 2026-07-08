@@ -111,6 +111,17 @@ const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
 const rand = (n) => Math.floor(Math.random() * n);
 const roll100 = () => rand(100) + 1;
 
+function computeSolidarityScore(locs) {
+  return locs.reduce((sum, l) => {
+    if (l.status === "won") return sum + 2;
+    if (l.status === "lost" || l.status === "abandoned") return sum;
+    let pts = 0;
+    if (l.morale >= 70) pts += 1;
+    if (l.committee?.active) pts += 1;
+    return sum + pts;
+  }, 0);
+}
+
 function baseGain(units) {
   if (units <= 0) return -2;
   if (units === 1) return 4;
@@ -162,6 +173,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
 
   const workforce = (l) => l.workers;
   const unionizedCount = locations.filter(l => l.status === "won").length;
+  const solidarityScore = computeSolidarityScore(locations);
 
   function responseCostFor(loc, r) {
     if (!r) return 0;
@@ -535,6 +547,36 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       steps.push({ label: "EMPLOYER RESPONSE", sub: "Management notices organizing activity.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: retaliationLines });
     }
 
+    // ---------- SOLIDARITY NETWORK ----------
+    // Wins and strong shops elsewhere are a standing counter-force: they make the anti-union
+    // narrative land softer everywhere, can shake an existing campaign loose on their own, and
+    // keep paying dividends every week rather than a one-time jolt at the moment of victory.
+    const turnSolidarityScore = computeSolidarityScore(workingLocs);
+
+    let solidarityLines = [];
+    if (turnSolidarityScore > 0) {
+      const cureChance = Math.min(0.5, turnSolidarityScore * 0.07);
+      workingLocs = workingLocs.map(l => {
+        if (!l.antiUnion?.active || l.status === "won" || l.status === "lost") return l;
+        if (Math.random() >= cureChance) return l;
+        solidarityLines.push(`${l.name}: Word of what's happening elsewhere makes the anti-union talk here feel small. It fizzles out on its own.`);
+        return { ...l, antiUnion: { active: false, turnsLeft: 0 }, morale: clamp(l.morale + 3) };
+      });
+
+      const moraleTrickle = Math.min(6, turnSolidarityScore * 2);
+      const supportTrickle = Math.min(3, turnSolidarityScore);
+      workingLocs = workingLocs.map(l => {
+        if (l.status !== "organizing" && l.status !== "campaign") return l;
+        return { ...l, morale: clamp(l.morale + moraleTrickle), trueSupport: clamp((l.trueSupport ?? l.morale) + supportTrickle) };
+      });
+      if (moraleTrickle > 0) {
+        solidarityLines.push(`Momentum from ${turnSolidarityScore >= 4 ? "several strong sites" : "elsewhere in the company"} gives every active site a lift this week (+${moraleTrickle} morale, +${supportTrickle} true support).`);
+      }
+    }
+    if (solidarityLines.length) {
+      steps.push({ label: "SOLIDARITY NETWORK", sub: "Momentum isn't only bad news that travels.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: solidarityLines });
+    }
+
     // ---------- ANTI-UNION CONTAGION ----------
     // An anti-union narrative that nobody pushes back on doesn't stay contained to one site —
     // it travels through cross-site Slack channels, shared managers, and friend groups.
@@ -550,7 +592,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         if (l.status === "won" || l.status === "lost" || l.antiUnion?.active) return l;
         const availableSources = contagionSources.filter(s => s.id !== l.id);
         if (!availableSources.length) return l;
-        const spreadChance = 0.12 + employerSophistication * 0.05 + (employerEmboldened ? 0.05 : 0);
+        const spreadChance = Math.max(0.02, 0.12 + employerSophistication * 0.05 + (employerEmboldened ? 0.05 : 0) - turnSolidarityScore * 0.04);
         if (Math.random() >= spreadChance) return l;
         const source = availableSources[rand(availableSources.length)];
         if (l.status === "campaign") {
@@ -610,18 +652,16 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     });
 
     if (electionLines.length) {
-      // Spillover effects
-      const won = workingLocs.some(l => l.status === "won" && electionLines.some(s => s.startsWith(l.name)));
+      // A loss is still an immediate gut-punch; a win's ongoing upside now comes from the
+      // solidarity network above, which keeps paying out every week instead of a single jolt.
       const lost = workingLocs.some(l => l.status === "lost" && electionLines.some(s => s.startsWith(l.name)));
-      workingLocs = workingLocs.map(l => {
-        if (l.status !== "organizing" && l.status !== "petitioned") return l;
-        let m = l.morale;
-        let s = l.trueSupport ?? l.morale;
-        if (won) { m = clamp(m + 10); s = clamp(s + 5); }
-        if (lost) { m = clamp(m - 15); s = clamp(s - 8); }
-        return { ...l, morale: m, trueSupport: s };
-      });
-      if (lost) setEmployerEmboldened(true);
+      if (lost) {
+        workingLocs = workingLocs.map(l => {
+          if (l.status !== "organizing" && l.status !== "petitioned") return l;
+          return { ...l, morale: clamp(l.morale - 15), trueSupport: clamp((l.trueSupport ?? l.morale) - 8) };
+        });
+        setEmployerEmboldened(true);
+      }
       steps.push({ label: "ELECTION DAY", sub: "The votes are in.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: electionLines });
     }
 
@@ -797,6 +837,11 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
           {employerSophistication > 0 && (
             <div className="mb-4 flex items-center gap-2 text-xs border border-purple-900 bg-purple-950/30 text-purple-300 px-3 py-2">
               <Brain size={14} /> Corporate has learned from past firings (level {employerSophistication}/3) — expect quiet buy-offs alongside the usual crackdowns.
+            </div>
+          )}
+          {solidarityScore > 0 && (
+            <div className="mb-4 flex items-center gap-2 text-xs border border-teal-900 bg-teal-950/30 text-teal-300 px-3 py-2">
+              <UsersRound size={14} /> Solidarity network strength: {solidarityScore} — active sites get a steady morale lift and anti-union talk has a harder time catching or spreading.
             </div>
           )}
 
