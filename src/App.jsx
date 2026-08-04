@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { AlertTriangle, Users, Eye, Zap, Scale, ClipboardList, Vote, ChevronRight, X, Circle, CheckCircle2, FileWarning, Wrench, MessageCircle, Radio, Megaphone, HandCoins, UsersRound, Brain } from "lucide-react";
 
 // ---------- FONTS / GLOBAL STYLE ----------
@@ -1307,6 +1307,185 @@ function act1TrustsNames(workers, worker) {
 function stageIndex(stage) { return STAGE_ORDER.indexOf(stage); }
 const STAGE_FLOOR = { hostile: 0, skeptical: 30, sympathetic: 60, leader: 90 };
 
+// ---------- FLOOR MAP (Act One board) ----------
+const MAP_W = 160;
+const MAP_H = 100;
+const STAGE_HEX = { hostile: "#f87171", skeptical: "#a8a29e", sympathetic: "#fbbf24", leader: "#2dd4bf" };
+
+// Small force-directed layout so people who trust each other cluster together.
+// Runs once per campaign (ties never change mid-run), so the floor stays put week to week.
+function computeFloorLayout(workers) {
+  const n = workers.length;
+  const pos = workers.map((w, i) => ({
+    id: w.id,
+    x: MAP_W / 2 + 55 * Math.cos((2 * Math.PI * i) / n),
+    y: MAP_H / 2 + 34 * Math.sin((2 * Math.PI * i) / n),
+  }));
+  const idx = Object.fromEntries(pos.map((p, i) => [p.id, i]));
+  for (let iter = 0; iter < 300; iter++) {
+    const fx = new Array(n).fill(0);
+    const fy = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const dx = pos[i].x - pos[j].x;
+        const dy = pos[i].y - pos[j].y;
+        const d2 = Math.max(0.01, dx * dx + dy * dy);
+        const d = Math.sqrt(d2);
+        const rep = 780 / d2;
+        fx[i] += (dx / d) * rep; fy[i] += (dy / d) * rep;
+        fx[j] -= (dx / d) * rep; fy[j] -= (dy / d) * rep;
+      }
+    }
+    workers.forEach(w => {
+      const i = idx[w.id];
+      w.ties.forEach(tId => {
+        const j = idx[tId];
+        if (j === undefined) return;
+        const dx = pos[j].x - pos[i].x;
+        const dy = pos[j].y - pos[i].y;
+        fx[i] += dx * 0.03; fy[i] += dy * 0.03;
+        fx[j] -= dx * 0.03; fy[j] -= dy * 0.03;
+      });
+    });
+    for (let i = 0; i < n; i++) {
+      fx[i] += (MAP_W / 2 - pos[i].x) * 0.006;
+      fy[i] += (MAP_H / 2 - pos[i].y) * 0.010;
+      pos[i].x = Math.max(12, Math.min(MAP_W - 12, pos[i].x + fx[i] * 0.5));
+      pos[i].y = Math.max(11, Math.min(MAP_H - 15, pos[i].y + fy[i] * 0.5));
+    }
+  }
+  return Object.fromEntries(pos.map(p => [p.id, { x: p.x, y: p.y }]));
+}
+
+function Act1FloorMap({ workers, layout, plan, onSelect }) {
+  const [hoverId, setHoverId] = useState(null);
+  const anyRevealed = workers.some(w => w.revealed);
+
+  // An edge is public knowledge once either end has been mapped.
+  const edges = [];
+  workers.forEach(w => {
+    w.ties.forEach(tId => {
+      const t = workers.find(x => x.id === tId);
+      if (t && (w.revealed || t.revealed)) edges.push({ from: w, to: t });
+    });
+  });
+
+  const nodeRadius = (w) => {
+    if (!w.revealed) return 4.5;
+    return 4.5 + Math.min(4, act1Influence(workers, w.id)) * 0.7;
+  };
+
+  const hovered = workers.find(w => w.id === hoverId);
+
+  return (
+    <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
+      <div className="flex items-center justify-between px-3 pt-2">
+        <div className="font-stencil text-lg tracking-wide text-stone-200">THE FLOOR</div>
+        <div className="flex items-center gap-3 text-[9px] text-stone-500">
+          {STAGE_ORDER.map(s => (
+            <span key={s} className="flex items-center gap-1">
+              <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: STAGE_HEX[s] }} />
+              {STAGE_LABEL[s]}
+            </span>
+          ))}
+        </div>
+      </div>
+      <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} className="w-full block select-none">
+        <defs>
+          <marker id="tie-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+            <path d="M 0 0 L 6 3 L 0 6 z" fill="#78716c" />
+          </marker>
+          <marker id="tie-arrow-hot" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+            <path d="M 0 0 L 6 3 L 0 6 z" fill="#fbbf24" />
+          </marker>
+        </defs>
+
+        {edges.map((e, i) => {
+          const a = layout[e.from.id];
+          const b = layout[e.to.id];
+          if (!a || !b) return null;
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const d = Math.max(0.01, Math.sqrt(dx * dx + dy * dy));
+          const rA = nodeRadius(e.from) + 0.8;
+          const rB = nodeRadius(e.to) + 2.2;
+          const x1 = a.x + (dx / d) * rA, y1 = a.y + (dy / d) * rA;
+          const x2 = b.x - (dx / d) * rB, y2 = b.y - (dy / d) * rB;
+          const hot = hoverId != null && (e.from.id === hoverId || e.to.id === hoverId);
+          return (
+            <line
+              key={i}
+              x1={x1} y1={y1} x2={x2} y2={y2}
+              stroke={hot ? "#fbbf24" : "#57534e"}
+              strokeWidth={hot ? 0.6 : 0.35}
+              strokeOpacity={hoverId != null && !hot ? 0.25 : 0.8}
+              markerEnd={hot ? "url(#tie-arrow-hot)" : "url(#tie-arrow)"}
+            />
+          );
+        })}
+
+        {workers.map(w => {
+          const p = layout[w.id];
+          if (!p) return null;
+          const r = nodeRadius(w);
+          const planned = plan[w.id] && !w.burned;
+          const dimOthers = hoverId != null && hoverId !== w.id
+            && !edges.some(e => (e.from.id === hoverId && e.to.id === w.id) || (e.to.id === hoverId && e.from.id === w.id));
+          return (
+            <g
+              key={w.id}
+              transform={`translate(${p.x} ${p.y})`}
+              opacity={w.burned ? 0.35 : dimOthers ? 0.45 : 1}
+              className={w.burned ? "" : "cursor-pointer"}
+              onClick={() => !w.burned && onSelect(w)}
+              onMouseEnter={() => setHoverId(w.id)}
+              onMouseLeave={() => setHoverId(null)}
+            >
+              {planned && (
+                <circle r={r + 1.8} fill="none" stroke="#f59e0b" strokeWidth="0.5" strokeDasharray="1.4 1" />
+              )}
+              {w.stage === "leader" && !w.burned && (
+                <circle r={r + 1.1} fill="none" stroke="#2dd4bf" strokeWidth="0.35" strokeOpacity="0.6" />
+              )}
+              <circle r={r} fill="#1c1917" stroke={w.burned ? "#57534e" : STAGE_HEX[w.stage]} strokeWidth="0.8" />
+              {w.burned ? (
+                <text textAnchor="middle" dominantBaseline="central" fontSize="4.5" fill="#78716c">✕</text>
+              ) : (
+                <text textAnchor="middle" dominantBaseline="central" fontSize="3.2" fill="#d6d3d1" fontFamily="'Courier New', monospace" fontWeight="bold">{w.trust}</text>
+              )}
+              <text textAnchor="middle" y={r + 4} fontSize="3.4" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.1">{w.name.toUpperCase()}</text>
+              {planned && (
+                <text textAnchor="middle" y={r + 7.5} fontSize="2.4" fill="#fbbf24" fontFamily="'Courier New', monospace">{ACT1_ACTION_LABEL[plan[w.id].type].replace(/ \(\d+h\)$/, "")}</text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="border-t border-stone-800 px-3 py-2 min-h-[3.25rem]">
+        {hovered ? (
+          <div className="text-[10px] text-stone-400 leading-snug">
+            <span className={`font-bold ${STAGE_COLOR[hovered.stage]}`}>{hovered.name}{hovered.burned ? " (BURNED)" : ""}</span>
+            <span className="text-stone-500"> — {hovered.hook}</span>
+            {hovered.revealed ? (
+              <span className="text-stone-500"> Listens to: <span className="text-stone-300">{act1TrustsNames(workers, hovered).join(", ") || "no one in particular"}</span>. Trusted by: <span className="text-amber-400">{act1FollowerNames(workers, hovered.id).join(", ") || "no one"}</span>.</span>
+            ) : (
+              <span className="text-stone-600 italic"> Ties unknown — map the floor.</span>
+            )}
+            {hovered.history.length > 0 && (
+              <span className="text-stone-600 italic"> Last: {hovered.history[hovered.history.length - 1].replace(/^Week \d+: /, "")}</span>
+            )}
+          </div>
+        ) : (
+          <div className="text-[10px] text-stone-600 italic">
+            {anyRevealed
+              ? "Arrows point at who a person listens to. Bigger circles carry more influence. Hover for details, click to plan."
+              : "Nobody's ties are mapped yet — the lines between people are invisible until you map the floor. Hover for details, click to plan."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ActOneGame({ onGraduate }) {
   const [week, setWeek] = useState(1);
   const [phase, setPhase] = useState("intro"); // intro, plan, resolving, victory, loss
@@ -1320,6 +1499,11 @@ function ActOneGame({ onGraduate }) {
   const [introStep, setIntroStep] = useState(0);
   const [confirmStartOver, setConfirmStartOver] = useState(false);
   const pendingRef = useRef(null);
+
+  // Layout keyed on the tie structure — ties are fixed at campaign start, so this only
+  // recomputes on a fresh run (new random ties), not week to week.
+  const tieSignature = workers.map(w => `${w.id}:${w.ties.join(".")}`).join("|");
+  const floorLayout = useMemo(() => computeFloorLayout(workers), [tieSignature]);
 
   const burnedCount = workers.filter(w => w.burned).length;
   const sympathPlusCount = workers.filter(w => !w.burned && stageIndex(w.stage) >= 2).length;
@@ -1630,11 +1814,7 @@ function ActOneGame({ onGraduate }) {
 
       {phase === "plan" && (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
-            {workers.map(w => (
-              <Act1WorkerCard key={w.id} worker={w} allWorkers={workers} action={plan[w.id]} onSelect={() => setSelectedWorker(w)} />
-            ))}
-          </div>
+          <Act1FloorMap workers={workers} layout={floorLayout} plan={plan} onSelect={(w) => setSelectedWorker(w)} />
 
           <div className="border-2 border-stone-800 bg-stone-900 p-4">
             <div className="flex items-center justify-between mb-1">
@@ -1742,45 +1922,6 @@ function ActOneGame({ onGraduate }) {
             Skip to Phase 2 (playtest)
           </button>
         </div>
-      )}
-    </div>
-  );
-}
-
-function Act1WorkerCard({ worker, allWorkers, action, onSelect }) {
-  const followerNames = worker.revealed ? act1FollowerNames(allWorkers, worker.id) : null;
-  const trustsNames = worker.revealed ? act1TrustsNames(allWorkers, worker) : null;
-  return (
-    <div
-      onClick={onSelect}
-      className={`card-perf border-2 ${worker.burned ? "border-stone-800 opacity-40" : action ? "border-amber-500" : "border-stone-800"} bg-stone-900 p-3 ${worker.burned ? "" : "cursor-pointer hover:border-stone-600"} transition-colors`}
-    >
-      <div className="flex items-center justify-between mb-1">
-        <div className="font-stencil text-base tracking-wide text-stone-100">{worker.name}</div>
-        <div className={`text-[10px] font-bold ${STAGE_COLOR[worker.stage]}`}>{worker.burned ? "BURNED" : STAGE_LABEL[worker.stage]}</div>
-      </div>
-      <div className="text-[10px] text-stone-500 mb-2 leading-snug">{worker.hook}</div>
-      <div className="text-[9px] text-stone-500 mb-1">Trust: <span className="text-stone-300 font-bold">{worker.trust}</span></div>
-      {worker.revealed ? (
-        <div className="text-[9px] text-stone-500 space-y-0.5">
-          <div>Listens to: <span className="text-stone-300">{trustsNames.length > 0 ? trustsNames.join(", ") : "no one in particular"}</span></div>
-          <div>
-            {followerNames.length > 0
-              ? <>Trusted by: <span className="text-amber-400 font-bold">{followerNames.join(", ")}</span></>
-              : <span className="text-stone-600 italic">Nobody on the floor names this person as someone they listen to.</span>}
-          </div>
-        </div>
-      ) : (
-        <div className="text-[9px] text-stone-500">Who they trust, and who trusts them: ? (map the floor)</div>
-      )}
-      {worker.history.length > 0 && (
-        <div className="mt-2 pt-2 border-t border-stone-800 text-[9px] text-stone-500 italic">
-          Last: {worker.history[worker.history.length - 1].replace(/^Week \d+: /, "")}
-          {worker.history.length > 1 && <span className="text-stone-600 not-italic"> ({worker.history.length} action{worker.history.length === 1 ? "" : "s"} so far)</span>}
-        </div>
-      )}
-      {action && !worker.burned && (
-        <div className="mt-2 text-[10px] text-amber-400 font-bold">Planned: {ACT1_ACTION_LABEL[action.type]}</div>
       )}
     </div>
   );
