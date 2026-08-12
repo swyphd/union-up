@@ -2036,9 +2036,9 @@ function ActOneGame({ onGraduate }) {
     setPhase("plan");
   }
 
-  function graduate() {
+  function graduate(persist = true) {
     const leaders = workers.filter(w => !w.burned && w.stage === "leader").slice(0, 4).map(w => ({ name: w.name, trait: w.trait }));
-    onGraduate(leaders);
+    onGraduate(leaders, persist);
   }
 
   function startOver() {
@@ -2211,7 +2211,7 @@ function ActOneGame({ onGraduate }) {
               </div>
             ))}
           </div>
-          <button onClick={graduate} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
+          <button onClick={() => graduate(true)} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
             GET CALLED UP
           </button>
         </div>
@@ -2264,10 +2264,11 @@ function ActOneGame({ onGraduate }) {
       {phase !== "intro" && (
         <div className="fixed bottom-2 right-2 z-40">
           <button
-            onClick={graduate}
+            onClick={() => graduate(false)}
+            title="Jumps to Act Two for testing without saving over your real Act One progress."
             className="text-[10px] text-stone-600 hover:text-stone-400 underline transition-colors"
           >
-            Skip to Phase 2 (playtest)
+            Skip to Phase 2 (playtest — doesn't save)
           </button>
         </div>
       )}
@@ -2424,9 +2425,9 @@ export default function PermadeathOrganizing() {
     }
   }
 
-  function handleGraduate(leaders) {
+  function handleGraduate(leaders, persist = true) {
     setRecruitedLeaders(leaders);
-    saveAct1Win(leaders);
+    if (persist) saveAct1Win(leaders);
     setAct("citywide");
   }
 
