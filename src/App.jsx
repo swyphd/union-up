@@ -175,8 +175,40 @@ const ACT2_LAYOUT = {
 
 function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   const teamStaminaBonus = recruitedLeaders.length * 15;
-  const teamTraits = recruitedLeaders.map(l => l.trait);
-  const hasTrait = (t) => teamTraits.includes(t);
+  // Deployment: where each leader (by index into recruitedLeaders) is stationed.
+  // Their trait bonus only applies at that specific site now, not company-wide.
+  const [leaderDeployment, setLeaderDeployment] = useState({});
+  const [armedLeader, setArmedLeader] = useState(null);
+  const deployedTraitsAt = (locId) => recruitedLeaders.filter((l, i) => leaderDeployment[i] === locId).map(l => l.trait);
+  const locHasTrait = (locId, t) => deployedTraitsAt(locId).includes(t);
+  const deployedLeaderAt = (locId) => {
+    const i = recruitedLeaders.findIndex((l, idx) => leaderDeployment[idx] === locId);
+    return i >= 0 ? recruitedLeaders[i] : null;
+  };
+  const deployedLeadersByLoc = Object.fromEntries(
+    START_LOCATIONS.map(l => [l.id, deployedLeaderAt(l.id)]).filter(([, v]) => v)
+  );
+  function armLeader(idx) {
+    setArmedLeader(a => (a === idx ? null : idx));
+  }
+  function deployArmedTo(locId) {
+    if (armedLeader == null) return;
+    setLeaderDeployment(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(k => { if (next[k] === locId) delete next[k]; }); // one leader per site
+      next[armedLeader] = locId;
+      return next;
+    });
+    setArmedLeader(null);
+  }
+  function recallLeader(idx) {
+    setLeaderDeployment(prev => {
+      const next = { ...prev };
+      delete next[idx];
+      return next;
+    });
+    if (armedLeader === idx) setArmedLeader(null);
+  }
   const [turn, setTurn] = useState(1);
   const [phase, setPhase] = useState("intro"); // intro, allocate, resolving, escalation, gameover-win, gameover-loss
   const [locations, setLocations] = useState(START_LOCATIONS.map(l => ({ ...l })));
@@ -290,7 +322,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       const r = responses[l.id] || {};
       const feedbackLines = [];
 
-      let gain = baseGain(units) + (hasTrait("morale") && units > 0 ? 2 : 0);
+      let gain = baseGain(units) + (locHasTrait(l.id, "morale") && units > 0 ? 2 : 0);
       let recruitedBonus = Math.floor(l.recruited * 2 * (units > 0 ? 1 : 0.3));
       if (l.manager === "sympathetic" && units > 0) gain += 3;
       if (orgStamina >= 85 && units > 0) gain += 2;
@@ -331,8 +363,8 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         newCommittee = { active: true, strikes: 0 };
         feedbackLines.push(`${l.name}: Workers form a shop committee. Organizing here no longer depends entirely on the outside organizer.`);
       }
-      const committeeMoraleBonus = newCommittee.active ? (hasTrait("committee") ? 5 : 3) : 0;
-      const committeeSupportBonus = newCommittee.active ? (hasTrait("committee") ? 4 : 2) : 0;
+      const committeeMoraleBonus = newCommittee.active ? (locHasTrait(l.id, "committee") ? 5 : 3) : 0;
+      const committeeSupportBonus = newCommittee.active ? (locHasTrait(l.id, "committee") ? 4 : 2) : 0;
       const committeeVisDrift = newCommittee.active ? 3 : 0;
 
       // --- Grievance resolution (a committee handles material/noise complaints on its own) ---
@@ -346,7 +378,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         const responded = r.grievance || committeeHandlesIt;
         if (responded) {
           if (l.grievance.type === "legal") {
-            if (Math.random() < (hasTrait("legal") ? 0.97 : 0.9)) {
+            if (Math.random() < (locHasTrait(l.id, "legal") ? 0.97 : 0.9)) {
               grievanceBonus = 20;
               grievanceRecruitBonus = 2;
               grievanceSupportBonus = 18; // a real, provable win — this is what true support is built on
@@ -400,9 +432,9 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       let antiUnionPenalty = 0;
       if (newAntiUnion.active) {
         if (r.counter) {
-          feedbackLines.push(`${l.name}: Organizer knocks down anti-union talk before it spreads.${hasTrait("antiunion") ? " (a team member who's been through this before makes it land harder)" : ""}`);
+          feedbackLines.push(`${l.name}: Organizer knocks down anti-union talk before it spreads.${locHasTrait(l.id, "antiunion") ? " (a team member who's been through this before makes it land harder)" : ""}`);
           newAntiUnion = { active: false, turnsLeft: 0 };
-          if (hasTrait("antiunion")) grievanceBonus += 3;
+          if (locHasTrait(l.id, "antiunion")) grievanceBonus += 3;
         } else {
           antiUnionPenalty = 2;
           const turnsLeft = newAntiUnion.turnsLeft - 1;
@@ -774,6 +806,8 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     setEmployerSophistication(0);
     setEmployerEmboldened(false);
     setEscalationTarget(null);
+    setLeaderDeployment({});
+    setArmedLeader(null);
     setPhase("allocate");
   }
 
@@ -898,7 +932,43 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
             </div>
           )}
 
-          <Act2NetworkMap locations={locations} allocations={allocations} onSelect={(loc) => setSelectedLoc(loc)} />
+          {recruitedLeaders.length > 0 && (
+            <div className="mb-4 border border-stone-800 bg-stone-900 p-3">
+              <div className="text-[10px] text-stone-400 font-bold mb-2 tracking-wide">YOUR TEAM — click a leader, then click a site to station them there</div>
+              <div className="flex flex-wrap gap-2">
+                {recruitedLeaders.map((l, i) => {
+                  const at = leaderDeployment[i] ? START_LOCATIONS.find(s => s.id === leaderDeployment[i])?.name : null;
+                  const armed = armedLeader === i;
+                  return (
+                    <div key={i} className={`flex items-center gap-1.5 text-xs border px-2 py-1 ${armed ? "border-amber-500 bg-amber-950/30" : "border-stone-700"}`}>
+                      <button onClick={() => armLeader(i)} className={`font-bold ${armed ? "text-amber-400" : "text-stone-200 hover:text-amber-300"}`}>
+                        {l.name}
+                      </button>
+                      <span className="text-stone-500">{TRAIT_LABEL[l.trait]}</span>
+                      {at ? (
+                        <span className="text-teal-400">— at {at}</span>
+                      ) : (
+                        <span className="text-stone-600 italic">— on the bench</span>
+                      )}
+                      {leaderDeployment[i] !== undefined && (
+                        <button onClick={() => recallLeader(i)} className="text-stone-500 hover:text-red-400"><X size={11} /></button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {armedLeader != null && (
+                <div className="mt-2 text-[10px] text-amber-400">Click a site on the map below to station {recruitedLeaders[armedLeader].name} there. Click their name again to cancel.</div>
+              )}
+            </div>
+          )}
+
+          <Act2NetworkMap
+            locations={locations}
+            allocations={allocations}
+            deployedLeaders={deployedLeadersByLoc}
+            onSelect={(loc) => { if (armedLeader != null) { deployArmedTo(loc.id); return; } setSelectedLoc(loc); }}
+          />
 
           <div className="border-2 border-stone-800 bg-stone-900 p-4">
             <div className="flex items-center justify-between mb-1">
@@ -922,6 +992,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           <Act2NetworkMap
             locations={resStep.locs}
+            deployedLeaders={deployedLeadersByLoc}
             onSelect={() => {}}
             highlights={resHighlights}
             edgePulses={resStep.edgePulses || []}
@@ -1093,7 +1164,7 @@ function FeedbackControls({ loc, response, onToggle }) {
   );
 }
 
-function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = [], stepKey = 0, highlights = null }) {
+function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = [], stepKey = 0, highlights = null, deployedLeaders = {} }) {
   const [hoverId, setHoverId] = useState(null);
   const hovered = locations.find(l => l.id === hoverId);
   const clusterRadius = (loc) => 8 + Math.min(5, Math.round(loc.workers / 3));
@@ -1157,6 +1228,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
           const needsResponse = loc.grievance || loc.antiUnion?.active || loc.buyOff?.active || (loc.visibility >= 40 && loc.visibility < 60);
           const allocation = allocations[loc.id];
           const hl = highlights ? highlights[loc.id] : null;
+          const leader = deployedLeaders[loc.id];
           const dotCount = Math.min(9, Math.max(3, Math.round(loc.workers / 2)));
           const dots = Array.from({ length: dotCount }, (_, i) => {
             const ang = (2 * Math.PI * i) / dotCount;
@@ -1212,6 +1284,12 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
               {needsResponse && !dim && (
                 <circle cx={r * 0.75} cy={-r * 0.75} r="1.6" fill="#f87171" />
               )}
+              {leader && (
+                <g transform={`translate(${-r * 0.8} ${-r * 0.8})`}>
+                  <circle r="2.1" fill="#1c1917" stroke="#fbbf24" strokeWidth="0.6" />
+                  <text textAnchor="middle" dominantBaseline="central" fontSize="2.6" fill="#fbbf24" fontFamily="Impact, 'Arial Black', sans-serif">{leader.name[0]}</text>
+                </g>
+              )}
             </g>
           );
         })}
@@ -1223,6 +1301,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
             <span className="text-stone-500"> — {statusMeta[hovered.status].label}. Morale {hovered.morale}, visibility {hovered.visibility}, {hovered.recruited}/{hovered.workers} recruited.</span>
             {hovered.committee?.active && <span className="text-teal-400"> Shop committee active — organizing here no longer depends entirely on you.</span>}
             {hovered.antiUnion?.active && <span className="text-red-400"> Anti-union talk circulating — can spread to other sites if unanswered.</span>}
+            {deployedLeaders[hovered.id] && <span className="text-amber-400"> {deployedLeaders[hovered.id].name} is stationed here — strong on {TRAIT_LABEL[deployedLeaders[hovered.id].trait]}.</span>}
           </div>
         ) : (
           <div className="text-[10px] text-stone-600 italic">
