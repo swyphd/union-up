@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { AlertTriangle, Users, Eye, Zap, Scale, ClipboardList, Vote, ChevronRight, X, Circle, CheckCircle2, FileWarning, Wrench, MessageCircle, Radio, Megaphone, HandCoins, UsersRound, Brain } from "lucide-react";
+import { AlertTriangle, Eye, Zap, Scale, ClipboardList, Vote, ChevronRight, X, CheckCircle2, FileWarning, Wrench, MessageCircle, Radio, Megaphone, HandCoins, UsersRound, Brain } from "lucide-react";
 
 // ---------- FONTS / GLOBAL STYLE ----------
 const GlobalStyle = () => (
@@ -151,7 +151,6 @@ function baseVis(units) {
 
 const statusMeta = {
   organizing: { label: "ORGANIZING", color: "text-stone-300" },
-  petitioned: { label: "PETITION FILED", color: "text-amber-400" },
   campaign: { label: "ELECTION CAMPAIGN", color: "text-red-400" },
   won: { label: "UNIONIZED", color: "text-teal-400" },
   lost: { label: "ELECTION LOST", color: "text-red-500" },
@@ -159,7 +158,6 @@ const statusMeta = {
 };
 const ACT2_STATUS_HEX = {
   organizing: "#d6d3d1",
-  petitioned: "#fbbf24",
   campaign: "#f87171",
   won: "#2dd4bf",
   lost: "#ef4444",
@@ -226,10 +224,8 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   const [resolutionSteps, setResolutionSteps] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedLoc, setSelectedLoc] = useState(null);
-  const [log, setLog] = useState([]);
   const pendingRef = useRef(null);
 
-  const workforce = (l) => l.workers;
   const unionizedCount = locations.filter(l => l.status === "won").length;
   const solidarityScore = computeSolidarityScore(locations);
 
@@ -433,11 +429,12 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       // --- Anti-union signal ---
       let newAntiUnion = l.antiUnion || { active: false, turnsLeft: 0 };
       let antiUnionPenalty = 0;
+      let antiUnionCounterBonus = 0;
       if (newAntiUnion.active) {
         if (r.counter) {
           feedbackLines.push(`${l.name}: Organizer knocks down anti-union talk before it spreads.${locHasTrait(l.id, "antiunion") ? " (a team member who's been through this before makes it land harder)" : ""}`);
           newAntiUnion = { active: false, turnsLeft: 0 };
-          if (locHasTrait(l.id, "antiunion")) grievanceBonus += 3;
+          if (locHasTrait(l.id, "antiunion")) antiUnionCounterBonus = 3;
         } else {
           antiUnionPenalty = 2;
           const turnsLeft = newAntiUnion.turnsLeft - 1;
@@ -465,7 +462,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       else if (moraleClimateNext.tone === "volatile") climateGain = 1;
       const eventMoraleBurst = firedEvent && firedEvent.immediateOrganizingMorale ? firedEvent.immediateOrganizingMorale : 0;
 
-      let moraleGain = gain + recruitedBonus - momentumPenalty + grievanceBonus - antiUnionPenalty + climateGain + eventMoraleBurst + committeeMoraleBonus;
+      let moraleGain = gain + recruitedBonus - momentumPenalty + grievanceBonus - antiUnionPenalty + antiUnionCounterBonus + climateGain + eventMoraleBurst + committeeMoraleBonus;
       let newMorale = clamp(l.morale + moraleGain);
 
       // Recruitment growth (computed here so true support can reference it below)
@@ -726,7 +723,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       const lost = workingLocs.some(l => l.status === "lost" && electionLines.some(s => s.startsWith(l.name)));
       if (lost) {
         workingLocs = workingLocs.map(l => {
-          if (l.status !== "organizing" && l.status !== "petitioned") return l;
+          if (l.status !== "organizing") return l;
           return { ...l, morale: clamp(l.morale - 15), trueSupport: clamp((l.trueSupport ?? l.morale) - 8) };
         });
         setEmployerEmboldened(true);
@@ -763,7 +760,8 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       return;
     }
     if (turn >= TOTAL_TURNS) {
-      setPhase(wonCount >= 2 ? "gameover-win" : "gameover-loss");
+      // wonCount >= 2 already returned above, so reaching the turn cap always means a loss.
+      setPhase("gameover-loss");
       return;
     }
 
@@ -1778,7 +1776,6 @@ function ActOneGame({ onGraduate }) {
   const [workers, setWorkers] = useState(makeAct1Workers());
   const [plan, setPlan] = useState({}); // workerId -> {type, cost}
   const [planMapping, setPlanMapping] = useState(false);
-  const [shopVisibility, setShopVisibility] = useState(10);
   const [resolutionSteps, setResolutionSteps] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedWorker, setSelectedWorker] = useState(null);
@@ -1842,7 +1839,6 @@ function ActOneGame({ onGraduate }) {
     const testLines = [];
     const rippleLines = [];
     const rippleEvents = []; // {from, to, tone} — drawn as pulses along ties on the board
-    let visDelta = 0;
 
     steps.push({ label: "WEEK START", sub: `Planning the floor for week ${week}.`, workers: w.map(x => ({ ...x })), lines: [] });
 
@@ -1965,12 +1961,10 @@ function ActOneGame({ onGraduate }) {
             worker.history.push(`Week ${week}: Small ask — didn't follow through.`);
           } else if (tier === "medium") {
             if (stageIndex(worker.stage) > 0) worker.stage = STAGE_ORDER[stageIndex(worker.stage) - 1];
-            visDelta += 10;
             testLines.push(`${worker.name} backs out of speaking up. Word gets around the shift.`);
             worker.history.push(`Week ${week}: Medium ask — backed out, dropped to ${STAGE_LABEL[worker.stage].toLowerCase()}.`);
           } else {
             worker.burned = true;
-            visDelta += 25;
             const narrative = BURN_NARRATIVES[Math.floor(Math.random() * BURN_NARRATIVES.length)](worker.name);
             testLines.push(`${narrative} ${worker.name} is out of play for the rest of this campaign.`);
             worker.history.push(`Week ${week}: Big ask — burned. ${narrative}`);
@@ -1992,7 +1986,6 @@ function ActOneGame({ onGraduate }) {
     if (testLines.length) steps.push({ label: "STRUCTURE TESTS", sub: "Asking people to actually do something, and finding out who delivers.", workers: w.map(x => ({ ...x })), lines: testLines });
     if (rippleLines.length) steps.push({ label: "RIPPLE EFFECTS", sub: "What people saw happen to their coworkers.", workers: w.map(x => ({ ...x })), lines: rippleLines, edgePulses: rippleEvents });
 
-    const newVisibility = Math.min(100, shopVisibility + visDelta - 3);
     const newBurned = w.filter(x => x.burned).length;
     const newSympathPlus = w.filter(x => !x.burned && stageIndex(x.stage) >= 2).length;
     const newLeaders = w.filter(x => !x.burned && x.stage === "leader").length;
@@ -2007,13 +2000,12 @@ function ActOneGame({ onGraduate }) {
     setResolutionSteps(steps);
     setStepIndex(0);
     setPhase("resolving");
-    pendingRef.current = { workers: w, visibility: Math.max(0, newVisibility), outcome };
+    pendingRef.current = { workers: w, outcome };
   }
 
   function commitWeek() {
-    const { workers: w, visibility, outcome } = pendingRef.current;
+    const { workers: w, outcome } = pendingRef.current;
     setWorkers(w);
-    setShopVisibility(visibility);
     setPlan({});
     setPlanMapping(false);
 
@@ -2032,7 +2024,6 @@ function ActOneGame({ onGraduate }) {
     setWorkers(makeAct1Workers());
     setPlan({});
     setPlanMapping(false);
-    setShopVisibility(10);
     setPhase("plan");
   }
 
@@ -2047,7 +2038,6 @@ function ActOneGame({ onGraduate }) {
     setWorkers(makeAct1Workers());
     setPlan({});
     setPlanMapping(false);
-    setShopVisibility(10);
     setResolutionSteps([]);
     setStepIndex(0);
     setSelectedWorker(null);
