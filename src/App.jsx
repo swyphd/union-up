@@ -1540,7 +1540,6 @@ function ActOneGame({ onGraduate }) {
   const [resolutionSteps, setResolutionSteps] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedWorker, setSelectedWorker] = useState(null);
-  const [introStep, setIntroStep] = useState(0);
   const [confirmStartOver, setConfirmStartOver] = useState(false);
   const pendingRef = useRef(null);
 
@@ -1556,6 +1555,14 @@ function ActOneGame({ onGraduate }) {
 
   const planCost = Object.values(plan).reduce((s, a) => s + (a?.cost || 0), 0) + (planMapping ? 2 : 0);
   const remaining = weeklyHours - planCost;
+
+  // Progressive unlocks — mechanics introduce themselves when they first matter,
+  // instead of being front-loaded in intro screens.
+  const anyRevealed = workers.some(w => w.revealed);
+  const anyStageMoved = workers.some(w => w.history.some(h => h.includes("moved")));
+  const anyTestDone = workers.some(w => w.passedSmall || w.passedMedium || w.passedBig || w.history.some(h => h.includes("ask") || h.includes("Signed")));
+  const unlockMapping = week >= 2;
+  const unlockTests = week >= 3 || anyStageMoved;
 
   // In-place resolution: diff the current step's snapshot against the previous one
   // so the board can show what just changed instead of a modal describing it.
@@ -1782,7 +1789,6 @@ function ActOneGame({ onGraduate }) {
   function startOver() {
     setWeek(1);
     setPhase("intro");
-    setIntroStep(0);
     setWorkers(makeAct1Workers());
     setPlan({});
     setPlanMapping(false);
@@ -1819,7 +1825,7 @@ function ActOneGame({ onGraduate }) {
         )}
       </div>
 
-      {phase === "intro" && introStep === 0 && (
+      {phase === "intro" && (
         <div className="max-w-2xl mx-auto px-6 py-16 text-center anim-rise">
           <div className="font-stencil text-4xl text-amber-400 mb-4">ONE SHOP. ELEVEN PEOPLE.</div>
           <div className="text-left border border-red-900 bg-red-950/20 p-3 mb-6">
@@ -1840,48 +1846,31 @@ function ActOneGame({ onGraduate }) {
           </div>
           <p className="text-stone-600 text-xs leading-relaxed mb-8 italic">
             There's no fixing a system that isn't listening by asking nicer. The only lever left is each other.
+            Start by talking to people — the rest you'll learn on the floor.
           </p>
-          <button onClick={() => setIntroStep(1)} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
-            I'M FED UP
-          </button>
-        </div>
-      )}
-
-      {phase === "intro" && introStep === 1 && (
-        <div className="max-w-2xl mx-auto px-6 py-16 text-center anim-rise">
-          <div className="font-stencil text-4xl text-amber-400 mb-4">HOW TO WIN THIS THING</div>
-          <p className="text-stone-400 text-sm leading-relaxed mb-6">
-            You and your 11 coworkers poured your souls into this game. It's time you take it back.
-          </p>
-          <div className="text-left border border-amber-800 bg-amber-950/20 p-3 mb-3">
-            <div className="font-stencil text-sm tracking-wide text-amber-400 mb-1">CONVERSATIONS BUILD SYMPATHY</div>
-            <p className="text-stone-300 text-sm leading-relaxed">
-              One-on-ones move workers from hostile to skeptical to sympathetic. But sympathy alone doesn't win
-              elections.
-            </p>
-          </div>
-          <div className="text-left border border-teal-800 bg-teal-950/20 p-3 mb-3">
-            <div className="font-stencil text-sm tracking-wide text-teal-400 mb-1">STRUCTURE TESTS BUILD LEADERS</div>
-            <p className="text-stone-300 text-sm leading-relaxed">
-              Ask someone to actually risk something — wear the button, sign the card, speak up in the meeting.
-              Find out if they deliver. That's how leaders emerge.
-            </p>
-          </div>
-          <div className="text-left border border-stone-700 bg-stone-900/40 p-3 mb-8">
-            <div className="font-stencil text-sm tracking-wide text-stone-300 mb-1">WIN CONDITION</div>
-            <p className="text-stone-300 text-sm leading-relaxed">
-              Get a supermajority to sympathetic or better, with at least four proven leaders. Burn too many
-              people testing them too hard, and it's over.
-            </p>
-          </div>
           <button onClick={() => setPhase("plan")} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
-            START ORGANIZING
+            I'M FED UP
           </button>
         </div>
       )}
 
       {phase === "plan" && (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
+          {week === 1 && (
+            <div className="mb-4 flex items-center gap-2 text-stone-300 text-xs border border-stone-700 bg-stone-900/60 px-3 py-2">
+              <MessageCircle size={14} className="shrink-0" /> Week one, all you have is conversation. Click someone on the floor and hear them out — one-on-ones are how people move.
+            </div>
+          )}
+          {unlockMapping && !anyRevealed && (
+            <div className="mb-4 flex items-center gap-2 text-amber-300 text-xs border border-amber-700 bg-amber-950/30 px-3 py-2">
+              <Radio size={14} className="shrink-0" /> <span><span className="font-bold text-amber-400">NEW — MAP THE FLOOR.</span> Nobody organizes alone: every worker listens to somebody. Spend 2 hours mapping to see who actually trusts whom — influence travels along those lines.</span>
+            </div>
+          )}
+          {unlockTests && !anyTestDone && (
+            <div className="mb-4 flex items-center gap-2 text-teal-300 text-xs border border-teal-700 bg-teal-950/30 px-3 py-2">
+              <ClipboardList size={14} className="shrink-0" /> <span><span className="font-bold text-teal-400">NEW — STRUCTURE TESTS.</span> Sympathy alone doesn't win. Ask people to risk something real — wear the button, sign the card — and find out who delivers. That's how leaders are made, and what they do ripples out to everyone who trusts them. But push someone too hard too early and you can burn them for good: three burns ends the campaign. You need 8 people sympathetic or better and 4 proven leaders before week 10.</span>
+            </div>
+          )}
           <Act1FloorMap workers={workers} layout={floorLayout} plan={plan} onSelect={(w) => setSelectedWorker(w)} />
 
           <div className="border-2 border-stone-800 bg-stone-900 p-4">
@@ -1893,11 +1882,14 @@ function ActOneGame({ onGraduate }) {
               <div className="text-[10px] text-teal-400 mb-2">{ACT1_HOURS_PER_WEEK} base hours + {leaderCount * 2} from {leaderCount} leader{leaderCount === 1 ? "" : "s"} now running their own conversations = {weeklyHours} hours this week.</div>
             )}
             <p className="text-[10px] text-stone-500 mb-3">Click a worker above to plan a conversation or a structure test. Tap them again to change or clear it.</p>
-            <label className="flex items-center gap-2 text-xs border border-stone-700 px-3 py-2 cursor-pointer mb-3">
-              <input type="checkbox" checked={planMapping} onChange={() => setPlanMapping(v => !v)} className="accent-amber-500" />
-              <Radio size={14} />
-              <span className="flex-1">Map the floor — find out by name who actually trusts whom (2 hours)</span>
-            </label>
+            {unlockMapping && (
+              <label className={`flex items-center gap-2 text-xs border px-3 py-2 cursor-pointer mb-3 ${!anyRevealed ? "border-amber-700" : "border-stone-700"}`}>
+                <input type="checkbox" checked={planMapping} onChange={() => setPlanMapping(v => !v)} className="accent-amber-500" />
+                <Radio size={14} />
+                <span className="flex-1">Map the floor — find out by name who actually trusts whom (2 hours)</span>
+                {!anyRevealed && <span className="text-[9px] font-bold text-amber-400 tracking-wide">NEW</span>}
+              </label>
+            )}
             <button
               onClick={resolveWeek}
               disabled={remaining < 0 || (Object.keys(plan).length === 0 && !planMapping)}
@@ -1989,6 +1981,7 @@ function ActOneGame({ onGraduate }) {
           worker={workers.find(w => w.id === selectedWorker.id) || selectedWorker}
           allWorkers={workers}
           currentAction={plan[selectedWorker.id]}
+          testsUnlocked={unlockTests}
           onChoose={(action) => { setAction(selectedWorker.id, action); setSelectedWorker(null); }}
           onClose={() => setSelectedWorker(null)}
         />
@@ -2035,16 +2028,16 @@ const ACT1_ACTION_LABEL = {
   big: "Structure test: sign the card (3h)",
 };
 
-function Act1WorkerModal({ worker, allWorkers, currentAction, onChoose, onClose }) {
+function Act1WorkerModal({ worker, allWorkers, currentAction, testsUnlocked = true, onChoose, onClose }) {
   const idx = stageIndex(worker.stage);
   const followerNames = worker.revealed ? act1FollowerNames(allWorkers, worker.id) : null;
   const trustsNames = worker.revealed ? act1TrustsNames(allWorkers, worker) : null;
   const options = [
     { type: "quick", cost: 1, available: true },
     { type: "deep", cost: 2, available: true },
-    { type: "small", cost: 1, available: idx >= 1 },
-    { type: "medium", cost: 2, available: idx >= 2 },
-    { type: "big", cost: 3, available: idx >= 2 && worker.stage !== "leader" },
+    { type: "small", cost: 1, available: testsUnlocked && idx >= 1 },
+    { type: "medium", cost: 2, available: testsUnlocked && idx >= 2 },
+    { type: "big", cost: 3, available: testsUnlocked && idx >= 2 && worker.stage !== "leader" },
   ];
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" onClick={onClose}>
@@ -2085,6 +2078,11 @@ function Act1WorkerModal({ worker, allWorkers, currentAction, onChoose, onClose 
                 {ACT1_ACTION_LABEL[o.type]}
               </button>
             ))}
+            {!testsUnlocked && idx >= 1 && (
+              <div className="text-[10px] text-stone-600 italic border border-stone-800 px-3 py-2">
+                Talk is only the beginning — once your conversations start landing, you'll be able to ask people to actually do something.
+              </div>
+            )}
             {currentAction && (
               <button onClick={() => onChoose(null)} className="w-full text-center text-[10px] text-stone-500 hover:text-stone-300 underline pt-1">
                 Clear planned action
