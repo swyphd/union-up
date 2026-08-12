@@ -781,6 +781,25 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   const locByStatus = (s) => locations.filter(l => l.status === s);
   const escLoc = locations.find(l => l.id === escalationTarget);
 
+  // In-place resolution: diff each step's snapshot against the previous one so the
+  // network map can show what just changed instead of routing it through a modal.
+  const resStep = phase === "resolving" && resolutionSteps.length > 0 ? resolutionSteps[stepIndex] : null;
+  const resHighlights = {};
+  if (resStep) {
+    const prevSnapshot = stepIndex > 0 ? resolutionSteps[stepIndex - 1].locs : locations;
+    resStep.locs.forEach(cl => {
+      const pl = prevSnapshot.find(x => x.id === cl.id);
+      if (!pl) return;
+      const moraleDelta = cl.morale - pl.morale;
+      const statusChanged = cl.status !== pl.status;
+      if (moraleDelta !== 0 || statusChanged) resHighlights[cl.id] = { moraleDelta, statusChanged };
+    });
+  }
+  const resLogRef = useRef(null);
+  useEffect(() => {
+    if (resLogRef.current) resLogRef.current.scrollTop = resLogRef.current.scrollHeight;
+  }, [stepIndex, phase]);
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-mono">
       <GlobalStyle />
@@ -898,16 +917,45 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         </div>
       )}
 
-      {/* RESOLUTION ANIMATION */}
-      {phase === "resolving" && resolutionSteps.length > 0 && (
-        <ResolutionModal
-          steps={resolutionSteps}
-          stepIndex={stepIndex}
-          onNext={() => {
-            if (stepIndex < resolutionSteps.length - 1) setStepIndex(i => i + 1);
-            else commitResolution();
-          }}
-        />
+      {/* RESOLUTION — in place on the network map, no overlay */}
+      {resStep && (
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
+          <Act2NetworkMap
+            locations={resStep.locs}
+            onSelect={() => {}}
+            highlights={resHighlights}
+            edgePulses={resStep.edgePulses || []}
+            stepKey={stepIndex}
+          />
+          <div className="border-2 border-amber-500 bg-stone-900 p-4">
+            <div className="flex items-center justify-between mb-1">
+              <div className="font-stencil text-lg tracking-wide text-amber-400">{resStep.label}</div>
+              <div className="text-[10px] text-stone-500">{stepIndex + 1} / {resolutionSteps.length}</div>
+            </div>
+            <div className="text-xs text-stone-500 mb-3">{resStep.sub}</div>
+            {resStep.org && (
+              <div className="text-[10px] text-stone-500 mb-3 flex items-center gap-1"><Zap size={10} /> Organizer stamina: <span className="text-stone-200 font-bold">{resStep.org.stamina}</span></div>
+            )}
+            {resolutionSteps.slice(0, stepIndex + 1).some(s => s.lines.length > 0) && (
+              <div ref={resLogRef} className="bg-stone-950 border border-stone-800 p-3 mb-3 space-y-1 max-h-36 overflow-y-auto">
+                {resolutionSteps.slice(0, stepIndex + 1).map((s, si) =>
+                  s.lines.map((line, li) => (
+                    <div key={`${si}-${li}`} className={`text-xs font-mono ${si === stepIndex ? "text-stone-200" : "text-stone-600"}`}>▸ {line}</div>
+                  ))
+                )}
+              </div>
+            )}
+            <button
+              onClick={() => {
+                if (stepIndex < resolutionSteps.length - 1) setStepIndex(i => i + 1);
+                else commitResolution();
+              }}
+              className="w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2 tracking-wide flex items-center justify-center gap-1 transition-colors"
+            >
+              {stepIndex === resolutionSteps.length - 1 ? "CONTINUE" : "NEXT"} <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ESCALATION DECISION */}
@@ -1045,7 +1093,7 @@ function FeedbackControls({ loc, response, onToggle }) {
   );
 }
 
-function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = [], stepKey = 0 }) {
+function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = [], stepKey = 0, highlights = null }) {
   const [hoverId, setHoverId] = useState(null);
   const hovered = locations.find(l => l.id === hoverId);
   const clusterRadius = (loc) => 8 + Math.min(5, Math.round(loc.workers / 3));
@@ -1108,6 +1156,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
           const escalationReady = loc.status === "organizing" && loc.morale >= 70;
           const needsResponse = loc.grievance || loc.antiUnion?.active || loc.buyOff?.active || (loc.visibility >= 40 && loc.visibility < 60);
           const allocation = allocations[loc.id];
+          const hl = highlights ? highlights[loc.id] : null;
           const dotCount = Math.min(9, Math.max(3, Math.round(loc.workers / 2)));
           const dots = Array.from({ length: dotCount }, (_, i) => {
             const ang = (2 * Math.PI * i) / dotCount;
@@ -1130,10 +1179,31 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
               {loc.committee?.active && (
                 <circle className="leader-pulse" r={r + 1.6} fill="none" stroke="#2dd4bf" strokeWidth="0.4" strokeOpacity="0.6" />
               )}
+              {hl && hl.statusChanged && (
+                <circle
+                  key={`flash-${stepKey}-${loc.id}`}
+                  className="ring-flash"
+                  r={r + 2.8}
+                  fill="none"
+                  stroke={loc.status === "won" ? "#2dd4bf" : loc.status === "lost" ? "#f87171" : "#fbbf24"}
+                />
+              )}
               <circle r={r} fill="#1c1917" stroke={ACT2_STATUS_HEX[loc.status]} strokeWidth="0.9" />
               {dots.map((d, i) => (
                 <circle key={i} cx={d.x} cy={d.y} r="1.1" fill={moraleHex(loc)} />
               ))}
+              {hl && hl.moraleDelta !== 0 && (
+                <text
+                  key={`delta-${stepKey}-${loc.id}`}
+                  className="delta-float"
+                  textAnchor="middle"
+                  y={-(r + 3)}
+                  fontSize="3.6"
+                  fontWeight="bold"
+                  fill={hl.moraleDelta > 0 ? "#2dd4bf" : "#f87171"}
+                  fontFamily="'Courier New', monospace"
+                >{hl.moraleDelta > 0 ? "+" : ""}{hl.moraleDelta}</text>
+              )}
               <text textAnchor="middle" y={r + 5} fontSize="3.6" fill="#e7e5e4" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.1">{loc.name}</text>
               <text textAnchor="middle" y={r + 9} fontSize="2.6" fill={ACT2_STATUS_HEX[loc.status]} fontFamily="'Courier New', monospace">{statusMeta[loc.status].label}</text>
               {allocation > 0 && (
@@ -1221,45 +1291,6 @@ function LocationActionModal({ loc, turn, allocation, response, onSetUnits, onTo
 
         <button onClick={onClose} className="mt-4 w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2 tracking-wide">
           DONE
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ResolutionModal({ steps, stepIndex, onNext }) {
-  const step = steps[stepIndex];
-  const isLast = stepIndex === steps.length - 1;
-  return (
-    <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-50 px-4">
-      <div className="bg-stone-900 border-2 border-amber-500 max-w-2xl w-full p-5 anim-rise max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-1">
-          <div className="font-stencil text-xl text-amber-400 tracking-wide">{step.label}</div>
-          <div className="text-[10px] text-stone-500">{stepIndex + 1} / {steps.length}</div>
-        </div>
-        <div className="text-xs text-stone-500 mb-3">{step.sub}</div>
-
-        <Act2NetworkMap
-          locations={step.locs}
-          onSelect={() => {}}
-          edgePulses={step.edgePulses || []}
-          stepKey={stepIndex}
-        />
-
-        {step.org && (
-          <div className="text-[10px] text-stone-500 mb-3 flex items-center gap-1"><Zap size={10} /> Organizer stamina: <span className="text-stone-200 font-bold">{step.org.stamina}</span></div>
-        )}
-
-        {step.lines.length > 0 && (
-          <div className="bg-stone-950 border border-stone-800 p-3 mb-4 space-y-1 max-h-32 overflow-y-auto">
-            {step.lines.map((line, i) => (
-              <div key={i} className="text-xs text-stone-300 font-mono">▸ {line}</div>
-            ))}
-          </div>
-        )}
-
-        <button onClick={onNext} className="w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2 tracking-wide flex items-center justify-center gap-1">
-          {isLast ? "CONTINUE" : "NEXT"} <ChevronRight size={18} />
         </button>
       </div>
     </div>
