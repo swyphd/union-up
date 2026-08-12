@@ -13,6 +13,12 @@ const GlobalStyle = () => (
     }
     @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
     .anim-rise { animation: rise 0.35s ease-out; }
+    @keyframes deltafloat { 0% { opacity: 0; transform: translateY(2.5px); } 35% { opacity: 1; } 100% { opacity: 1; transform: translateY(0); } }
+    .delta-float { animation: deltafloat 0.9s ease-out forwards; }
+    @keyframes ringflash { 0% { opacity: 0; stroke-width: 0.2; } 40% { opacity: 1; stroke-width: 1.6; } 100% { opacity: 0.55; stroke-width: 0.6; } }
+    .ring-flash { animation: ringflash 1.1s ease-out forwards; }
+    @keyframes edgepulse { 0% { stroke-dashoffset: 20; opacity: 0; } 25% { opacity: 1; } 85% { opacity: 0.9; } 100% { stroke-dashoffset: 0; opacity: 0.25; } }
+    .edge-pulse { stroke-dasharray: 20; animation: edgepulse 1.3s ease-out forwards; }
   `}</style>
 );
 
@@ -1357,7 +1363,7 @@ function computeFloorLayout(workers) {
   return Object.fromEntries(pos.map(p => [p.id, { x: p.x, y: p.y }]));
 }
 
-function Act1FloorMap({ workers, layout, plan, onSelect }) {
+function Act1FloorMap({ workers, layout, plan, onSelect, highlights = null, edgePulses = [], stepKey = 0 }) {
   const [hoverId, setHoverId] = useState(null);
   const anyRevealed = workers.some(w => w.revealed);
 
@@ -1423,11 +1429,28 @@ function Act1FloorMap({ workers, layout, plan, onSelect }) {
           );
         })}
 
+        {edgePulses.map((ev, i) => {
+          const a = layout[ev.from];
+          const b = layout[ev.to];
+          if (!a || !b) return null;
+          return (
+            <line
+              key={`pulse-${stepKey}-${i}`}
+              className="edge-pulse"
+              x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+              pathLength="20"
+              stroke={ev.tone === "down" ? "#f87171" : "#2dd4bf"}
+              strokeWidth="0.9"
+            />
+          );
+        })}
+
         {workers.map(w => {
           const p = layout[w.id];
           if (!p) return null;
           const r = nodeRadius(w);
           const planned = plan[w.id] && !w.burned;
+          const hl = highlights ? highlights[w.id] : null;
           const dimOthers = hoverId != null && hoverId !== w.id
             && !edges.some(e => (e.from.id === hoverId && e.to.id === w.id) || (e.to.id === hoverId && e.from.id === w.id));
           return (
@@ -1446,11 +1469,32 @@ function Act1FloorMap({ workers, layout, plan, onSelect }) {
               {w.stage === "leader" && !w.burned && (
                 <circle r={r + 1.1} fill="none" stroke="#2dd4bf" strokeWidth="0.35" strokeOpacity="0.6" />
               )}
+              {hl && (hl.stageChange !== 0 || hl.burned) && (
+                <circle
+                  key={`flash-${stepKey}-${w.id}`}
+                  className="ring-flash"
+                  r={r + 2.4}
+                  fill="none"
+                  stroke={hl.burned || hl.stageChange < 0 ? "#f87171" : "#2dd4bf"}
+                />
+              )}
               <circle r={r} fill="#1c1917" stroke={w.burned ? "#57534e" : STAGE_HEX[w.stage]} strokeWidth="0.8" />
               {w.burned ? (
                 <text textAnchor="middle" dominantBaseline="central" fontSize="4.5" fill="#78716c">✕</text>
               ) : (
                 <text textAnchor="middle" dominantBaseline="central" fontSize="3.2" fill="#d6d3d1" fontFamily="'Courier New', monospace" fontWeight="bold">{w.trust}</text>
+              )}
+              {hl && hl.delta !== 0 && !w.burned && (
+                <text
+                  key={`delta-${stepKey}-${w.id}`}
+                  className="delta-float"
+                  textAnchor="middle"
+                  y={-(r + 2.2)}
+                  fontSize="3.4"
+                  fontWeight="bold"
+                  fill={hl.delta > 0 ? "#2dd4bf" : "#f87171"}
+                  fontFamily="'Courier New', monospace"
+                >{hl.delta > 0 ? "+" : ""}{hl.delta}</text>
               )}
               <text textAnchor="middle" y={r + 4} fontSize="3.4" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.1">{w.name.toUpperCase()}</text>
               {planned && (
@@ -1513,6 +1557,26 @@ function ActOneGame({ onGraduate }) {
   const planCost = Object.values(plan).reduce((s, a) => s + (a?.cost || 0), 0) + (planMapping ? 2 : 0);
   const remaining = weeklyHours - planCost;
 
+  // In-place resolution: diff the current step's snapshot against the previous one
+  // so the board can show what just changed instead of a modal describing it.
+  const resStep = phase === "resolving" && resolutionSteps.length > 0 ? resolutionSteps[stepIndex] : null;
+  const resHighlights = {};
+  if (resStep) {
+    const prevSnapshot = stepIndex > 0 ? resolutionSteps[stepIndex - 1].workers : workers;
+    resStep.workers.forEach(cw => {
+      const pw = prevSnapshot.find(x => x.id === cw.id);
+      if (!pw) return;
+      const delta = cw.trust - pw.trust;
+      const stageChange = stageIndex(cw.stage) - stageIndex(pw.stage);
+      const burned = cw.burned && !pw.burned;
+      if (delta !== 0 || stageChange !== 0 || burned) resHighlights[cw.id] = { delta, stageChange, burned };
+    });
+  }
+  const resLogRef = useRef(null);
+  useEffect(() => {
+    if (resLogRef.current) resLogRef.current.scrollTop = resLogRef.current.scrollHeight;
+  }, [stepIndex, phase]);
+
   function setAction(workerId, action) {
     setPlan(prev => {
       const next = { ...prev };
@@ -1528,6 +1592,7 @@ function ActOneGame({ onGraduate }) {
     const lines1on1 = [];
     const testLines = [];
     const rippleLines = [];
+    const rippleEvents = []; // {from, to, tone} — drawn as pulses along ties on the board
     let visDelta = 0;
 
     steps.push({ label: "WEEK START", sub: `Planning the floor for week ${week}.`, workers: w.map(x => ({ ...x })), lines: [] });
@@ -1611,6 +1676,7 @@ function ActOneGame({ onGraduate }) {
               if (stageIndex(f.stage) < 2 && Math.random() < 0.15) {
                 f.stage = STAGE_ORDER[stageIndex(f.stage) + 1];
                 rippleLines.push(`${f.name} moves up after watching ${worker.name} come through.`);
+                rippleEvents.push({ from: worker.id, to: f.id, tone: "up" });
                 f.history.push(`Week ${week}: moved up after watching ${worker.name} come through.`);
               }
             });
@@ -1625,6 +1691,7 @@ function ActOneGame({ onGraduate }) {
               if (stageIndex(f.stage) < 2 && Math.random() < 0.25) {
                 f.stage = STAGE_ORDER[stageIndex(f.stage) + 1];
                 rippleLines.push(`${f.name} moves up after seeing ${worker.name} sign.`);
+                rippleEvents.push({ from: worker.id, to: f.id, tone: "up" });
                 f.history.push(`Week ${week}: moved up after seeing ${worker.name} sign.`);
               }
             });
@@ -1650,6 +1717,7 @@ function ActOneGame({ onGraduate }) {
               if (Math.random() < 0.30 && stageIndex(f.stage) > 0) {
                 f.stage = STAGE_ORDER[stageIndex(f.stage) - 1];
                 rippleLines.push(`${f.name} gets spooked after what happened to ${worker.name}.`);
+                rippleEvents.push({ from: worker.id, to: f.id, tone: "down" });
                 f.history.push(`Week ${week}: spooked after what happened to ${worker.name}, dropped to ${STAGE_LABEL[f.stage].toLowerCase()}.`);
               }
             });
@@ -1660,7 +1728,7 @@ function ActOneGame({ onGraduate }) {
 
     if (lines1on1.length) steps.push({ label: "ONE-ON-ONES", sub: "Conversations on the floor.", workers: w.map(x => ({ ...x })), lines: lines1on1 });
     if (testLines.length) steps.push({ label: "STRUCTURE TESTS", sub: "Asking people to actually do something, and finding out who delivers.", workers: w.map(x => ({ ...x })), lines: testLines });
-    if (rippleLines.length) steps.push({ label: "RIPPLE EFFECTS", sub: "What people saw happen to their coworkers.", workers: w.map(x => ({ ...x })), lines: rippleLines });
+    if (rippleLines.length) steps.push({ label: "RIPPLE EFFECTS", sub: "What people saw happen to their coworkers.", workers: w.map(x => ({ ...x })), lines: rippleLines, edgePulses: rippleEvents });
 
     const newVisibility = Math.min(100, shopVisibility + visDelta - 3);
     const newBurned = w.filter(x => x.burned).length;
@@ -1841,11 +1909,43 @@ function ActOneGame({ onGraduate }) {
         </div>
       )}
 
-      {phase === "resolving" && resolutionSteps.length > 0 && (
-        <Act1ResolutionModal steps={resolutionSteps} stepIndex={stepIndex} onNext={() => {
-          if (stepIndex < resolutionSteps.length - 1) setStepIndex(i => i + 1);
-          else commitWeek();
-        }} />
+      {resStep && (
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
+          <Act1FloorMap
+            workers={resStep.workers}
+            layout={floorLayout}
+            plan={{}}
+            onSelect={() => {}}
+            highlights={resHighlights}
+            edgePulses={resStep.edgePulses || []}
+            stepKey={stepIndex}
+          />
+          <div className="border-2 border-amber-500 bg-stone-900 p-4">
+            <div className="flex items-center justify-between mb-1">
+              <div className="font-stencil text-lg tracking-wide text-amber-400">{resStep.label}</div>
+              <div className="text-[10px] text-stone-500">{stepIndex + 1} / {resolutionSteps.length}</div>
+            </div>
+            <div className="text-xs text-stone-500 mb-3">{resStep.sub}</div>
+            {resolutionSteps.slice(0, stepIndex + 1).some(s => s.lines.length > 0) && (
+              <div ref={resLogRef} className="bg-stone-950 border border-stone-800 p-3 mb-3 space-y-1 max-h-36 overflow-y-auto">
+                {resolutionSteps.slice(0, stepIndex + 1).map((s, si) =>
+                  s.lines.map((line, li) => (
+                    <div key={`${si}-${li}`} className={`text-xs font-mono ${si === stepIndex ? "text-stone-200" : "text-stone-600"}`}>▸ {line}</div>
+                  ))
+                )}
+              </div>
+            )}
+            <button
+              onClick={() => {
+                if (stepIndex < resolutionSteps.length - 1) setStepIndex(i => i + 1);
+                else commitWeek();
+              }}
+              className="w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2 tracking-wide flex items-center justify-center gap-1 transition-colors"
+            >
+              {stepIndex === resolutionSteps.length - 1 ? "CONTINUE" : "NEXT"} <ChevronRight size={18} />
+            </button>
+          </div>
+        </div>
       )}
 
       {phase === "victory" && (
@@ -1992,30 +2092,6 @@ function Act1WorkerModal({ worker, allWorkers, currentAction, onChoose, onClose 
             )}
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function Act1ResolutionModal({ steps, stepIndex, onNext }) {
-  const step = steps[stepIndex];
-  const isLast = stepIndex === steps.length - 1;
-  return (
-    <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-50 px-4">
-      <div className="bg-stone-900 border-2 border-amber-500 max-w-lg w-full p-5 anim-rise">
-        <div className="flex items-center justify-between mb-1">
-          <div className="font-stencil text-xl text-amber-400 tracking-wide">{step.label}</div>
-          <div className="text-[10px] text-stone-500">{stepIndex + 1} / {steps.length}</div>
-        </div>
-        <div className="text-xs text-stone-500 mb-3">{step.sub}</div>
-        {step.lines.length > 0 && (
-          <div className="bg-stone-950 border border-stone-800 p-3 mb-4 space-y-1 max-h-48 overflow-y-auto">
-            {step.lines.map((line, i) => (<div key={i} className="text-xs text-stone-300 font-mono">▸ {line}</div>))}
-          </div>
-        )}
-        <button onClick={onNext} className="w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2 tracking-wide flex items-center justify-center gap-1">
-          {isLast ? "CONTINUE" : "NEXT"} <ChevronRight size={18} />
-        </button>
       </div>
     </div>
   );
