@@ -157,6 +157,21 @@ const statusMeta = {
   lost: { label: "ELECTION LOST", color: "text-red-500" },
   abandoned: { label: "DEPRIORITIZED", color: "text-stone-500" },
 };
+const ACT2_STATUS_HEX = {
+  organizing: "#d6d3d1",
+  petitioned: "#fbbf24",
+  campaign: "#f87171",
+  won: "#2dd4bf",
+  lost: "#ef4444",
+  abandoned: "#57534e",
+};
+// Fixed positions on the same 160x100 board Act One uses — same visual grammar, different zoom level.
+const ACT2_LAYOUT = {
+  downtown: { x: 44, y: 28 },
+  suburban: { x: 116, y: 28 },
+  airport: { x: 44, y: 74 },
+  university: { x: 116, y: 74 },
+};
 
 function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   const teamStaminaBonus = recruitedLeaders.length * 15;
@@ -562,12 +577,17 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     const turnSolidarityScore = computeSolidarityScore(workingLocs);
 
     let solidarityLines = [];
+    const solidarityPulses = [];
+    // "Strong" sites are the actual source of the network effect — pulse from each of
+    // them to whoever benefits, instead of leaving the trickle as an untraceable average.
+    const strongSites = workingLocs.filter(l => l.status === "won" || l.morale >= 70 || l.committee?.active);
     if (turnSolidarityScore > 0) {
       const cureChance = Math.min(0.5, turnSolidarityScore * 0.07);
       workingLocs = workingLocs.map(l => {
         if (!l.antiUnion?.active || l.status === "won" || l.status === "lost") return l;
         if (Math.random() >= cureChance) return l;
         solidarityLines.push(`${l.name}: Word of what's happening elsewhere makes the anti-union talk here feel small. It fizzles out on its own.`);
+        strongSites.filter(s => s.id !== l.id).forEach(s => solidarityPulses.push({ from: s.id, to: l.id, tone: "up" }));
         return { ...l, antiUnion: { active: false, turnsLeft: 0 }, morale: clamp(l.morale + 3) };
       });
 
@@ -579,16 +599,21 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       });
       if (moraleTrickle > 0) {
         solidarityLines.push(`Momentum from ${turnSolidarityScore >= 4 ? "several strong sites" : "elsewhere in the company"} gives every active site a lift this week (+${moraleTrickle} morale, +${supportTrickle} true support).`);
+        strongSites.forEach(s => {
+          workingLocs.filter(l => (l.status === "organizing" || l.status === "campaign") && l.id !== s.id)
+            .forEach(l => solidarityPulses.push({ from: s.id, to: l.id, tone: "up" }));
+        });
       }
     }
     if (solidarityLines.length) {
-      steps.push({ label: "SOLIDARITY NETWORK", sub: "Momentum isn't only bad news that travels.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: solidarityLines });
+      steps.push({ label: "SOLIDARITY NETWORK", sub: "Momentum isn't only bad news that travels.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: solidarityLines, edgePulses: solidarityPulses });
     }
 
     // ---------- ANTI-UNION CONTAGION ----------
     // An anti-union narrative that nobody pushes back on doesn't stay contained to one site —
     // it travels through cross-site Slack channels, shared managers, and friend groups.
     let contagionLines = [];
+    const contagionPulses = [];
     const contagionSources = workingLocs.filter(l => {
       if (!l.antiUnion?.active) return false;
       if (l.status === "abandoned") return true; // always uncontested
@@ -603,6 +628,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         const spreadChance = Math.max(0.02, 0.12 + employerSophistication * 0.05 + (employerEmboldened ? 0.05 : 0) - turnSolidarityScore * 0.04);
         if (Math.random() >= spreadChance) return l;
         const source = availableSources[rand(availableSources.length)];
+        contagionPulses.push({ from: source.id, to: l.id, tone: "down" });
         if (l.status === "campaign") {
           const fearBump = 8;
           contagionLines.push(`${l.name}: Anti-union messaging spreading out of ${source.name} reaches workers here too. (+${fearBump} fear)`);
@@ -613,7 +639,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       });
     }
     if (contagionLines.length) {
-      steps.push({ label: "ANTI-UNION CONTAGION", sub: "An unanswered narrative doesn't stay in one place.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: contagionLines });
+      steps.push({ label: "ANTI-UNION CONTAGION", sub: "An unanswered narrative doesn't stay in one place.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: contagionLines, edgePulses: contagionPulses });
     }
 
     // Stamina decay
@@ -853,11 +879,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
             </div>
           )}
 
-          <div className="grid sm:grid-cols-2 gap-4 mb-6">
-            {locations.map(loc => (
-              <LocationCard key={loc.id} loc={loc} allocation={allocations[loc.id]} turn={turn} onSelect={() => setSelectedLoc(loc)} />
-            ))}
-          </div>
+          <Act2NetworkMap locations={locations} allocations={allocations} onSelect={(loc) => setSelectedLoc(loc)} />
 
           <div className="border-2 border-stone-800 bg-stone-900 p-4">
             <div className="flex items-center justify-between mb-1">
@@ -1023,52 +1045,121 @@ function FeedbackControls({ loc, response, onToggle }) {
   );
 }
 
-function LocationCard({ loc, allocation, turn, onSelect }) {
-  const meta = statusMeta[loc.status];
-  const escalationReady = loc.status === "organizing" && loc.morale >= 70;
-  const supportGap = loc.morale - (loc.trueSupport ?? loc.morale);
+function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = [], stepKey = 0 }) {
+  const [hoverId, setHoverId] = useState(null);
+  const hovered = locations.find(l => l.id === hoverId);
+  const clusterRadius = (loc) => 8 + Math.min(5, Math.round(loc.workers / 3));
+  const moraleHex = (loc) => (loc.morale >= 70 ? "#2dd4bf" : loc.morale >= 30 ? "#a8a29e" : "#f87171");
+
+  // Static faint edges — the shared channels and cross-site friend groups the flavor text
+  // describes are drawn once, always visible, so pulses have a network to travel along.
+  const pairs = [];
+  const ids = locations.map(l => l.id);
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) pairs.push([ids[i], ids[j]]);
+
   return (
-    <div
-      onClick={onSelect}
-      className={`card-perf border-2 ${escalationReady ? "border-amber-500" : "border-stone-800"} bg-stone-900 p-3 cursor-pointer hover:border-stone-600 transition-colors`}
-    >
-      <div className="flex items-center justify-between mb-2">
-        <div className="font-stencil text-base tracking-wide text-stone-100 flex items-center gap-1.5">
-          {loc.name}
-          {loc.committee?.active && <UsersRound size={13} className="text-teal-400" title="Shop committee active" />}
+    <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
+      <div className="flex items-center justify-between px-3 pt-2">
+        <div className="font-stencil text-lg tracking-wide text-stone-200">THE COMPANY</div>
+        <div className="flex items-center gap-3 text-[9px] text-stone-500">
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-teal-400" /> MORALE 70+</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-stone-400" /> MID</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-red-400" /> LOW</span>
         </div>
-        <div className={`text-[10px] font-bold ${meta.color}`}>{meta.label}</div>
       </div>
-      <div className="space-y-1.5 mb-2">
-        <Meter label="MORALE" value={loc.morale} icon={<CheckCircle2 size={10} />} colorClass="bg-teal-500" />
-        {loc.committee?.active && loc.status === "organizing" && (
-          <Meter label="TRUE SUPPORT" value={loc.trueSupport} icon={<UsersRound size={10} />} colorClass="bg-amber-500" />
+      <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} className="w-full block select-none">
+        <defs>
+          <marker id="site-arrow-hot-up" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+            <path d="M 0 0 L 6 3 L 0 6 z" fill="#2dd4bf" />
+          </marker>
+          <marker id="site-arrow-hot-down" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+            <path d="M 0 0 L 6 3 L 0 6 z" fill="#f87171" />
+          </marker>
+        </defs>
+
+        {pairs.map(([a, b], i) => {
+          const pa = ACT2_LAYOUT[a], pb = ACT2_LAYOUT[b];
+          if (!pa || !pb) return null;
+          return <line key={`edge-${i}`} x1={pa.x} y1={pa.y} x2={pb.x} y2={pb.y} stroke="#57534e" strokeWidth="0.3" strokeOpacity="0.35" strokeDasharray="1.5 1.5" />;
+        })}
+
+        {edgePulses.map((ev, i) => {
+          const a = ACT2_LAYOUT[ev.from], b = ACT2_LAYOUT[ev.to];
+          if (!a || !b) return null;
+          const hot = ev.tone === "down" ? "#f87171" : "#2dd4bf";
+          return (
+            <line
+              key={`pulse-${stepKey}-${i}`}
+              className="edge-pulse"
+              x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+              pathLength="20"
+              stroke={hot}
+              strokeWidth="1"
+              markerEnd={ev.tone === "down" ? "url(#site-arrow-hot-down)" : "url(#site-arrow-hot-up)"}
+            />
+          );
+        })}
+
+        {locations.map(loc => {
+          const p = ACT2_LAYOUT[loc.id];
+          if (!p) return null;
+          const r = clusterRadius(loc);
+          const dim = loc.status === "won" || loc.status === "lost" || loc.status === "abandoned";
+          const escalationReady = loc.status === "organizing" && loc.morale >= 70;
+          const needsResponse = loc.grievance || loc.antiUnion?.active || loc.buyOff?.active || (loc.visibility >= 40 && loc.visibility < 60);
+          const allocation = allocations[loc.id];
+          const dotCount = Math.min(9, Math.max(3, Math.round(loc.workers / 2)));
+          const dots = Array.from({ length: dotCount }, (_, i) => {
+            const ang = (2 * Math.PI * i) / dotCount;
+            const rr = r * 0.55;
+            return { x: Math.cos(ang) * rr, y: Math.sin(ang) * rr };
+          });
+          return (
+            <g
+              key={loc.id}
+              transform={`translate(${p.x} ${p.y})`}
+              opacity={dim ? 0.4 : 1}
+              className="cursor-pointer"
+              onClick={() => onSelect(loc)}
+              onMouseEnter={() => setHoverId(loc.id)}
+              onMouseLeave={() => setHoverId(null)}
+            >
+              {escalationReady && (
+                <circle r={r + 2.5} fill="none" stroke="#f59e0b" strokeWidth="0.5" strokeDasharray="1.4 1" />
+              )}
+              {loc.committee?.active && (
+                <circle className="leader-pulse" r={r + 1.6} fill="none" stroke="#2dd4bf" strokeWidth="0.4" strokeOpacity="0.6" />
+              )}
+              <circle r={r} fill="#1c1917" stroke={ACT2_STATUS_HEX[loc.status]} strokeWidth="0.9" />
+              {dots.map((d, i) => (
+                <circle key={i} cx={d.x} cy={d.y} r="1.1" fill={moraleHex(loc)} />
+              ))}
+              <text textAnchor="middle" y={r + 5} fontSize="3.6" fill="#e7e5e4" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.1">{loc.name}</text>
+              <text textAnchor="middle" y={r + 9} fontSize="2.6" fill={ACT2_STATUS_HEX[loc.status]} fontFamily="'Courier New', monospace">{statusMeta[loc.status].label}</text>
+              {allocation > 0 && (
+                <text textAnchor="middle" y={r + 13} fontSize="2.4" fill="#fbbf24" fontFamily="'Courier New', monospace">PLANNED</text>
+              )}
+              {needsResponse && !dim && (
+                <circle cx={r * 0.75} cy={-r * 0.75} r="1.6" fill="#f87171" />
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="border-t border-stone-800 px-3 py-2 min-h-[3.25rem]">
+        {hovered ? (
+          <div className="text-[10px] text-stone-400 leading-snug">
+            <span className={`font-bold ${statusMeta[hovered.status].color}`}>{hovered.name}</span>
+            <span className="text-stone-500"> — {statusMeta[hovered.status].label}. Morale {hovered.morale}, visibility {hovered.visibility}, {hovered.recruited}/{hovered.workers} recruited.</span>
+            {hovered.committee?.active && <span className="text-teal-400"> Shop committee active — organizing here no longer depends entirely on you.</span>}
+            {hovered.antiUnion?.active && <span className="text-red-400"> Anti-union talk circulating — can spread to other sites if unanswered.</span>}
+          </div>
+        ) : (
+          <div className="text-[10px] text-stone-600 italic">
+            Every site shares the same company — anti-union talk and organizing momentum both travel along these lines. Hover a site for details, click to plan.
+          </div>
         )}
-        <Meter label="VISIBILITY" value={loc.visibility} icon={<Eye size={10} />} danger={loc.visibility >= 60} />
-        {loc.status === "campaign" && <Meter label="FEAR" value={loc.fear} icon={<AlertTriangle size={10} />} danger={loc.fear >= 60} />}
       </div>
-      {loc.status === "campaign" && (
-        <div className="text-[9px] text-red-300 mb-1">
-          Election in {Math.max(0, loc.electionTurn - turn)} week{Math.max(0, loc.electionTurn - turn) === 1 ? "" : "s"} — still worth actions here, it's fighting the employer's counter-campaign in real time.
-        </div>
-      )}
-      <div className="flex items-center justify-between text-[10px] text-stone-500">
-        <span className="flex items-center gap-1"><Users size={10} /> {loc.recruited}/{loc.workers} recruited</span>
-        {allocation > 0 && <span className="text-amber-400 font-bold">Planned: {(loc.status === "campaign" ? ACT2_CAMPAIGN_TIERS : ACT2_EFFORT_TIERS).find(t => t.units === allocation)?.label || `${allocation} action(s)`}</span>}
-      </div>
-      {!loc.committee?.active && loc.status === "organizing" && supportGap >= 20 && (
-        <div className="text-[9px] text-amber-500 mt-1 italic">Organizer's gut says this reads better than it feels in the room.</div>
-      )}
-      {(loc.grievance || loc.antiUnion?.active || loc.buyOff?.active || (loc.visibility >= 40 && loc.visibility < 60)) && (
-        <div className="flex items-center gap-2 mt-2 text-stone-400">
-          {loc.grievance && React.createElement(GRIEVANCE_META[loc.grievance.type].icon, { size: 12, className: GRIEVANCE_META[loc.grievance.type].tone.split(" ")[0] })}
-          {loc.visibility >= 40 && loc.visibility < 60 && <Radio size={12} />}
-          {loc.antiUnion?.active && <Megaphone size={12} className="text-red-400" />}
-          {loc.buyOff?.active && <HandCoins size={12} className="text-teal-300" />}
-          <span className="text-[9px] text-stone-500">needs a response ↓</span>
-        </div>
-      )}
-      {escalationReady && <div className="mt-2 text-[10px] text-amber-400 font-bold">⚡ ESCALATION READY</div>}
     </div>
   );
 }
@@ -1141,24 +1232,19 @@ function ResolutionModal({ steps, stepIndex, onNext }) {
   const isLast = stepIndex === steps.length - 1;
   return (
     <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-50 px-4">
-      <div className="bg-stone-900 border-2 border-amber-500 max-w-lg w-full p-5 anim-rise">
+      <div className="bg-stone-900 border-2 border-amber-500 max-w-2xl w-full p-5 anim-rise max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-1">
           <div className="font-stencil text-xl text-amber-400 tracking-wide">{step.label}</div>
           <div className="text-[10px] text-stone-500">{stepIndex + 1} / {steps.length}</div>
         </div>
         <div className="text-xs text-stone-500 mb-3">{step.sub}</div>
 
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          {step.locs.filter(l => l.status !== "won" && l.status !== "lost" && l.status !== "abandoned" || step.lines.some(ln => ln.includes(l.name))).slice(0, 4).map(l => (
-            <div key={l.id} className="border border-stone-800 p-2">
-              <div className="text-[10px] text-stone-400 mb-1 truncate">{l.name}</div>
-              <div className="flex gap-2 text-[10px]">
-                <span className="text-teal-400">M {l.morale}</span>
-                <span className={l.visibility >= 60 ? "text-red-400" : "text-stone-400"}>V {l.visibility}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+        <Act2NetworkMap
+          locations={step.locs}
+          onSelect={() => {}}
+          edgePulses={step.edgePulses || []}
+          stepKey={stepIndex}
+        />
 
         {step.org && (
           <div className="text-[10px] text-stone-500 mb-3 flex items-center gap-1"><Zap size={10} /> Organizer stamina: <span className="text-stone-200 font-bold">{step.org.stamina}</span></div>
