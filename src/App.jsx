@@ -220,6 +220,9 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   const [employerSophistication, setEmployerSophistication] = useState(0); // 0-3, rises when firing fails to crush a location
   const [employerEmboldened, setEmployerEmboldened] = useState(false);
   const [escalationTarget, setEscalationTarget] = useState(null);
+  // Last site the escalation prompt showed — lets it round-robin through every ready
+  // site turn to turn instead of always re-picking the first one in array order.
+  const [lastEscalationId, setLastEscalationId] = useState(null);
   const [resolutionSteps, setResolutionSteps] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedLoc, setSelectedLoc] = useState(null);
@@ -678,8 +681,8 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     if (!isBreakTurn) {
       let decay = totalAllocated >= 6 ? 5 : (totalAllocated <= 2 ? 1 : 2);
       if (activeLocationCount >= 3) decay += 2;
-      if (retaliationLines.length > 0) decay += 3;
       if (totalAllocated <= 1) decay = -2; // rest recovers
+      if (retaliationLines.length > 0) decay += 3; // retaliation still costs fatigue on a rest week
       orgStamina = clamp(orgStamina - decay, 0, 100);
     }
 
@@ -764,10 +767,18 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       return;
     }
 
-    const escalationReady = workingLocs.find(l => l.status === "organizing" && l.morale >= 70);
+    // Round-robin through every ready site instead of always re-picking the first one
+    // in array order — advance past whichever site was shown last time.
+    const readyLocs = workingLocs.filter(l => l.status === "organizing" && l.morale >= 70);
+    let escalationReady = null;
+    if (readyLocs.length) {
+      const lastIdx = readyLocs.findIndex(l => l.id === lastEscalationId);
+      escalationReady = readyLocs[(lastIdx + 1) % readyLocs.length];
+    }
     setTurn(t => t + 1);
     if (escalationReady) {
       setEscalationTarget(escalationReady.id);
+      setLastEscalationId(escalationReady.id);
       setPhase("escalation");
     } else {
       setPhase("allocate");
@@ -806,6 +817,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     setEmployerSophistication(0);
     setEmployerEmboldened(false);
     setEscalationTarget(null);
+    setLastEscalationId(null);
     setLeaderDeployment({});
     setArmedLeader(null);
     setPhase("allocate");
@@ -2388,29 +2400,25 @@ export default function PermadeathOrganizing() {
   const [savedRun, setSavedRun] = useState(null);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const result = await window.storage.get(ACT1_SAVE_KEY, false);
-        if (!cancelled && result && result.value) {
-          const parsed = JSON.parse(result.value);
-          if (parsed && Array.isArray(parsed.leaders)) {
-            setSavedRun(parsed);
-            setAct("choice");
-            return;
-          }
+    try {
+      const raw = localStorage.getItem(ACT1_SAVE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.leaders)) {
+          setSavedRun(parsed);
+          setAct("choice");
+          return;
         }
-      } catch (e) {
-        // no prior save, or storage unavailable — just start fresh
       }
-      if (!cancelled) setAct("shop");
-    })();
-    return () => { cancelled = true; };
+    } catch (e) {
+      // no prior save, or storage unavailable — just start fresh
+    }
+    setAct("shop");
   }, []);
 
-  async function saveAct1Win(leaders) {
+  function saveAct1Win(leaders) {
     try {
-      await window.storage.set(ACT1_SAVE_KEY, JSON.stringify({ leaders }), false);
+      localStorage.setItem(ACT1_SAVE_KEY, JSON.stringify({ leaders }));
     } catch (e) {
       // if storage fails, the run still proceeds — persistence is a convenience, not a requirement
     }
@@ -2422,9 +2430,9 @@ export default function PermadeathOrganizing() {
     setAct("citywide");
   }
 
-  async function handleFullRestart() {
+  function handleFullRestart() {
     setRecruitedLeaders([]);
-    try { await window.storage.delete(ACT1_SAVE_KEY, false); } catch (e) { /* nothing saved, or storage unavailable */ }
+    try { localStorage.removeItem(ACT1_SAVE_KEY); } catch (e) { /* nothing saved, or storage unavailable */ }
     setSavedRun(null);
     setAct("shop");
   }
