@@ -19,6 +19,8 @@ const GlobalStyle = () => (
     .ring-flash { animation: ringflash 1.1s ease-out forwards; }
     @keyframes edgepulse { 0% { stroke-dashoffset: 20; opacity: 0; } 25% { opacity: 1; } 85% { opacity: 0.9; } 100% { stroke-dashoffset: 0; opacity: 0.25; } }
     .edge-pulse { stroke-dasharray: 20; animation: edgepulse 1.3s ease-out forwards; }
+    @keyframes leaderpulse { 0%, 100% { stroke-opacity: 0.25; } 50% { stroke-opacity: 0.9; } }
+    .leader-pulse { animation: leaderpulse 2.4s ease-in-out infinite; }
   `}</style>
 );
 
@@ -1496,7 +1498,7 @@ function Act1FloorMap({ workers, layout, plan, onSelect, highlights = null, edge
                 <circle r={r + 1.8} fill="none" stroke="#f59e0b" strokeWidth="0.5" strokeDasharray="1.4 1" />
               )}
               {w.stage === "leader" && !w.burned && (
-                <circle r={r + 1.1} fill="none" stroke="#2dd4bf" strokeWidth="0.35" strokeOpacity="0.6" />
+                <circle className="leader-pulse" r={r + 1.1} fill="none" stroke="#2dd4bf" strokeWidth="0.35" strokeOpacity="0.6" />
               )}
               {hl && (hl.stageChange !== 0 || hl.burned) && (
                 <circle
@@ -1542,6 +1544,9 @@ function Act1FloorMap({ workers, layout, plan, onSelect, highlights = null, edge
               <span className="text-stone-500"> Listens to: <span className="text-stone-300">{act1TrustsNames(workers, hovered).join(", ") || "no one in particular"}</span>. Trusted by: <span className="text-amber-400">{act1FollowerNames(workers, hovered.id).join(", ") || "no one"}</span>.</span>
             ) : (
               <span className="text-stone-600 italic"> Ties unknown — map the floor.</span>
+            )}
+            {hovered.stage === "leader" && !hovered.burned && (
+              <span className="text-teal-400"> A leader — runs their own one-on-ones every week, no hours needed.</span>
             )}
             {hovered.history.length > 0 && (
               <span className="text-stone-600 italic"> Last: {hovered.history[hovered.history.length - 1].replace(/^Week \d+: /, "")}</span>
@@ -1632,6 +1637,33 @@ function ActOneGame({ onGraduate }) {
     let visDelta = 0;
 
     steps.push({ label: "WEEK START", sub: `Planning the floor for week ${week}.`, workers: w.map(x => ({ ...x })), lines: [] });
+
+    // Leaders organize on their own — quiet one-on-ones with the people who trust
+    // them, costing no organizer hours. This is the point of building leaders.
+    const leaderLines = [];
+    const leaderPulses = [];
+    w.filter(x => !x.burned && x.stage === "leader").forEach(leader => {
+      act1Followers(w, leader.id).forEach(f => {
+        if (f.stage === "leader") return;
+        f.trust = Math.min(100, f.trust + 3);
+        leaderPulses.push({ from: leader.id, to: f.id, tone: "up" });
+        if (stageIndex(f.stage) < 2 && Math.random() < 0.20) {
+          f.stage = STAGE_ORDER[stageIndex(f.stage) + 1];
+          f.trust = Math.max(f.trust, STAGE_FLOOR[f.stage] + 5);
+          leaderLines.push(`${f.name} comes around after weeks of ${leader.name} quietly working on them. No organizer needed.`);
+          f.history.push(`Week ${week}: moved up thanks to ${leader.name}'s steady one-on-ones.`);
+        }
+      });
+    });
+    if (leaderPulses.length) {
+      steps.push({
+        label: "LEADERS ON THE FLOOR",
+        sub: "Your leaders run their own conversations — no hours spent.",
+        workers: w.map(x => ({ ...x })),
+        lines: leaderLines.length ? leaderLines : ["A quiet week of one-on-ones by your leaders. Trust ticks up around them."],
+        edgePulses: leaderPulses,
+      });
+    }
 
     // Mapping resolves first — reveals info used for the rest of the display (doesn't change mechanics, just visibility of them)
     if (planMapping) {
