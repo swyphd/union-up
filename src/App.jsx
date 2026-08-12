@@ -1313,6 +1313,35 @@ function act1TrustsNames(workers, worker) {
 function stageIndex(stage) { return STAGE_ORDER.indexOf(stage); }
 const STAGE_FLOOR = { hostile: 0, skeptical: 30, sympathetic: 60, leader: 90 };
 
+// Shared odds math — resolveWeek rolls against these same numbers, so what the
+// player is shown before committing is exactly what the dice use.
+// includeTies=false computes the floor a player can see without having mapped this worker.
+function act1ConvoChance(worker, allWorkers, isDeep, includeTies) {
+  let chance = isDeep ? 0.70 : 0.30;
+  let tieBoost = 0;
+  if (includeTies) {
+    tieBoost = Math.min(2, worker.ties.filter(tId => {
+      const t = allWorkers.find(x => x.id === tId);
+      return t && stageIndex(t.stage) >= 2;
+    }).length);
+  }
+  chance += tieBoost * 0.10;
+  return { chance: Math.min(0.9, chance), tieBoost };
+}
+function act1TestChance(worker, allWorkers, tier, includeTies) {
+  const base = tier === "small" ? 0.70 : tier === "medium" ? 0.50 : 0.35;
+  let chance = base + Math.min(0.15, (worker.trust - STAGE_FLOOR[worker.stage]) / 200);
+  let peerPassed = false;
+  if (includeTies) {
+    peerPassed = worker.ties.some(tId => {
+      const t = allWorkers.find(x => x.id === tId);
+      return t && (tier === "small" ? t.passedSmall : tier === "medium" ? t.passedMedium : t.passedBig);
+    });
+  }
+  if (peerPassed) chance += 0.15;
+  return { chance: Math.min(0.92, chance), peerPassed };
+}
+
 // ---------- FLOOR MAP (Act One board) ----------
 const MAP_W = 160;
 const MAP_H = 100;
@@ -1625,14 +1654,7 @@ function ActOneGame({ onGraduate }) {
 
       if (action.type === "quick" || action.type === "deep") {
         const isDeep = action.type === "deep";
-        let chance = isDeep ? 0.55 : 0.30;
-        if (isDeep) chance += 0.15;
-        const tieBoost = worker.ties.filter(tId => {
-          const t = w.find(x => x.id === tId);
-          return t && stageIndex(t.stage) >= 2;
-        }).length;
-        chance += Math.min(2, tieBoost) * 0.10;
-        chance = Math.min(0.9, chance);
+        const { chance } = act1ConvoChance(worker, w, isDeep, true);
 
         if (stageIndex(worker.stage) >= 2) {
           // already sympathetic+: conversation just builds trust, can't reach leader this way
@@ -1653,14 +1675,7 @@ function ActOneGame({ onGraduate }) {
 
       if (action.type === "small" || action.type === "medium" || action.type === "big") {
         const tier = action.type;
-        const baseChance = tier === "small" ? 0.70 : tier === "medium" ? 0.50 : 0.35;
-        let chance = baseChance + Math.min(0.15, (worker.trust - STAGE_FLOOR[worker.stage]) / 200);
-        const peerPassed = worker.ties.some(tId => {
-          const t = w.find(x => x.id === tId);
-          return t && (tier === "small" ? t.passedSmall : tier === "medium" ? t.passedMedium : t.passedBig);
-        });
-        if (peerPassed) chance += 0.15;
-        chance = Math.min(0.92, chance);
+        const { chance } = act1TestChance(worker, w, tier, true);
 
         const success = Math.random() < chance;
         const followers = act1Followers(w, worker.id);
@@ -2039,6 +2054,37 @@ function Act1WorkerModal({ worker, allWorkers, currentAction, testsUnlocked = tr
     { type: "medium", cost: 2, available: testsUnlocked && idx >= 2 },
     { type: "big", cost: 3, available: testsUnlocked && idx >= 2 && worker.stage !== "leader" },
   ];
+
+  // The organizer's honest read on each option: same math the week resolution rolls,
+  // with tie-based bonuses visible only once this worker has been mapped.
+  const pctOf = (chance) => Math.round(chance * 20) * 5;
+  const oddsFor = (type) => {
+    if (type === "quick" || type === "deep") {
+      if (idx >= 2) {
+        return { line: `Builds trust (+${type === "deep" ? 10 : 5}). Real leadership here will take a structure test.` };
+      }
+      const { chance, tieBoost } = act1ConvoChance(worker, allWorkers, type === "deep", worker.revealed);
+      let note = "";
+      if (worker.revealed && tieBoost > 0) note = " Better than usual — someone they trust is already on board.";
+      if (!worker.revealed) note = " True odds depend on who they trust — map the floor to know.";
+      return { line: `~${pctOf(chance)}% they open up and move a stage.${note}` };
+    }
+    const { chance, peerPassed } = act1TestChance(worker, allWorkers, type, worker.revealed);
+    let note = "";
+    if (worker.revealed && peerPassed) note = " Easier — someone they trust already passed this test.";
+    if (!worker.revealed) note = " True odds depend on who they trust — map the floor to know.";
+    const win = type === "small"
+      ? "they wear the button (+10 trust, nudges their people)"
+      : type === "medium"
+        ? "they deliver — sympathetic, +20 trust, can inspire their people"
+        : "they sign openly and become a LEADER, pulling their people up";
+    const risk = type === "small"
+      ? "If not: no harm done, a little trust lost."
+      : type === "medium"
+        ? "If they back out: they drop a stage and word gets around the shop."
+        : "If it goes wrong: they're burned — gone for the campaign, and it spooks everyone who trusts them.";
+    return { line: `~${pctOf(chance)}% ${win}.${note}`, risk };
+  };
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" onClick={onClose}>
       <div className="bg-stone-900 border-2 border-stone-700 max-w-md w-full p-5" onClick={e => e.stopPropagation()}>
@@ -2069,15 +2115,22 @@ function Act1WorkerModal({ worker, allWorkers, currentAction, testsUnlocked = tr
           <div className="text-xs text-red-400">This person is out of play for the rest of the campaign.</div>
         ) : (
           <div className="space-y-2">
-            {options.filter(o => o.available).map(o => (
-              <button
-                key={o.type}
-                onClick={() => onChoose({ type: o.type, cost: o.cost })}
-                className={`w-full text-left border-2 px-3 py-2 text-xs transition-colors ${currentAction?.type === o.type ? "border-amber-500 bg-amber-950/30" : "border-stone-700 hover:bg-stone-800/60"}`}
-              >
-                {ACT1_ACTION_LABEL[o.type]}
-              </button>
-            ))}
+            {options.filter(o => o.available).map(o => {
+              const odds = oddsFor(o.type);
+              return (
+                <button
+                  key={o.type}
+                  onClick={() => onChoose({ type: o.type, cost: o.cost })}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${currentAction?.type === o.type ? "border-amber-500 bg-amber-950/30" : "border-stone-700 hover:bg-stone-800/60"}`}
+                >
+                  <div className="text-xs text-stone-100">{ACT1_ACTION_LABEL[o.type]}</div>
+                  <div className="text-[10px] text-stone-400 leading-snug mt-0.5">{odds.line}</div>
+                  {odds.risk && (
+                    <div className={`text-[10px] leading-snug mt-0.5 ${o.type === "big" ? "text-red-400" : "text-stone-500"}`}>{odds.risk}</div>
+                  )}
+                </button>
+              );
+            })}
             {!testsUnlocked && idx >= 1 && (
               <div className="text-[10px] text-stone-600 italic border border-stone-800 px-3 py-2">
                 Talk is only the beginning — once your conversations start landing, you'll be able to ask people to actually do something.
