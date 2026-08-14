@@ -1194,6 +1194,11 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
           <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-teal-400" /> MORALE 70+</span>
           <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-stone-400" /> MID</span>
           <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-red-400" /> LOW</span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block rounded-full bg-stone-500" style={{ width: 5, height: 5 }} />
+            <span className="inline-block rounded-full bg-stone-500" style={{ width: 10, height: 10 }} />
+            SIZE = WORKFORCE
+          </span>
         </div>
       </div>
       <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} className="w-full block select-none">
@@ -1457,6 +1462,10 @@ const STAGE_ORDER = ["hostile", "skeptical", "sympathetic", "leader"];
 const STAGE_LABEL = { hostile: "HOSTILE", skeptical: "SKEPTICAL", sympathetic: "SYMPATHETIC", leader: "LEADER" };
 const STAGE_COLOR = { hostile: "text-red-400", skeptical: "text-stone-400", sympathetic: "text-amber-400", leader: "text-teal-400" };
 const TRAIT_LABEL = { legal: "legal grievances", antiunion: "countering anti-union pressure", committee: "building shop committees", morale: "keeping morale up" };
+// Teams are public knowledge from day one — unlike trust, you don't need to map the floor
+// to know who works where. They bias who ends up trusting whom, but don't determine it.
+const TEAM_LABEL = { engineering: "ENGINEERING", qa: "QA", production: "PRODUCTION" };
+const TEAM_HEX = { engineering: "#38bdf8", qa: "#a78bfa", production: "#fb7185" };
 const BURN_NARRATIVES = [
   (name) => `${name} signs the card right as a manager who wasn't even supposed to be on shift walks by. Seen.`,
   (name) => `${name} gets turned in — somebody they trusted mentioned it to the wrong person.`,
@@ -1465,37 +1474,48 @@ const BURN_NARRATIVES = [
 ];
 
 const ACT1_WORKERS_SEED = [
-  { id: 1, name: "Marisol", hook: "Was coded as a senior engineer for six years. After coming back from parental leave, she got her first-ever 'needs improvement' review — same work, different score.", ties: [6, 9], stage: "hostile", trait: "committee" },
-  { id: 2, name: "Dante", hook: "New hire, six months in. Just happy to be here making games. Doesn't realize yet that being new makes him easy to cut first.", ties: [6], stage: "hostile", trait: "morale" },
-  { id: 3, name: "Priya", hook: "Works crunch every launch cycle. Her health is suffering but she's afraid saying no will tank her stack ranking.", ties: [9], stage: "skeptical", trait: "legal" },
-  { id: 4, name: "Wendell", hook: "Was here before the PE acquisition. Remembers when there was profit-sharing, real raises, and you could push back on a deadline.", ties: [9], stage: "skeptical", trait: "legal" },
-  { id: 5, name: "Ashanti", hook: "Posts about everything. First to call out problems publicly, first to get quietly 'counseled' about her tone.", ties: [6], stage: "skeptical", trait: "antiunion" },
-  { id: 6, name: "Miguel", hook: "The load-bearing engineer. Everyone routes their hardest problems to him. He does the work of two people and it shows on his face.", ties: [9], stage: "hostile", trait: "committee" },
-  { id: 7, name: "Brianna", hook: "Transferred in from the studio they acquired last year. Still learning how this one works.", ties: [4], stage: "hostile", trait: "morale" },
-  { id: 8, name: "Tyrell", hook: "His PerfAxis score dropped 12 points last quarter. He still doesn't know why. There's no one to ask.", ties: [4, 11], stage: "skeptical", trait: "antiunion" },
-  { id: 9, name: "Sofia", hook: "Unofficial team mom. The first to notice when people are struggling before anyone else does.", ties: [4], stage: "hostile", trait: "committee" },
-  { id: 10, name: "Jake", hook: "His hours are technically 40 but the Slack pings don't stop until midnight. He's been tracking it. Nobody's compensating him for it.", ties: [4], stage: "hostile", trait: "morale" },
-  { id: 11, name: "Camille", hook: "Was in a union at her last studio. Doesn't advertise it.", ties: [6], stage: "sympathetic", trait: "legal" },
+  { id: 1, name: "Marisol", team: "engineering", hook: "Was coded as a senior engineer for six years. After coming back from parental leave, she got her first-ever 'needs improvement' review — same work, different score.", stage: "hostile", trait: "committee" },
+  { id: 2, name: "Dante", team: "production", hook: "New hire, six months in. Just happy to be here making games. Doesn't realize yet that being new makes him easy to cut first.", stage: "hostile", trait: "morale" },
+  { id: 3, name: "Priya", team: "engineering", hook: "Works crunch every launch cycle. Her health is suffering but she's afraid saying no will tank her stack ranking.", stage: "skeptical", trait: "legal" },
+  { id: 4, name: "Wendell", team: "production", hook: "Was here before the PE acquisition. Remembers when there was profit-sharing, real raises, and you could push back on a deadline.", stage: "skeptical", trait: "legal" },
+  { id: 5, name: "Ashanti", team: "production", hook: "Posts about everything. First to call out problems publicly, first to get quietly 'counseled' about her tone.", stage: "skeptical", trait: "antiunion" },
+  { id: 6, name: "Miguel", team: "engineering", hook: "The load-bearing engineer. Everyone routes their hardest problems to him. He does the work of two people and it shows on his face.", stage: "hostile", trait: "committee" },
+  { id: 7, name: "Brianna", team: "qa", hook: "Transferred in from the studio they acquired last year. Still learning how this one works.", stage: "hostile", trait: "morale" },
+  { id: 8, name: "Tyrell", team: "qa", hook: "His PerfAxis score dropped 12 points last quarter. He still doesn't know why. There's no one to ask.", stage: "skeptical", trait: "antiunion" },
+  { id: 9, name: "Sofia", team: "production", hook: "Unofficial team mom. The first to notice when people are struggling before anyone else does.", stage: "hostile", trait: "committee" },
+  { id: 10, name: "Jake", team: "engineering", hook: "His hours are technically 40 but the Slack pings don't stop until midnight. He's been tracking it. Nobody's compensating him for it.", stage: "hostile", trait: "morale" },
+  { id: 11, name: "Camille", team: "qa", hook: "Was in a union at her last studio. Doesn't advertise it.", stage: "sympathetic", trait: "legal" },
 ];
 
-function generateRandomTies(ids) {
+// Ties are biased toward same-team coworkers — people who share a team talk more,
+// so trust tends to travel within one first — but cross-team ties still happen.
+// Teams predict trust; they don't determine it, which is the point of mapping the floor.
+function generateTies(seed) {
   const ties = {};
-  ids.forEach(id => {
-    const others = ids.filter(oid => oid !== id);
-    const count = 1 + Math.floor(Math.random() * 3); // 1-3 ties each
-    const shuffled = [...others].sort(() => Math.random() - 0.5);
-    ties[id] = shuffled.slice(0, count);
+  seed.forEach(w => {
+    const others = seed.filter(o => o.id !== w.id);
+    const sameTeam = others.filter(o => o.team === w.team);
+    const otherTeam = others.filter(o => o.team !== w.team);
+    const weightedPool = [...sameTeam, ...sameTeam, ...sameTeam, ...otherTeam];
+    const count = Math.min(others.length, 1 + Math.floor(Math.random() * 3)); // 1-3 ties each
+    const picked = [];
+    const pool = [...weightedPool];
+    while (picked.length < count && pool.length) {
+      const idx = Math.floor(Math.random() * pool.length);
+      const candidate = pool.splice(idx, 1)[0];
+      if (!picked.includes(candidate.id)) picked.push(candidate.id);
+    }
+    ties[w.id] = picked;
   });
   return ties;
 }
 
 function makeAct1Workers() {
   const trustByStage = { hostile: 10, skeptical: 35, sympathetic: 60, leader: 100 };
-  const ids = ACT1_WORKERS_SEED.map(w => w.id);
-  const randomTies = generateRandomTies(ids);
+  const generatedTies = generateTies(ACT1_WORKERS_SEED);
   return ACT1_WORKERS_SEED.map(w => ({
     ...w,
-    ties: randomTies[w.id],
+    ties: generatedTies[w.id],
     trust: trustByStage[w.stage],
     burned: false,
     revealed: false,
@@ -1622,16 +1642,30 @@ function Act1FloorMap({ workers, layout, plan, onSelect, highlights = null, edge
 
   return (
     <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
-      <div className="flex items-center justify-between px-3 pt-2">
+      <div className="flex items-center justify-between px-3 pt-2 flex-wrap gap-y-1">
         <div className="font-stencil text-lg tracking-wide text-stone-200">THE FLOOR</div>
-        <div className="flex items-center gap-3 text-[9px] text-stone-500">
+        <div className="flex items-center gap-3 text-[9px] text-stone-500 flex-wrap justify-end">
           {STAGE_ORDER.map(s => (
             <span key={s} className="flex items-center gap-1">
               <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: STAGE_HEX[s] }} />
               {STAGE_LABEL[s]}
             </span>
           ))}
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block rounded-full bg-stone-500" style={{ width: 5, height: 5 }} />
+            <span className="inline-block rounded-full bg-stone-500" style={{ width: 10, height: 10 }} />
+            SIZE = INFLUENCE
+          </span>
         </div>
+      </div>
+      <div className="flex items-center gap-3 text-[9px] text-stone-500 flex-wrap px-3 pb-1">
+        <span className="text-stone-600">TEAM:</span>
+        {Object.keys(TEAM_LABEL).map(t => (
+          <span key={t} className="flex items-center gap-1">
+            <span className="inline-block w-2 h-2" style={{ backgroundColor: TEAM_HEX[t] }} />
+            {TEAM_LABEL[t]}
+          </span>
+        ))}
       </div>
       <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} className="w-full block select-none">
         <defs>
@@ -1716,6 +1750,9 @@ function Act1FloorMap({ workers, layout, plan, onSelect, highlights = null, edge
                 />
               )}
               <circle r={r} fill="#1c1917" stroke={w.burned ? "#57534e" : STAGE_HEX[w.stage]} strokeWidth="0.8" />
+              {!w.burned && (
+                <rect x={-(r + 1.6)} y={-(r + 1.6)} width="2" height="2" fill={TEAM_HEX[w.team]} />
+              )}
               {w.burned ? (
                 <text textAnchor="middle" dominantBaseline="central" fontSize="4.5" fill="#78716c">✕</text>
               ) : (
@@ -1745,7 +1782,7 @@ function Act1FloorMap({ workers, layout, plan, onSelect, highlights = null, edge
         {hovered ? (
           <div className="text-[10px] text-stone-400 leading-snug">
             <span className={`font-bold ${STAGE_COLOR[hovered.stage]}`}>{hovered.name}{hovered.burned ? " (BURNED)" : ""}</span>
-            <span className="text-stone-500"> — {hovered.hook}</span>
+            <span className="text-stone-500"> ({TEAM_LABEL[hovered.team]}) — {hovered.hook}</span>
             {hovered.revealed ? (
               <span className="text-stone-500"> Listens to: <span className="text-stone-300">{act1TrustsNames(workers, hovered).join(", ") || "no one in particular"}</span>. Trusted by: <span className="text-amber-400">{act1FollowerNames(workers, hovered.id).join(", ") || "no one"}</span>.</span>
             ) : (
@@ -2323,7 +2360,13 @@ function Act1WorkerModal({ worker, allWorkers, currentAction, testsUnlocked = tr
           <div className="font-stencil text-2xl text-amber-400">{worker.name}</div>
           <button onClick={onClose}><X size={18} className="text-stone-500 hover:text-stone-200" /></button>
         </div>
-        <div className={`text-xs font-bold mb-2 ${STAGE_COLOR[worker.stage]}`}>{STAGE_LABEL[worker.stage]}</div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className={`text-xs font-bold ${STAGE_COLOR[worker.stage]}`}>{STAGE_LABEL[worker.stage]}</span>
+          <span className="flex items-center gap-1 text-[10px] text-stone-500">
+            <span className="inline-block w-2 h-2" style={{ backgroundColor: TEAM_HEX[worker.team] }} />
+            {TEAM_LABEL[worker.team]}
+          </span>
+        </div>
         <p className="text-xs text-stone-400 mb-3">{worker.hook}</p>
         <div className="text-[10px] text-stone-500 mb-1">Trust: <span className="text-stone-300 font-bold">{worker.trust}</span></div>
         {worker.revealed ? (
