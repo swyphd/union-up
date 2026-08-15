@@ -875,7 +875,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     if (phase !== "resolving" || resolutionSteps.length === 0) return;
     const step = resolutionSteps[stepIndex];
     const lineCount = step.lines?.length || 0;
-    const duration = Math.min(3400, 1300 + lineCount * 320);
+    const duration = lineCount === 0 ? 200 : Math.min(2600, 900 + lineCount * 250);
     const t = setTimeout(() => {
       if (stepIndex < resolutionSteps.length - 1) setStepIndex(i => i + 1);
       else commitResolution();
@@ -1912,7 +1912,7 @@ function ActOneGame({ onGraduate }) {
     if (phase !== "resolving" || resolutionSteps.length === 0) return;
     const step = resolutionSteps[stepIndex];
     const lineCount = step.lines?.length || 0;
-    const duration = Math.min(3400, 1300 + lineCount * 320);
+    const duration = lineCount === 0 ? 200 : Math.min(2600, 900 + lineCount * 250);
     const t = setTimeout(() => {
       if (stepIndex < resolutionSteps.length - 1) setStepIndex(i => i + 1);
       else commitWeek();
