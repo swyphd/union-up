@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { AlertTriangle, Eye, Zap, Scale, ClipboardList, Vote, ChevronRight, X, CheckCircle2, FileWarning, Wrench, MessageCircle, Radio, Megaphone, HandCoins, UsersRound, Brain } from "lucide-react";
+import { AlertTriangle, Eye, Zap, Scale, ClipboardList, Vote, X, CheckCircle2, FileWarning, Wrench, MessageCircle, Radio, Megaphone, HandCoins, UsersRound, Brain } from "lucide-react";
 
 // ---------- FONTS / GLOBAL STYLE ----------
 const GlobalStyle = () => (
@@ -21,6 +21,8 @@ const GlobalStyle = () => (
     .edge-pulse { stroke-dasharray: 20; animation: edgepulse 1.3s ease-out forwards; }
     @keyframes leaderpulse { 0%, 100% { stroke-opacity: 0.25; } 50% { stroke-opacity: 0.9; } }
     .leader-pulse { animation: leaderpulse 2.4s ease-in-out infinite; }
+    @keyframes notefloat { 0% { opacity: 0; transform: translateY(2px); } 14% { opacity: 1; transform: translateY(0); } 78% { opacity: 1; } 100% { opacity: 0; } }
+    .note-float { animation: notefloat 2.6s ease-in-out forwards; }
   `}</style>
 );
 
@@ -118,6 +120,28 @@ const ACT2_CAMPAIGN_TIERS = [
 const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
 const rand = (n) => Math.floor(Math.random() * n);
 const roll100 = () => rand(100) + 1;
+
+// Resolution narrative lines almost always lead with "Name: ..." or "Name did X" —
+// split them into notes that can float next to the person/site they're about, and a
+// small leftover pile (national news, stamina, momentum) that isn't about anyone specific.
+function splitLinesByEntity(lines, entities) {
+  const noteById = {};
+  const banner = [];
+  (lines || []).forEach(line => {
+    const match = entities.find(e => e.name && (line.startsWith(e.name + ":") || line.startsWith(e.name + " ") || line.startsWith(e.name + "'")));
+    if (match) {
+      const rest = line.slice(match.name.length).replace(/^:\s*/, "").trim();
+      if (!noteById[match.id]) noteById[match.id] = rest;
+    } else {
+      banner.push(line);
+    }
+  });
+  return { noteById, banner };
+}
+function truncateNote(str, n = 42) {
+  if (!str) return str;
+  return str.length > n ? str.slice(0, n - 1).trimEnd() + "…" : str;
+}
 
 function computeSolidarityScore(locs) {
   return locs.reduce((sum, l) => {
@@ -844,6 +868,25 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     if (resLogRef.current) resLogRef.current.scrollTop = resLogRef.current.scrollHeight;
   }, [stepIndex, phase]);
 
+  // Play the resolution automatically instead of making the player click through every
+  // step — each step's narrative lines float as notes on the map, then the sequence
+  // advances on its own. Skipping just jumps straight to the already-computed outcome.
+  useEffect(() => {
+    if (phase !== "resolving" || resolutionSteps.length === 0) return;
+    const step = resolutionSteps[stepIndex];
+    const lineCount = step.lines?.length || 0;
+    const duration = Math.min(3400, 1300 + lineCount * 320);
+    const t = setTimeout(() => {
+      if (stepIndex < resolutionSteps.length - 1) setStepIndex(i => i + 1);
+      else commitResolution();
+    }, duration);
+    return () => clearTimeout(t);
+  }, [phase, stepIndex, resolutionSteps]);
+
+  const { noteById: resNotes, banner: resBanner } = resStep
+    ? splitLinesByEntity(resStep.lines, resStep.locs.map(l => ({ id: l.id, name: l.name })))
+    : { noteById: {}, banner: [] };
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-mono">
       <GlobalStyle />
@@ -997,7 +1040,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         </div>
       )}
 
-      {/* RESOLUTION — in place on the network map, no overlay */}
+      {/* RESOLUTION — plays automatically on the network map, no click-through */}
       {resStep && (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           <Act2NetworkMap
@@ -1007,35 +1050,25 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
             highlights={resHighlights}
             edgePulses={resStep.edgePulses || []}
             stepKey={stepIndex}
+            notes={resNotes}
           />
-          <div className="border-2 border-amber-500 bg-stone-900 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <div className="font-stencil text-lg tracking-wide text-amber-400">{resStep.label}</div>
-              <div className="text-[10px] text-stone-500">{stepIndex + 1} / {resolutionSteps.length}</div>
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex-1 min-h-[1.5rem] text-xs text-stone-400 font-mono">
+              {resBanner.map((line, i) => <div key={`${stepIndex}-${i}`}>▸ {line}</div>)}
             </div>
-            <div className="text-xs text-stone-500 mb-3">{resStep.sub}</div>
-            {resStep.org && (
-              <div className="text-[10px] text-stone-500 mb-3 flex items-center gap-1"><Zap size={10} /> Organizer stamina: <span className="text-stone-200 font-bold">{resStep.org.stamina}</span></div>
-            )}
-            {resolutionSteps.slice(0, stepIndex + 1).some(s => s.lines.length > 0) && (
-              <div ref={resLogRef} className="bg-stone-950 border border-stone-800 p-3 mb-3 space-y-1 max-h-36 overflow-y-auto">
-                {resolutionSteps.slice(0, stepIndex + 1).map((s, si) =>
-                  s.lines.map((line, li) => (
-                    <div key={`${si}-${li}`} className={`text-xs font-mono ${si === stepIndex ? "text-stone-200" : "text-stone-600"}`}>▸ {line}</div>
-                  ))
-                )}
-              </div>
-            )}
-            <button
-              onClick={() => {
-                if (stepIndex < resolutionSteps.length - 1) setStepIndex(i => i + 1);
-                else commitResolution();
-              }}
-              className="w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2 tracking-wide flex items-center justify-center gap-1 transition-colors"
-            >
-              {stepIndex === resolutionSteps.length - 1 ? "CONTINUE" : "NEXT"} <ChevronRight size={18} />
+            <button onClick={commitResolution} className="shrink-0 text-[10px] text-stone-500 hover:text-amber-400 underline transition-colors">
+              SKIP ▸▸
             </button>
           </div>
+          {resolutionSteps.slice(0, stepIndex + 1).some(s => s.lines.length > 0) && (
+            <div ref={resLogRef} className="bg-stone-950/60 border border-stone-800 p-2 space-y-0.5 max-h-20 overflow-y-auto">
+              {resolutionSteps.slice(0, stepIndex + 1).map((s, si) =>
+                s.lines.map((line, li) => (
+                  <div key={`${si}-${li}`} className={`text-[10px] font-mono ${si === stepIndex ? "text-stone-400" : "text-stone-600"}`}>▸ {line}</div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1174,7 +1207,7 @@ function FeedbackControls({ loc, response, onToggle }) {
   );
 }
 
-function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = [], stepKey = 0, highlights = null, deployedLeaders = {} }) {
+function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = [], stepKey = 0, highlights = null, deployedLeaders = {}, notes = null }) {
   const [hoverId, setHoverId] = useState(null);
   const hovered = locations.find(l => l.id === hoverId);
   const clusterRadius = (loc) => 8 + Math.min(5, Math.round(loc.workers / 3));
@@ -1303,6 +1336,12 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
                 <g transform={`translate(${-r * 0.8} ${-r * 0.8})`}>
                   <circle r="2.1" fill="#1c1917" stroke="#fbbf24" strokeWidth="0.6" />
                   <text textAnchor="middle" dominantBaseline="central" fontSize="2.6" fill="#fbbf24" fontFamily="Impact, 'Arial Black', sans-serif">{leader.name[0]}</text>
+                </g>
+              )}
+              {notes && notes[loc.id] && (
+                <g key={`note-${stepKey}-${loc.id}`} className="note-float">
+                  <rect x={-24} y={-(r + 17)} width={48} height={8.5} rx={1.2} fill="#1c1917" stroke="#57534e" strokeWidth="0.3" />
+                  <text x={0} y={-(r + 12.3)} textAnchor="middle" fontSize="2.5" fill="#e7e5e4" fontFamily="'Courier New', monospace">{truncateNote(notes[loc.id], 46)}</text>
                 </g>
               )}
             </g>
@@ -1620,7 +1659,7 @@ function computeFloorLayout(workers) {
   return Object.fromEntries(pos.map(p => [p.id, { x: p.x, y: p.y }]));
 }
 
-function Act1FloorMap({ workers, layout, plan, onSelect, highlights = null, edgePulses = [], stepKey = 0 }) {
+function Act1FloorMap({ workers, layout, plan, onSelect, highlights = null, edgePulses = [], stepKey = 0, notes = null }) {
   const [hoverId, setHoverId] = useState(null);
   const anyRevealed = workers.some(w => w.revealed);
 
@@ -1774,6 +1813,12 @@ function Act1FloorMap({ workers, layout, plan, onSelect, highlights = null, edge
               {planned && (
                 <text textAnchor="middle" y={r + 7.5} fontSize="2.4" fill="#fbbf24" fontFamily="'Courier New', monospace">{ACT1_ACTION_LABEL[plan[w.id].type].replace(/ \(\d+h\)$/, "")}</text>
               )}
+              {notes && notes[w.id] && (
+                <g key={`note-${stepKey}-${w.id}`} className="note-float">
+                  <rect x={-24} y={-(r + 13)} width={48} height={8.5} rx={1.2} fill="#1c1917" stroke="#57534e" strokeWidth="0.3" />
+                  <text x={0} y={-(r + 8.3)} textAnchor="middle" fontSize="2.5" fill="#e7e5e4" fontFamily="'Courier New', monospace">{truncateNote(notes[w.id], 46)}</text>
+                </g>
+              )}
             </g>
           );
         })}
@@ -1859,6 +1904,25 @@ function ActOneGame({ onGraduate }) {
   useEffect(() => {
     if (resLogRef.current) resLogRef.current.scrollTop = resLogRef.current.scrollHeight;
   }, [stepIndex, phase]);
+
+  // Play the resolution automatically instead of making the player click through every
+  // step — each step's narrative lines float as notes on the board, then the sequence
+  // advances on its own. Skipping just jumps straight to the already-computed outcome.
+  useEffect(() => {
+    if (phase !== "resolving" || resolutionSteps.length === 0) return;
+    const step = resolutionSteps[stepIndex];
+    const lineCount = step.lines?.length || 0;
+    const duration = Math.min(3400, 1300 + lineCount * 320);
+    const t = setTimeout(() => {
+      if (stepIndex < resolutionSteps.length - 1) setStepIndex(i => i + 1);
+      else commitWeek();
+    }, duration);
+    return () => clearTimeout(t);
+  }, [phase, stepIndex, resolutionSteps]);
+
+  const { noteById: resNotes, banner: resBanner } = resStep
+    ? splitLinesByEntity(resStep.lines, resStep.workers.map(w => ({ id: w.id, name: w.name })))
+    : { noteById: {}, banner: [] };
 
   function setAction(workerId, action) {
     setPlan(prev => {
@@ -2193,32 +2257,25 @@ function ActOneGame({ onGraduate }) {
             highlights={resHighlights}
             edgePulses={resStep.edgePulses || []}
             stepKey={stepIndex}
+            notes={resNotes}
           />
-          <div className="border-2 border-amber-500 bg-stone-900 p-4">
-            <div className="flex items-center justify-between mb-1">
-              <div className="font-stencil text-lg tracking-wide text-amber-400">{resStep.label}</div>
-              <div className="text-[10px] text-stone-500">{stepIndex + 1} / {resolutionSteps.length}</div>
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex-1 min-h-[1.5rem] text-xs text-stone-400 font-mono">
+              {resBanner.map((line, i) => <div key={`${stepIndex}-${i}`}>▸ {line}</div>)}
             </div>
-            <div className="text-xs text-stone-500 mb-3">{resStep.sub}</div>
-            {resolutionSteps.slice(0, stepIndex + 1).some(s => s.lines.length > 0) && (
-              <div ref={resLogRef} className="bg-stone-950 border border-stone-800 p-3 mb-3 space-y-1 max-h-36 overflow-y-auto">
-                {resolutionSteps.slice(0, stepIndex + 1).map((s, si) =>
-                  s.lines.map((line, li) => (
-                    <div key={`${si}-${li}`} className={`text-xs font-mono ${si === stepIndex ? "text-stone-200" : "text-stone-600"}`}>▸ {line}</div>
-                  ))
-                )}
-              </div>
-            )}
-            <button
-              onClick={() => {
-                if (stepIndex < resolutionSteps.length - 1) setStepIndex(i => i + 1);
-                else commitWeek();
-              }}
-              className="w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2 tracking-wide flex items-center justify-center gap-1 transition-colors"
-            >
-              {stepIndex === resolutionSteps.length - 1 ? "CONTINUE" : "NEXT"} <ChevronRight size={18} />
+            <button onClick={commitWeek} className="shrink-0 text-[10px] text-stone-500 hover:text-amber-400 underline transition-colors">
+              SKIP ▸▸
             </button>
           </div>
+          {resolutionSteps.slice(0, stepIndex + 1).some(s => s.lines.length > 0) && (
+            <div ref={resLogRef} className="bg-stone-950/60 border border-stone-800 p-2 space-y-0.5 max-h-20 overflow-y-auto">
+              {resolutionSteps.slice(0, stepIndex + 1).map((s, si) =>
+                s.lines.map((line, li) => (
+                  <div key={`${si}-${li}`} className={`text-[10px] font-mono ${si === stepIndex ? "text-stone-400" : "text-stone-600"}`}>▸ {line}</div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
 
