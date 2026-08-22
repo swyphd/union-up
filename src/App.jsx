@@ -1351,6 +1351,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
             </g>
           );
         })}
+
       </svg>
       <div className="border-t border-stone-800 px-3 py-2 min-h-[3.25rem]">
         {hovered ? (
@@ -1847,6 +1848,19 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
     });
   });
   const crossCount = edges.filter(e => e.crossTeam).length;
+  // A long arrow that passes over an intervening box used to disappear behind it. The
+  // hovered person's lines are pulled out here and re-drawn above the cards, so you can
+  // always follow exactly where someone's influence lands.
+  const touchesActive = (e) => active != null && (e.from.id === active || e.to.id === active);
+  const restEdges = edges.filter(e => !touchesActive(e));
+  const hotEdges = edges.filter(touchesActive);
+  const edgeGeom = (e, endPad = 1.8) => {
+    const a = layout.cards[e.from.id];
+    const b = layout.cards[e.to.id];
+    if (!a || !b) return null;
+    const dx = b.cx - a.cx, dy = b.cy - a.cy;
+    return { p1: cardEdgePoint(a, dx, dy, 0.4), p2: cardEdgePoint(b, -dx, -dy, endPad) };
+  };
 
   const plannedByWorker = {};
   planEntries.forEach(e => {
@@ -1951,23 +1965,17 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
         ))}
 
         {/* ---- the real structure, drawn on top of the official one ---- */}
-        {edges.map((e, i) => {
-          const a = layout.cards[e.from.id];
-          const b = layout.cards[e.to.id];
-          if (!a || !b) return null;
-          const dx = b.cx - a.cx, dy = b.cy - a.cy;
-          const p1 = cardEdgePoint(a, dx, dy, 0.4);
-          const p2 = cardEdgePoint(b, -dx, -dy, 1.8);
-          const hot = active != null && (e.from.id === active || e.to.id === active);
-          const dim = active != null && !hot;
+        {restEdges.map((e, i) => {
+          const g = edgeGeom(e);
+          if (!g) return null;
           return (
             <line
               key={i}
-              x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-              stroke={hot ? "#fbbf24" : e.crossTeam ? EDGE_CROSS_TEAM : EDGE_SAME_TEAM}
-              strokeWidth={(hot ? 0.6 : e.crossTeam ? 0.44 : 0.28) + (e.weight / 100) * 0.7}
-              strokeOpacity={dim ? 0.14 : e.crossTeam ? 1 : 0.6}
-              markerEnd={hot ? "url(#org-arrow-hot)" : e.crossTeam ? "url(#org-arrow-cross)" : "url(#org-arrow)"}
+              x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y}
+              stroke={e.crossTeam ? EDGE_CROSS_TEAM : EDGE_SAME_TEAM}
+              strokeWidth={(e.crossTeam ? 0.44 : 0.28) + (e.weight / 100) * 0.7}
+              strokeOpacity={active != null ? 0.14 : e.crossTeam ? 1 : 0.6}
+              markerEnd={e.crossTeam ? "url(#org-arrow-cross)" : "url(#org-arrow)"}
             />
           );
         })}
@@ -2079,6 +2087,24 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
                   <text x={c.cx} y={c.y - 4.2} textAnchor="middle" fontSize="2.5" fill="#e7e5e4" fontFamily="'Courier New', monospace">{truncateNote(notes[w.id], 27)}</text>
                 </g>
               )}
+            </g>
+          );
+        })}
+
+        {/* Drawn last so it sits above the boxes: a dark halo keeps the line readable
+            where it crosses a card, then the line itself. */}
+        {hotEdges.map((e, i) => {
+          const g = edgeGeom(e, 2.2);
+          if (!g) return null;
+          const w = 0.6 + (e.weight / 100) * 0.7;
+          return (
+            <g key={`hot-${i}`}>
+              <line x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y} stroke="#0c0a09" strokeWidth={w + 0.9} strokeOpacity="0.9" strokeLinecap="round" />
+              <line
+                x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y}
+                stroke="#fbbf24" strokeWidth={w} strokeOpacity="1"
+                markerEnd="url(#org-arrow-hot)"
+              />
             </g>
           );
         })}
