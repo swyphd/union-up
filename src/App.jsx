@@ -1504,7 +1504,7 @@ function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
 const ACT1_CARD_THRESHOLD = 0.30;
 const ACT1_HOURS_PER_ORGANIZER = 3;
 // There is no deadline. The level is scored on speed: beat it in this many weeks or fewer.
-const ACT1_STAR_WEEKS = { three: 8, two: 11 };
+const ACT1_STAR_WEEKS = { three: 16, two: 21 };
 const ACT1_RECRUIT_REQ = 85;
 function act1Stars(week) {
   if (week <= ACT1_STAR_WEEKS.three) return 3;
@@ -1567,6 +1567,51 @@ const ACT1_WORKERS_SEED = [
   { id: 19, name: "Marcus", team: "qa", trait: "committee", support: 42, fulfillment: 66, hook: "Ran the studio's mentorship program until it got cut for 'focus.' Still mentors people anyway, on his own time." },
   { id: 20, name: "Delphine", team: "production", trait: "antiunion", support: 22, fulfillment: 88, hook: "Narrative lead, four years inside this world. Thinks a union fight will slow the ship down right when the game finally needs to land." },
 ];
+
+// ---------- THE ELECTION ----------
+// 30% of the unit on cards is the legal minimum to petition — it is not the number you
+// win on. Filing starts a clock: the employer campaigns hard for four weeks, and then a
+// secret ballot decides it on a majority of votes actually cast. The whole point of this
+// stage is the third loss in the chain the game has been teaching: support isn't a
+// signature, and a signature isn't a vote.
+const ELECTION_WEEKS = 4;
+const VOLUNTARY_RECOGNITION_FLOOR = 0.5;
+
+// Turnout: people with strong feelings in either direction show up. Fence-sitters are the
+// ones who stay at their desks, and a fence-sitter who doesn't vote is a vote you lost.
+function turnoutChance(w) {
+  const conviction = Math.abs(w.support - 50) / 50;
+  return Math.min(0.96, 0.62 + 0.28 * conviction + (w.signed ? 0.06 : 0));
+}
+// A secret ballot is secret. Even someone who signed can vote no in the booth, and at the
+// top end there is always a little slippage that no amount of organizing removes.
+function yesChance(w) {
+  const base = (w.support - 32) / 48;
+  return Math.min(0.93, Math.max(0.02, base + (w.signed ? 0.05 : 0)));
+}
+// Expected-value projection, shown to the player during the campaign. It is an estimate,
+// not a promise — and it does not know what the next four weeks of pressure will do.
+function voteProjection(workers) {
+  let yes = 0, no = 0, out = 0;
+  workers.forEach(w => {
+    const t = turnoutChance(w);
+    const y = yesChance(w);
+    yes += t * y;
+    no += t * (1 - y);
+    out += 1 - t;
+  });
+  return { yes: Math.round(yes), no: Math.round(no), out: Math.round(out) };
+}
+// Employers voluntarily recognize when the count is so lopsided that fighting it looks
+// worse than losing. A union-avoidance consultant on the payroll is there to argue the
+// opposite, so having hired one makes it much less likely.
+function recognitionChance(cardShare, consultantActive, heat) {
+  if (cardShare < VOLUNTARY_RECOGNITION_FLOOR) return 0;
+  let c = Math.min(0.55, (cardShare - VOLUNTARY_RECOGNITION_FLOOR) * 1.4);
+  if (consultantActive) c *= 0.55;
+  if (heat > 60) c *= 0.7;
+  return c;
+}
 
 // ---------- THE UNION-AVOIDANCE CONSULTANT ----------
 // Management's real counter-campaign isn't a poster: it's a paid professional running the
@@ -2199,6 +2244,14 @@ function ActOneGame({ onGraduate }) {
   const [selectedWorker, setSelectedWorker] = useState(null);
   const [confirmStartOver, setConfirmStartOver] = useState(false);
   const [wonOnWeek, setWonOnWeek] = useState(null);
+  // "drive" = collecting cards toward the 30% petition threshold. "campaign" = petition
+  // filed, clock running to the ballot.
+  const [stage, setStage] = useState("drive");
+  const [filedWeek, setFiledWeek] = useState(null);
+  const [electionWeek, setElectionWeek] = useState(null);
+  const [voteResult, setVoteResult] = useState(null);
+  const [showFilePrompt, setShowFilePrompt] = useState(false);
+  const [sawFilePrompt, setSawFilePrompt] = useState(false);
   const pendingRef = useRef(null);
   const planKeyRef = useRef(0);
 
@@ -2518,14 +2571,17 @@ function ActOneGame({ onGraduate }) {
     } else if (consultantNext.active) {
       // One-on-ones: he works the people closest to signing, minus whoever is already
       // surrounded by organizers. Density is the defence.
+      // Once a petition is filed he stops being a side project and works the floor full
+      // time — this is the stretch where campaigns are actually lost.
+      const inCampaign = stage === "campaign";
       const marks = w
-        .filter(x => !x.signed && !x.burned && x.support >= 35)
+        .filter(x => !x.burned && x.support >= 30 && (inCampaign || !x.signed))
         .map(x => {
           const backing = signedBacking(influence, w, x.id);
-          return { t: x, backing, score: x.support - backing * 0.35 };
+          return { t: x, backing, score: x.support - backing * 0.35 - (x.signed ? 25 : 0) };
         })
         .sort((a, b) => b.score - a.score)
-        .slice(0, 2);
+        .slice(0, inCampaign ? 4 : 2);
 
       marks.forEach(({ t, backing }) => {
         const resist = Math.min(5, Math.round(backing / 30));
@@ -2540,6 +2596,16 @@ function ActOneGame({ onGraduate }) {
         );
         t.history.push(`Week ${week}: ${CONSULTANT_NAME} worked on them (-${before - t.support} support).`);
       });
+
+      if (inCampaign) {
+        w.forEach(x => {
+          if (x.burned) return;
+          const backing = signedBacking(influence, w, x.id);
+          const hit = Math.max(1, Math.round(4 - backing / 70 - (x.signed ? 1 : 0)));
+          x.support = clamp(x.support - hit);
+        });
+        consultantLines.push("Another mandatory meeting on the calendar — the third this month. Paid time, catered, and no one from the union side is allowed to answer back.");
+      }
 
       // Set pieces, spaced out: the raise and the threat.
       const sinceLast = week - (consultantNext.lastSetPiece || 0);
@@ -2627,31 +2693,70 @@ function ActOneGame({ onGraduate }) {
     }
 
     const signedNow = w.filter(x => x.signed).length;
+
+    // --- ELECTION DAY ---
+    let ballot = null;
+    if (stage === "campaign" && electionWeek != null && week >= electionWeek) {
+      let yes = 0, no = 0;
+      const nonVoters = [];
+      w.forEach(x => {
+        if (Math.random() >= turnoutChance(x)) { nonVoters.push(x.name); return; }
+        if (Math.random() < yesChance(x)) yes += 1; else no += 1;
+      });
+      ballot = { yes, no, out: nonVoters.length, cast: yes + no, won: yes > no };
+      steps.push({
+        label: "THE BALLOT",
+        sub: "Every worker in the unit, one secret ballot each. A majority of the votes cast decides it.",
+        workers: w.map(x => ({ ...x })),
+        lines: [
+          `${ballot.cast} of ${ACT1_TOTAL_WORKERS} workers cast a ballot. ${nonVoters.length} didn't vote at all${nonVoters.length ? ` — ${nonVoters.slice(0, 4).join(", ")}${nonVoters.length > 4 ? ", and others" : ""}` : ""}.`,
+          `YES ${ballot.yes} — NO ${ballot.no}.`,
+        ],
+      });
+    }
+
     steps.push({
       label: "END OF WEEK",
       sub: `Week ${week} complete.`,
       workers: w.map(x => ({ ...x })),
-      lines: [`${signedNow} of ${ACT1_TOTAL_WORKERS} cards signed — ${Math.round((signedNow / ACT1_TOTAL_WORKERS) * 100)}% of the floor. You need ${Math.round(ACT1_CARD_THRESHOLD * 100)}%.`],
+      lines: ballot
+        ? [ballot.won ? "The union carries the unit." : "The union falls short."]
+        : stage === "campaign"
+          ? [`${Math.max(0, electionWeek - week)} week(s) until the vote. Projection right now: ${voteProjection(w).yes} yes, ${voteProjection(w).no} no.`]
+          : [`${signedNow} of ${ACT1_TOTAL_WORKERS} cards signed — ${Math.round((signedNow / ACT1_TOTAL_WORKERS) * 100)}% of the floor. You need ${Math.round(ACT1_CARD_THRESHOLD * 100)}% to file.`],
     });
 
     setResolutionSteps(steps);
     setStepIndex(0);
     setPhase("resolving");
-    pendingRef.current = { workers: w, heat: heatNext, consultant: consultantNext, won: signedNow >= ACT1_CARDS_NEEDED };
+    pendingRef.current = {
+      workers: w,
+      heat: heatNext,
+      consultant: consultantNext,
+      ballot,
+      // Reaching 30% no longer ends the game — it unlocks the choice to file.
+      reachedThreshold: stage === "drive" && signedNow >= ACT1_CARDS_NEEDED,
+    };
   }
 
   function commitWeek() {
-    const { workers: w, heat: h, consultant: c, won } = pendingRef.current;
+    const { workers: w, heat: h, consultant: c, ballot, reachedThreshold } = pendingRef.current;
     setWorkers(w);
     setHeat(h);
     setConsultant(c);
     setPlanEntries([]);
-    if (won) {
+    if (ballot) {
+      setVoteResult(ballot);
       setWonOnWeek(week);
-      setPhase("victory");
+      setPhase(ballot.won ? "victory" : "defeat");
       return;
     }
     setWeek(wk => wk + 1);
+    // The first time the petition threshold is crossed, stop and make the player choose.
+    if (reachedThreshold && !sawFilePrompt) {
+      setSawFilePrompt(true);
+      setShowFilePrompt(true);
+    }
     setPhase("plan");
   }
 
@@ -2661,6 +2766,12 @@ function ActOneGame({ onGraduate }) {
     setPlanEntries([]);
     setHeat(0);
     setConsultant({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0 });
+    setStage("drive");
+    setFiledWeek(null);
+    setElectionWeek(null);
+    setVoteResult(null);
+    setShowFilePrompt(false);
+    setSawFilePrompt(false);
     setResolutionSteps([]);
     setStepIndex(0);
     setSelectedWorker(null);
@@ -2675,6 +2786,28 @@ function ActOneGame({ onGraduate }) {
       .slice(0, 4)
       .map(w => ({ name: w.name, trait: w.trait }));
     onGraduate(committee, persist);
+  }
+
+  const cardShare = signedCount / ACT1_TOTAL_WORKERS;
+  const canFile = stage === "drive" && signedCount >= ACT1_CARDS_NEEDED;
+  const projection = voteProjection(workers);
+  const weeksToVote = electionWeek != null ? electionWeek - week : null;
+
+  function fileWithNLRB() {
+    setShowFilePrompt(false);
+    setStage("campaign");
+    setFiledWeek(week);
+    setElectionWeek(week + ELECTION_WEEKS);
+    // Nobody sits out their own election. If management hadn't hired anyone yet, they do
+    // the day the petition lands.
+    setConsultant(c => (c.active ? c : { ...c, active: true, arrivedWeek: week }));
+    const share = signedCount / ACT1_TOTAL_WORKERS;
+    if (Math.random() < recognitionChance(share, consultant.active, heat)) {
+      setPhase("recognized");
+      setWonOnWeek(week);
+    } else {
+      setPhase("filed");
+    }
   }
 
   const canResolve = planEntries.length > 0 && organizers.every(o => hoursLeftFor(o) >= 0);
@@ -2699,6 +2832,13 @@ function ActOneGame({ onGraduate }) {
               <div className={`text-lg font-bold ${signedCount >= ACT1_CARDS_NEEDED ? "text-teal-400" : "text-amber-400"}`}>{signedCount} / {ACT1_CARDS_NEEDED}</div>
               <div className="text-[9px] text-stone-600">{cardPct}% of {ACT1_TOTAL_WORKERS} — need {Math.round(ACT1_CARD_THRESHOLD * 100)}%</div>
             </div>
+            {stage === "campaign" && (
+              <div className="text-center">
+                <div className="text-stone-500 text-[10px] flex items-center gap-1"><Vote size={11} /> BALLOT IN</div>
+                <div className={`text-lg font-bold ${weeksToVote <= 1 ? "text-red-500" : "text-amber-400"}`}>{Math.max(0, weeksToVote)} wk</div>
+                <div className="text-[9px] text-stone-600">filed week {filedWeek}</div>
+              </div>
+            )}
             <div className="text-center">
               <div className="text-stone-500 text-[10px]">COMMITTEE</div>
               <div className="text-lg font-bold text-stone-100">{organizers.length}</div>
@@ -2742,7 +2882,8 @@ function ActOneGame({ onGraduate }) {
           <div className="text-left border border-stone-700 bg-stone-900/60 p-3 mb-5 space-y-2 text-xs text-stone-400 leading-relaxed">
             <div><span className="text-amber-400 font-bold">YOU DON'T TALK TO THE FLOOR YOURSELF.</span> You direct the people who are already in. Every hour you spend is Camille or Wendell having a conversation, taking a public stand, or asking someone to sign.</div>
             <div><span className="text-amber-400 font-bold">WHO ASKS MATTERS MORE THAN WHAT'S ASKED.</span> Influence runs person to person. A conversation between two people who move each other lands three times harder than the same conversation between strangers.</div>
-            <div><span className="text-amber-400 font-bold">THE GOAL IS {Math.round(ACT1_CARD_THRESHOLD * 100)}%.</span> {ACT1_CARDS_NEEDED} signed cards out of {ACT1_TOTAL_WORKERS} workers and you can petition the NLRB for an election. There's no deadline — but the fewer weeks it takes, the better you did.</div>
+            <div><span className="text-amber-400 font-bold">{Math.round(ACT1_CARD_THRESHOLD * 100)}% GETS YOU AN ELECTION. IT DOESN'T WIN ONE.</span> {ACT1_CARDS_NEEDED} signed cards out of {ACT1_TOTAL_WORKERS} is all the NLRB needs to schedule a vote — and you decide when to file. Then the company gets {ELECTION_WEEKS} weeks to campaign, and a secret ballot is decided by a majority of the votes actually cast. File at the minimum and you will almost certainly lose. Keep organizing and you win a vote you should never have been close to losing.</div>
+            <div><span className="text-amber-400 font-bold">THERE'S NO DEADLINE.</span> The fewer weeks it takes, the better you did — but a fast loss is still a loss, and there's no second election for a year.</div>
           </div>
           <div className="text-center">
             <button onClick={() => setPhase("plan")} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
@@ -2776,6 +2917,55 @@ function ActOneGame({ onGraduate }) {
             <div className="mb-4 flex items-start gap-2 text-teal-300 text-xs border border-teal-700 bg-teal-950/30 px-3 py-2">
               <UsersRound size={14} className="shrink-0 mt-0.5" />
               <span><span className="font-bold text-teal-400">SOMEONE'S READY TO ORGANIZE.</span> A signer with strong support can join the committee — {ACT1_HOURS_PER_ORGANIZER} more hours a week, and their relationships become yours to use.</span>
+            </div>
+          )}
+
+          {stage === "campaign" && (
+            <div className="mb-4 border-2 border-amber-700 bg-amber-950/20 px-3 py-3">
+              <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+                <div className="font-stencil text-lg tracking-wide text-amber-400">THE BALLOT IS {Math.max(0, weeksToVote)} WEEK{weeksToVote === 1 ? "" : "S"} OUT</div>
+                <div className="text-[10px] text-stone-400">Petition filed week {filedWeek} with {signedCount} cards ({cardPct}%)</div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 mb-2">
+                <div className="border border-teal-800 bg-teal-950/30 p-2 text-center">
+                  <div className="text-[9px] text-stone-500 tracking-wide">PROJECTED YES</div>
+                  <div className="text-2xl font-bold text-teal-400">{projection.yes}</div>
+                </div>
+                <div className="border border-red-800 bg-red-950/30 p-2 text-center">
+                  <div className="text-[9px] text-stone-500 tracking-wide">PROJECTED NO</div>
+                  <div className="text-2xl font-bold text-red-400">{projection.no}</div>
+                </div>
+                <div className="border border-stone-700 p-2 text-center">
+                  <div className="text-[9px] text-stone-500 tracking-wide">WON'T VOTE</div>
+                  <div className="text-2xl font-bold text-stone-400">{projection.out}</div>
+                </div>
+              </div>
+              <div className="text-[10px] text-stone-400 leading-relaxed">
+                It takes a majority of the ballots actually cast — <span className="text-stone-200 font-bold">{projection.yes > projection.no ? "you are ahead on today's numbers" : "you are behind on today's numbers"}</span>.
+                This is an estimate, not a promise: the booth is secret, people who signed still vote no, and every week between now and the ballot is a week the employer campaigns and you lose ground. A one-vote projection is a loss waiting to happen.
+              </div>
+            </div>
+          )}
+
+          {canFile && (
+            <div className="mb-4 border-2 border-teal-700 bg-teal-950/20 px-3 py-3">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex-1 min-w-[16rem]">
+                  <div className="font-stencil text-lg tracking-wide text-teal-400">YOU CAN FILE TODAY</div>
+                  <div className="text-[10px] text-stone-400 leading-relaxed mt-1">
+                    {signedCount} of {ACT1_TOTAL_WORKERS} cards is {cardPct}% — past the 30% the NLRB requires to petition for an election.
+                    Filing starts a {ELECTION_WEEKS}-week clock you cannot stop, and the vote needs a majority of ballots cast, not 30%.
+                    On today's support that ballot projects <span className="text-teal-400 font-bold">{projection.yes} yes</span> to <span className="text-red-400 font-bold">{projection.no} no</span>, with {projection.out} not voting.
+                    Organizers almost never file at the minimum — they build a cushion first, because the four weeks after filing belong to the employer.
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowFilePrompt(true)}
+                  className="font-stencil text-base bg-teal-600 hover:bg-teal-500 text-stone-950 px-5 py-2.5 tracking-wide transition-colors shrink-0"
+                >
+                  FILE WITH THE NLRB
+                </button>
+              </div>
             </div>
           )}
 
@@ -2885,12 +3075,24 @@ function ActOneGame({ onGraduate }) {
 
       {phase === "victory" && (
         <div className="max-w-xl mx-auto px-6 py-16 text-center anim-rise">
-          <div className="font-stencil text-5xl mb-2 text-teal-400">THIRTY PERCENT</div>
+          <div className="font-stencil text-5xl mb-2 text-teal-400">THE UNION CARRIES IT</div>
           <div className="flex justify-center mb-3"><Stars count={act1Stars(wonOnWeek)} /></div>
-          <p className="text-amber-400 text-sm mb-5">{signedCount} cards in {wonOnWeek} week{wonOnWeek === 1 ? "" : "s"} — the petition goes to the NLRB.</p>
+          {voteResult && (
+            <div className="flex items-center justify-center gap-6 mb-4 font-mono">
+              <div><div className="text-[10px] text-stone-500">YES</div><div className="text-3xl font-bold text-teal-400">{voteResult.yes}</div></div>
+              <div><div className="text-[10px] text-stone-500">NO</div><div className="text-3xl font-bold text-red-400">{voteResult.no}</div></div>
+              <div><div className="text-[10px] text-stone-500">DIDN'T VOTE</div><div className="text-3xl font-bold text-stone-500">{voteResult.out}</div></div>
+            </div>
+          )}
+          <p className="text-amber-400 text-sm mb-5">Won on the ballot in week {wonOnWeek} — filed week {filedWeek} with {signedCount} cards.</p>
           <p className="text-stone-400 mb-5 leading-relaxed text-sm">
-            Enough of this floor has put their name on paper that the labor board has to take it seriously.
-            An election gets scheduled. Nobody upstairs gets to pretend this is a few disgruntled people anymore.
+            A majority of the ballots cast came back yes, and the labor board certifies it. This floor has a union — not a petition,
+            not a showing of interest, a certified bargaining unit that the company is legally required to sit down with.
+            Nobody upstairs gets to pretend this is a few disgruntled people anymore.
+          </p>
+          <p className="text-stone-500 mb-5 leading-relaxed text-xs italic">
+            Winning the election is not the end of the process. Certification only obliges the company to bargain — it doesn't oblige
+            them to agree, and a first contract can take years. The committee you built is the thing that gets you one.
           </p>
           <div className="text-left border border-stone-700 bg-stone-900/60 p-3 mb-5 text-[11px] text-stone-400 space-y-1">
             <div className="flex justify-between"><span className={wonOnWeek <= ACT1_STAR_WEEKS.three ? "text-amber-400" : ""}>★★★ — {ACT1_STAR_WEEKS.three} weeks or fewer</span><span>{wonOnWeek <= ACT1_STAR_WEEKS.three ? "EARNED" : ""}</span></div>
@@ -2916,7 +3118,122 @@ function ActOneGame({ onGraduate }) {
         </div>
       )}
 
-      {selectedWorker && phase === "plan" && (
+      {showFilePrompt && (
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto" onClick={() => setShowFilePrompt(false)}>
+          <div className="bg-stone-900 border-2 border-teal-800 max-w-lg w-full p-5 my-auto" onClick={e => e.stopPropagation()}>
+            <div className="font-stencil text-2xl text-teal-400 mb-1">FILE THE PETITION?</div>
+            <p className="text-xs text-stone-400 leading-relaxed mb-3">
+              You have {signedCount} cards out of {ACT1_TOTAL_WORKERS} — {cardPct}% of the unit. Thirty percent is all the labor board
+              needs to schedule an election. It is not what wins one.
+            </p>
+            <div className="border border-stone-700 bg-stone-950/60 p-3 mb-3 space-y-2 text-[11px] text-stone-400 leading-relaxed">
+              <div>
+                <span className="text-stone-200 font-bold">What filing does.</span> You demand recognition and petition the NLRB the same day.
+                If the count is lopsided enough the company may recognize you outright and skip the vote — that is rare, and rarer still
+                once they're paying a consultant to tell them not to.
+              </div>
+              <div>
+                <span className="text-stone-200 font-bold">Otherwise, a secret ballot in {ELECTION_WEEKS} weeks.</span> Every worker in the unit gets one.
+                It is decided by a majority of the ballots actually cast, so someone who stays at their desk is a vote you didn't get.
+              </div>
+              <div>
+                <span className="text-stone-200 font-bold">Those {ELECTION_WEEKS} weeks belong to them.</span> Mandatory meetings every week, one-on-ones
+                with everyone wavering, and no way to withdraw once you've filed.
+              </div>
+            </div>
+            <div className="border border-stone-700 p-3 mb-4">
+              <div className="text-[10px] text-stone-500 tracking-wide mb-1">TODAY'S PROJECTION, BEFORE ANY OF THAT</div>
+              <div className="flex items-center gap-4 text-sm">
+                <span className="text-teal-400 font-bold">{projection.yes} YES</span>
+                <span className="text-red-400 font-bold">{projection.no} NO</span>
+                <span className="text-stone-500">{projection.out} not voting</span>
+              </div>
+              <div className={`text-[10px] mt-1 ${projection.yes > projection.no + 2 ? "text-teal-400" : "text-red-400"}`}>
+                {projection.yes > projection.no + 2
+                  ? "A real cushion. This is roughly where organizers actually file."
+                  : projection.yes > projection.no
+                    ? "Ahead by a hair. Four weeks of their campaign will eat that."
+                    : "You would lose this vote today."}
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button onClick={fileWithNLRB} className="flex-1 font-stencil text-base bg-teal-600 hover:bg-teal-500 text-stone-950 px-4 py-2.5 tracking-wide transition-colors">
+                FILE IT
+              </button>
+              <button onClick={() => setShowFilePrompt(false)} className="flex-1 font-stencil text-base border-2 border-stone-600 hover:border-stone-400 text-stone-300 px-4 py-2.5 tracking-wide transition-colors">
+                KEEP ORGANIZING
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {phase === "filed" && (
+        <div className="max-w-xl mx-auto px-6 py-16 text-center anim-rise">
+          <div className="font-stencil text-4xl mb-3 text-amber-400">THE PETITION IS IN</div>
+          <p className="text-stone-400 mb-4 leading-relaxed text-sm">
+            You demanded recognition with {signedCount} cards. The company declined, the way companies almost always do, and the
+            matter goes to the labor board. An election is scheduled for <span className="text-stone-100 font-bold">week {electionWeek}</span>.
+          </p>
+          <p className="text-stone-500 mb-6 leading-relaxed text-xs">
+            {CONSULTANT_NAME} is now on the floor full time. There will be a mandatory meeting every week between now and the ballot,
+            and he will sit down with everyone who looks like they might waver. You have {ELECTION_WEEKS} weeks and the same hours you always had.
+          </p>
+          <button onClick={() => setPhase("plan")} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
+            GET TO WORK
+          </button>
+        </div>
+      )}
+
+      {phase === "recognized" && (
+        <div className="max-w-xl mx-auto px-6 py-16 text-center anim-rise">
+          <div className="font-stencil text-5xl mb-2 text-teal-400">RECOGNIZED</div>
+          <div className="flex justify-center mb-3"><Stars count={act1Stars(wonOnWeek)} /></div>
+          <p className="text-amber-400 text-sm mb-5">{signedCount} of {ACT1_TOTAL_WORKERS} cards — {cardPct}% — in {wonOnWeek} weeks. No election needed.</p>
+          <p className="text-stone-400 mb-6 leading-relaxed text-sm">
+            The count was lopsided enough that fighting it looked worse than losing it. The company recognized the union
+            voluntarily rather than spend three months and a consultant's retainer losing an election everyone could already see coming.
+            This is the outcome almost nobody gets, and the only way to get it is to be overwhelming.
+          </p>
+          <div className="text-left border border-teal-900 bg-teal-950/20 p-3 mb-6">
+            <div className="text-[10px] text-teal-400 font-bold mb-2 tracking-wide">THE COMMITTEE THAT GOT IT THERE:</div>
+            {organizers.map(w => (
+              <div key={w.id} className="text-xs text-stone-300 mb-1"><span className="font-bold text-stone-100">{w.name}</span> — {w.hook}</div>
+            ))}
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            <button onClick={() => graduate(true)} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">GET CALLED UP</button>
+            <button onClick={startOver} className="font-stencil text-xl border-2 border-stone-700 hover:border-stone-500 text-stone-300 px-8 py-3 tracking-wide transition-colors">RUN IT AGAIN</button>
+          </div>
+        </div>
+      )}
+
+      {phase === "defeat" && voteResult && (
+        <div className="max-w-xl mx-auto px-6 py-16 text-center anim-rise">
+          <div className="font-stencil text-5xl mb-3 text-red-500">THE VOTE COMES BACK NO</div>
+          <div className="flex items-center justify-center gap-6 mb-5 font-mono">
+            <div><div className="text-[10px] text-stone-500">YES</div><div className="text-3xl font-bold text-teal-400">{voteResult.yes}</div></div>
+            <div><div className="text-[10px] text-stone-500">NO</div><div className="text-3xl font-bold text-red-500">{voteResult.no}</div></div>
+            <div><div className="text-[10px] text-stone-500">DIDN'T VOTE</div><div className="text-3xl font-bold text-stone-500">{voteResult.out}</div></div>
+          </div>
+          <p className="text-stone-400 mb-4 leading-relaxed text-sm">
+            {voteResult.out > voteResult.yes
+              ? `More people stayed at their desks than voted yes. Every one of them was a vote you could have had.`
+              : `It came down to the ballots cast, and there weren't enough of them.`}
+            {" "}Under labor law there's no second attempt for a year. The committee holds, quietly, and waits.
+          </p>
+          <p className="text-stone-500 mb-6 leading-relaxed text-xs">
+            Thirty percent gets you an election. It doesn't win one. Between the petition and the ballot the company
+            got four uninterrupted weeks with everyone you hadn't locked down — and a signature on a card was never the same
+            thing as a yes in a booth.
+          </p>
+          <button onClick={startOver} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
+            START OVER
+          </button>
+        </div>
+      )}
+
+            {selectedWorker && phase === "plan" && (
         <Act1WorkerModal
           worker={workers.find(w => w.id === selectedWorker.id) || selectedWorker}
           allWorkers={workers}
