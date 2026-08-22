@@ -1504,7 +1504,7 @@ function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
 const ACT1_CARD_THRESHOLD = 0.30;
 const ACT1_HOURS_PER_ORGANIZER = 3;
 // There is no deadline. The level is scored on speed: beat it in this many weeks or fewer.
-const ACT1_STAR_WEEKS = { three: 7, two: 10 };
+const ACT1_STAR_WEEKS = { three: 8, two: 11 };
 const ACT1_RECRUIT_REQ = 85;
 function act1Stars(week) {
   if (week <= ACT1_STAR_WEEKS.three) return 3;
@@ -1568,6 +1568,38 @@ const ACT1_WORKERS_SEED = [
   { id: 20, name: "Delphine", team: "production", trait: "antiunion", support: 22, fulfillment: 88, hook: "Narrative lead, four years inside this world. Thinks a union fight will slow the ship down right when the game finally needs to land." },
 ];
 
+// ---------- THE UNION-AVOIDANCE CONSULTANT ----------
+// Management's real counter-campaign isn't a poster: it's a paid professional running the
+// same playbook the player runs — one-on-ones with the people closest to signing, plus the
+// two set pieces every organizer has seen. Gated behind a committee that's clearly working,
+// because the early game is hard enough without it.
+const CONSULTANT_NAME = "Kirkman";
+const CONSULTANT_FIRM = "Meridian Workplace Strategies";
+const CONSULTANT_TRIGGER_COMMITTEE = 4;
+const CONSULTANT_SETPIECE_GAP = 3;
+const CONSULTANT_MAX_EACH = 2;
+
+const CONSULTANT_ONE_ON_ONES = [
+  (n) => `${CONSULTANT_NAME} books ${n} for a "listening session." Twenty minutes, no witnesses, and a lot of concern about what dues would cost them.`,
+  (n) => `${CONSULTANT_NAME} catches ${n} alone and walks them through a slide deck about "what you give up when a third party speaks for you."`,
+  (n) => `${CONSULTANT_NAME} asks ${n} whether they've actually read what they'd be signing. They haven't. He has a copy ready.`,
+  (n) => `${CONSULTANT_NAME} tells ${n} he's heard great things about them, and that people who are going places usually keep their heads down right now.`,
+];
+
+const CONSULTANT_NAME_UC = CONSULTANT_NAME.toUpperCase();
+
+// How much backing a worker has from people who've already signed. Somebody surrounded by
+// organizers has been inoculated — they've heard all of this before, from someone they
+// trust more. Somebody isolated is who the consultant peels off.
+function signedBacking(influence, workers, id) {
+  return incomingTies(influence, id)
+    .filter(t => {
+      const s = workers.find(x => x.id === t.id);
+      return s && s.signed && !s.burned;
+    })
+    .reduce((sum, t) => sum + t.weight, 0);
+}
+
 const ACT1_TOTAL_WORKERS = ACT1_WORKERS_SEED.length;
 const ACT1_CARDS_NEEDED = Math.ceil(ACT1_TOTAL_WORKERS * ACT1_CARD_THRESHOLD);
 
@@ -1626,6 +1658,8 @@ function makeAct1Workers() {
     burned: false,
     revealed: !!w.organizer, // you already know who your own two people reach
     shaken: 0,
+    underPressure: 0,
+    pressuredCount: 0,
     publicUses: { small: 0, medium: 0, large: 0 },
     quietWeeks: 0,
     askedRecently: 0,
@@ -2065,6 +2099,9 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
               {w.burned && (
                 <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#78716c" fontFamily="'Courier New', monospace">OUT OF PLAY</text>
               )}
+              {!w.burned && !hl && w.underPressure > 0 && (
+                <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#f87171" fontFamily="'Courier New', monospace">WORKED ON</text>
+              )}
 
               {hl && hl.delta !== 0 && !w.burned && (
                 // Inside the card, not floating above it: the note box for the same person
@@ -2156,6 +2193,7 @@ function ActOneGame({ onGraduate }) {
   const [workers, setWorkers] = useState(makeAct1Workers);
   const [planEntries, setPlanEntries] = useState([]); // {key, actorId, type, targetId?}
   const [heat, setHeat] = useState(0);
+  const [consultant, setConsultant] = useState({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0 });
   const [resolutionSteps, setResolutionSteps] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedWorker, setSelectedWorker] = useState(null);
@@ -2412,6 +2450,7 @@ function ActOneGame({ onGraduate }) {
     w.forEach(x => {
       if (x.askedRecently > 0) x.askedRecently -= 1;
       if (x.shaken > 0) x.shaken -= 1;
+      if (x.underPressure > 0) x.underPressure -= 1;
       if (x.signed || x.burned) { x.quietWeeks = 0; return; }
       x.quietWeeks = touched.has(x.id) ? 0 : x.quietWeeks + 1;
       if (x.quietWeeks >= 3 && x.support > 25) {
@@ -2462,6 +2501,131 @@ function ActOneGame({ onGraduate }) {
     }
     if (mgmtLines.length) steps.push({ label: "MANAGEMENT RESPONDS", sub: "Somebody upstairs is paying attention now.", workers: w.map(x => ({ ...x })), lines: mgmtLines });
 
+    // --- THE CONSULTANT ---
+    // Once the committee is clearly working, management stops improvising and hires
+    // someone. From then on there is a second organizer on the floor, working the same
+    // relationships in the opposite direction.
+    let consultantNext = { ...consultant };
+    const consultantLines = [];
+    const consultantNotes = {};
+    const consultantPulses = [];
+    const committeeNow = w.filter(x => x.organizer && !x.burned).length;
+    const signedForTrigger = w.filter(x => x.signed).length;
+
+    if (!consultantNext.active && (committeeNow >= CONSULTANT_TRIGGER_COMMITTEE || signedForTrigger >= ACT1_CARDS_NEEDED - 2)) {
+      consultantNext = { ...consultantNext, active: true, arrivedWeek: week };
+      consultantLines.push(`A consultant from ${CONSULTANT_FIRM} is on site by Wednesday. ${CONSULTANT_NAME} has a badge, a corner office nobody was using, and a list of names. This is what it looks like when management decides the campaign is real.`);
+    } else if (consultantNext.active) {
+      // One-on-ones: he works the people closest to signing, minus whoever is already
+      // surrounded by organizers. Density is the defence.
+      const marks = w
+        .filter(x => !x.signed && !x.burned && x.support >= 35)
+        .map(x => {
+          const backing = signedBacking(influence, w, x.id);
+          return { t: x, backing, score: x.support - backing * 0.35 };
+        })
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 2);
+
+      marks.forEach(({ t, backing }) => {
+        const resist = Math.min(5, Math.round(backing / 30));
+        const hit = Math.max(2, 8 - resist);
+        const before = t.support;
+        t.support = clamp(t.support - hit);
+        t.underPressure = 2;
+        t.pressuredCount = (t.pressuredCount || 0) + 1;
+        consultantNotes[t.id] = `${CONSULTANT_NAME_UC} works on them`;
+        consultantLines.push(
+          `${CONSULTANT_ONE_ON_ONES[rand(CONSULTANT_ONE_ON_ONES.length)](t.name)} Support ${before} → ${t.support}.${resist >= 3 ? ` It lands softer than he expected — ${t.name} has heard all of it already, from people they trust more.` : ""}`
+        );
+        t.history.push(`Week ${week}: ${CONSULTANT_NAME} worked on them (-${before - t.support} support).`);
+      });
+
+      // Set pieces, spaced out: the raise and the threat.
+      const sinceLast = week - (consultantNext.lastSetPiece || 0);
+      if (sinceLast >= CONSULTANT_SETPIECE_GAP) {
+        const canRaise = consultantNext.raises < CONSULTANT_MAX_EACH;
+        const canThreat = consultantNext.threats < CONSULTANT_MAX_EACH;
+        const threatPool = w.filter(x => x.organizer && !x.burned);
+        const raisePool = w.filter(x => !x.burned && !x.organizer && (x.signed || x.support >= 55));
+        const doThreat = canThreat && threatPool.length > 1 && (!canRaise || !raisePool.length || Math.random() < 0.5);
+
+        if (doThreat) {
+          // He goes after the most isolated committee member, not the least convinced —
+          // conviction is high on the committee by definition. What decides whether
+          // somebody folds under a job threat is whether they're standing alone.
+          const markBacking = (x) => signedBacking(influence, w, x.id);
+          const mark = [...threatPool].sort((a, b) => markBacking(a) - markBacking(b))[0];
+          const foldChance = Math.max(0.1, Math.min(0.5, 0.5 - markBacking(mark) / 300));
+          consultantNext = { ...consultantNext, threats: consultantNext.threats + 1, lastSetPiece: week };
+          if (Math.random() < foldChance) {
+            mark.organizer = false;
+            mark.support = clamp(mark.support - 25);
+            mark.underPressure = 2;
+            consultantNotes[mark.id] = "STEPS BACK";
+            consultantLines.push(`${mark.name} is walked into a room with ${CONSULTANT_NAME} and their manager and asked, carefully, whether they've thought about how this looks on a performance file. Nothing actionable is said. ${mark.name} steps off the committee.`);
+            mark.history.push(`Week ${week}: pressured off the committee.`);
+            outgoingTies(influence, mark.id).forEach(t => {
+              const other = byId(t.id);
+              if (!other || other.burned || other.signed) return;
+              bump(other, -Math.round((t.weight / 100) * 5));
+              consultantPulses.push({ from: mark.id, to: t.id, tone: "down" });
+            });
+          } else {
+            mark.support = clamp(mark.support + 5);
+            heatNext = clamp(heatNext + 8);
+            consultantNotes[mark.id] = "DOESN'T BLINK";
+            consultantLines.push(`${CONSULTANT_NAME} asks ${mark.name} how this will look on their performance file. ${mark.name} writes down the date, the time, and who was in the room — and tells everyone. Threatening someone's job over a union is illegal, and now it's documented.`);
+            mark.history.push(`Week ${week}: threatened, didn't budge, and put it on the record.`);
+            outgoingTies(influence, mark.id).forEach(t => {
+              const other = byId(t.id);
+              if (!other || other.burned || other.signed) return;
+              bump(other, Math.round((t.weight / 100) * 6));
+              consultantPulses.push({ from: mark.id, to: t.id, tone: "up" });
+            });
+          }
+        } else if (canRaise && raisePool.length) {
+          const mark = [...raisePool].sort((a, b) => a.support - b.support)[0];
+          const takeChance = Math.min(0.7, Math.max(0.05, (100 - mark.support) / 60));
+          consultantNext = { ...consultantNext, raises: consultantNext.raises + 1, lastSetPiece: week };
+          if (Math.random() < takeChance) {
+            const wasSigned = mark.signed;
+            mark.signed = false;
+            mark.support = clamp(mark.support - 35);
+            mark.underPressure = 2;
+            heatNext = clamp(heatNext - 5);
+            consultantNotes[mark.id] = wasSigned ? "PULLS THEIR CARD" : "TAKES THE OFFER";
+            consultantLines.push(`${mark.name} is offered a title bump and a number that solves a real problem at home. They take it.${wasSigned ? " Their card comes off the table." : ""} Nobody in the room blames them, which is the worst part.`);
+            mark.history.push(`Week ${week}: took the raise${wasSigned ? " and withdrew their card" : ""}.`);
+          } else {
+            mark.support = clamp(mark.support + 8);
+            heatNext = clamp(heatNext + 6);
+            consultantNotes[mark.id] = "TURNS IT DOWN";
+            consultantLines.push(`${mark.name} is offered a title bump and a raise, quietly, a week after signing on. They turn it down and repeat the offer out loud in the kitchen. Buying one person is cheap; getting caught at it is not.`);
+            mark.history.push(`Week ${week}: refused a raise meant to buy them off, and said so publicly.`);
+            outgoingTies(influence, mark.id).forEach(t => {
+              const other = byId(t.id);
+              if (!other || other.burned || other.signed) return;
+              bump(other, Math.round((t.weight / 100) * 6));
+              consultantPulses.push({ from: mark.id, to: t.id, tone: "up" });
+            });
+          }
+        }
+      }
+    }
+    if (consultantLines.length) {
+      steps.push({
+        label: consultantNext.arrivedWeek === week ? "A CONSULTANT ARRIVES" : `${CONSULTANT_NAME_UC} WORKS THE FLOOR`,
+        sub: consultantNext.arrivedWeek === week
+          ? "Management stops improvising and starts paying someone."
+          : "The same playbook you're running, pointed the other way.",
+        workers: w.map(x => ({ ...x })),
+        lines: consultantLines,
+        notes: consultantNotes,
+        edgePulses: consultantPulses,
+      });
+    }
+
     const signedNow = w.filter(x => x.signed).length;
     steps.push({
       label: "END OF WEEK",
@@ -2473,13 +2637,14 @@ function ActOneGame({ onGraduate }) {
     setResolutionSteps(steps);
     setStepIndex(0);
     setPhase("resolving");
-    pendingRef.current = { workers: w, heat: heatNext, won: signedNow >= ACT1_CARDS_NEEDED };
+    pendingRef.current = { workers: w, heat: heatNext, consultant: consultantNext, won: signedNow >= ACT1_CARDS_NEEDED };
   }
 
   function commitWeek() {
-    const { workers: w, heat: h, won } = pendingRef.current;
+    const { workers: w, heat: h, consultant: c, won } = pendingRef.current;
     setWorkers(w);
     setHeat(h);
+    setConsultant(c);
     setPlanEntries([]);
     if (won) {
       setWonOnWeek(week);
@@ -2495,6 +2660,7 @@ function ActOneGame({ onGraduate }) {
     setWorkers(makeAct1Workers());
     setPlanEntries([]);
     setHeat(0);
+    setConsultant({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0 });
     setResolutionSteps([]);
     setStepIndex(0);
     setSelectedWorker(null);
@@ -2542,6 +2708,13 @@ function ActOneGame({ onGraduate }) {
               <div className="text-stone-500 text-[10px] flex items-center gap-1"><Eye size={11} /> HEAT</div>
               <div className={`text-lg font-bold ${heat >= 60 ? "text-red-500" : heat >= 35 ? "text-amber-400" : "text-teal-400"}`}>{heat}</div>
             </div>
+            {consultant.active && (
+              <div className="text-center">
+                <div className="text-stone-500 text-[10px] flex items-center gap-1"><AlertTriangle size={11} /> ON SITE</div>
+                <div className="text-lg font-bold text-red-500">{CONSULTANT_NAME.toUpperCase()}</div>
+                <div className="text-[9px] text-stone-600">since week {consultant.arrivedWeek}</div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2606,6 +2779,17 @@ function ActOneGame({ onGraduate }) {
             </div>
           )}
 
+          {consultant.active && (
+            <div className="mb-4 flex items-start gap-2 text-red-300 text-xs border border-red-800 bg-red-950/30 px-3 py-2">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <span>
+                <span className="font-bold text-red-400">{CONSULTANT_NAME.toUpperCase()} IS ON SITE.</span> Management is paying a union-avoidance
+                consultant, and he runs your playbook backwards — one-on-ones with whoever is closest to signing, plus a raise for
+                the wavering and a quiet word about someone's performance file. He picks off the isolated: a worker with signed
+                coworkers who carry real weight with them has heard it all before and barely moves. Density is the defence.
+              </span>
+            </div>
+          )}
           <Act1FloorMap
             workers={workers}
             influence={influence}
@@ -2742,6 +2926,7 @@ function ActOneGame({ onGraduate }) {
           hoursFor={hoursFor}
           unlockPublic={unlockPublic}
           unlockMapping={unlockMapping}
+          consultantActive={consultant.active}
           onPlan={(actorId, type, targetId) => { addPlan(actorId, type, targetId); setSelectedWorker(null); }}
           onClose={() => setSelectedWorker(null)}
         />
@@ -2781,7 +2966,7 @@ function ActOneGame({ onGraduate }) {
   );
 }
 
-function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftFor, hoursFor, unlockPublic, unlockMapping, onPlan, onClose }) {
+function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftFor, hoursFor, unlockPublic, unlockMapping, consultantActive = false, onPlan, onClose }) {
   const others = organizers.filter(o => o.id !== worker.id);
   const [actorId, setActorId] = useState(() => {
     if (worker.organizer) return worker.id;
@@ -2872,6 +3057,18 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                 <span className="text-stone-600 italic">Who moves them is unmapped — every number below is an estimate until you find out.</span>
               )}
             </div>
+            {consultantActive && !worker.signed && !worker.burned && (() => {
+              // What actually protects someone from the consultant: signed coworkers who
+              // carry weight with them. Show it where the player is choosing who to work on.
+              const backing = signedBacking(influence, allWorkers, worker.id);
+              const shield = backing >= 90 ? "well covered" : backing >= 45 ? "partly covered" : "exposed";
+              return (
+                <div className={`text-[10px] mt-1.5 border-t border-stone-800 pt-1.5 ${backing >= 45 ? "text-stone-400" : "text-red-400"}`}>
+                  Against {CONSULTANT_NAME}: <span className="font-bold">{shield}</span> — {backing} points of influence on them comes from people who've already signed.
+                  {worker.pressuredCount > 0 && ` ${CONSULTANT_NAME} has worked on them ${worker.pressuredCount === 1 ? "once" : `${worker.pressuredCount} times`} so far.`}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
