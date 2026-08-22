@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { AlertTriangle, Eye, Zap, Scale, Vote, X, CheckCircle2, FileWarning, Wrench, MessageCircle, Radio, Megaphone, HandCoins, UsersRound, Brain } from "lucide-react";
 
 // ---------- FONTS / GLOBAL STYLE ----------
@@ -1762,80 +1762,97 @@ function Stars({ count, size = "text-3xl" }) {
   );
 }
 
-// ---------- FLOOR MAP (Act One board) ----------
-const ACT1_MAP_W = 200;
-const ACT1_MAP_H = 128;
+// ---------- THE ORG CHART (Act One board) ----------
+// The chart is the company's own picture of itself: teams, boxes, reporting lines.
+// The influence arrows drawn on top of it are the real structure, and the whole point
+// is that they don't respect the boxes. Organizing runs on the second map, not the first.
 const EDGE_MIN_DRAW = 20;
+const ORG_CARD_W = 42;
+const ORG_CARD_H = 22;
+const ORG_COL_GAP = 3;
+const ORG_ROW_GAP = 4.5;
+const ORG_TEAM_GAP = 13;
+const ORG_MARGIN = 6;
+const ORG_TEAM_COLS = 2;
+const ORG_ROOT_H = 12;
+const ORG_HEADER_H = 11;
+const EDGE_SAME_TEAM = "#6b625c";
+const EDGE_CROSS_TEAM = "#e7e5e4";
 
-// Small force-directed layout so people who move each other cluster together. Runs once
-// per campaign (the influence map never changes mid-run), so the floor stays put.
-function computeFloorLayout(workers, influence) {
-  const n = workers.length;
-  const pos = workers.map((w, i) => ({
-    id: w.id,
-    x: ACT1_MAP_W / 2 + 74 * Math.cos((2 * Math.PI * i) / n),
-    y: ACT1_MAP_H / 2 + 46 * Math.sin((2 * Math.PI * i) / n),
-  }));
-  const idx = Object.fromEntries(pos.map((p, i) => [p.id, i]));
-  for (let iter = 0; iter < 320; iter++) {
-    const fx = new Array(n).fill(0);
-    const fy = new Array(n).fill(0);
-    for (let i = 0; i < n; i++) {
-      for (let j = i + 1; j < n; j++) {
-        const dx = pos[i].x - pos[j].x;
-        const dy = pos[i].y - pos[j].y;
-        const d2 = Math.max(0.01, dx * dx + dy * dy);
-        const d = Math.sqrt(d2);
-        const rep = 780 / d2;
-        fx[i] += (dx / d) * rep; fy[i] += (dy / d) * rep;
-        fx[j] -= (dx / d) * rep; fy[j] -= (dy / d) * rep;
-      }
-    }
-    workers.forEach(w => {
-      const i = idx[w.id];
-      outgoingTies(influence, w.id).forEach(t => {
-        const j = idx[t.id];
-        if (j === undefined) return;
-        const k = 0.008 + 0.022 * (t.weight / 100);
-        const dx = pos[j].x - pos[i].x;
-        const dy = pos[j].y - pos[i].y;
-        fx[i] += dx * k; fy[i] += dy * k;
-        fx[j] -= dx * k; fy[j] -= dy * k;
-      });
+// Fixed layout — the org chart never moves, so the player learns one stable picture of
+// the floor instead of re-reading a new arrangement every week.
+function computeOrgLayout(seed) {
+  const teams = Object.keys(TEAM_LABEL);
+  const blockW = ORG_TEAM_COLS * ORG_CARD_W + (ORG_TEAM_COLS - 1) * ORG_COL_GAP;
+  const width = ORG_MARGIN * 2 + teams.length * blockW + (teams.length - 1) * ORG_TEAM_GAP;
+  const rootY = 2;
+  const headerY = rootY + ORG_ROOT_H + 11;
+  const gridY = headerY + ORG_HEADER_H + 6;
+
+  const cards = {};
+  const teamBoxes = {};
+  let maxRows = 0;
+  teams.forEach((team, ti) => {
+    const bx = ORG_MARGIN + ti * (blockW + ORG_TEAM_GAP);
+    const members = seed.filter(w => w.team === team);
+    const rows = Math.ceil(members.length / ORG_TEAM_COLS);
+    maxRows = Math.max(maxRows, rows);
+    teamBoxes[team] = {
+      x: bx, y: headerY, w: blockW, h: ORG_HEADER_H,
+      cx: bx + blockW / 2, cy: headerY + ORG_HEADER_H / 2,
+      spineX: bx + blockW / 2,
+      spineEndY: gridY + (rows - 1) * (ORG_CARD_H + ORG_ROW_GAP) + ORG_CARD_H / 2,
+      count: members.length,
+    };
+    members.forEach((m, i) => {
+      const col = i % ORG_TEAM_COLS;
+      const row = Math.floor(i / ORG_TEAM_COLS);
+      const x = bx + col * (ORG_CARD_W + ORG_COL_GAP);
+      const y = gridY + row * (ORG_CARD_H + ORG_ROW_GAP);
+      cards[m.id] = { x, y, w: ORG_CARD_W, h: ORG_CARD_H, cx: x + ORG_CARD_W / 2, cy: y + ORG_CARD_H / 2, team, col };
     });
-    for (let i = 0; i < n; i++) {
-      fx[i] += (ACT1_MAP_W / 2 - pos[i].x) * 0.006;
-      fy[i] += (ACT1_MAP_H / 2 - pos[i].y) * 0.011;
-      pos[i].x = Math.max(13, Math.min(ACT1_MAP_W - 13, pos[i].x + fx[i] * 0.5));
-      pos[i].y = Math.max(11, Math.min(ACT1_MAP_H - 14, pos[i].y + fy[i] * 0.5));
-    }
-  }
-  return Object.fromEntries(pos.map(p => [p.id, { x: p.x, y: p.y }]));
+  });
+
+  const height = gridY + maxRows * ORG_CARD_H + (maxRows - 1) * ORG_ROW_GAP + 3;
+  const root = { x: width / 2 - 32, y: rootY, w: 64, h: ORG_ROOT_H, cx: width / 2, cy: rootY + ORG_ROOT_H / 2 };
+  return { cards, teamBoxes, root, width, height, headerY, gridY };
 }
 
-function Act1FloorMap({ workers, influence, layout, planEntries = [], onSelect, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null }) {
+const ORG_LAYOUT = computeOrgLayout(ACT1_WORKERS_SEED);
+
+// Where a line from a card's centre crosses that card's border, so arrows start and end
+// at the box edge instead of disappearing underneath it.
+function cardEdgePoint(card, dx, dy, pad = 0) {
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+  const tx = adx > 1e-6 ? (card.w / 2 + pad) / adx : Infinity;
+  const ty = ady > 1e-6 ? (card.h / 2 + pad) / ady : Infinity;
+  const t = Math.min(tx, ty);
+  return { x: card.cx + dx * t, y: card.cy + dy * t };
+}
+
+function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [], onSelect, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null }) {
   const [hoverId, setHoverId] = useState(null);
   const anyRevealed = workers.some(w => w.revealed && !w.organizer);
   const active = hoverId != null ? hoverId : focusId;
 
-  // An influence line is visible once you've mapped the person on the receiving end —
-  // mapping the floor is finding out who listens to whom, not who talks.
+  // An influence line is visible once either end is known to you — you can see your own
+  // people's reach from day one, and mapping the floor reveals everyone else's.
   const edges = [];
   workers.forEach(a => {
     outgoingTies(influence, a.id).forEach(t => {
       const b = workers.find(x => x.id === t.id);
       if (!b || t.weight < EDGE_MIN_DRAW) return;
       if (!influenceKnown(a, b)) return;
-      edges.push({ from: a, to: b, weight: t.weight });
+      edges.push({ from: a, to: b, weight: t.weight, crossTeam: a.team !== b.team });
     });
   });
+  const crossCount = edges.filter(e => e.crossTeam).length;
 
-  const nodeRadius = (w) => 4.2 + Math.min(4, knownInfluence(influence, workers, w.id) / 55);
-  const plannedTargets = {};
+  const plannedByWorker = {};
   planEntries.forEach(e => {
     const key = e.targetId != null ? e.targetId : e.actorId;
-    if (!plannedTargets[key]) plannedTargets[key] = [];
-    plannedTargets[key].push(ACT1_ACTION[e.type].short);
+    if (!plannedByWorker[key]) plannedByWorker[key] = [];
+    plannedByWorker[key].push(ACT1_ACTION[e.type].short);
   });
   const planArrows = planEntries.filter(e => e.targetId != null);
 
@@ -1843,6 +1860,10 @@ function Act1FloorMap({ workers, influence, layout, planEntries = [], onSelect, 
   const hoveredOut = hovered ? outgoingTies(influence, hovered.id).filter(t => influenceKnown(hovered, workers.find(w => w.id === t.id))) : [];
   const hoveredIn = hovered && hovered.revealed ? incomingTies(influence, hovered.id) : [];
   const nameOf = (id) => workers.find(w => w.id === id)?.name || "?";
+  const teamOf = (id) => workers.find(w => w.id === id)?.team;
+
+  const connectedToActive = (id) =>
+    active != null && (id === active || edges.some(e => (e.from.id === active && e.to.id === id) || (e.to.id === active && e.from.id === id)));
 
   return (
     <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
@@ -1855,93 +1876,131 @@ function Act1FloorMap({ workers, influence, layout, planEntries = [], onSelect, 
               {t.label}
             </span>
           ))}
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block rounded-full bg-stone-500" style={{ width: 5, height: 5 }} />
-            <span className="inline-block rounded-full bg-stone-500" style={{ width: 10, height: 10 }} />
-            SIZE = MAPPED INFLUENCE
-          </span>
           <span className="flex items-center gap-1">
             <span className="inline-block" style={{ width: 3, height: 8, backgroundColor: FULFILL_HEX }} />
-            BAR = FULFILLMENT
+            FULFILLMENT
           </span>
         </div>
       </div>
       <div className="flex items-center gap-3 text-[9px] text-stone-500 flex-wrap px-3 pb-1">
-        <span className="text-stone-600">TEAM:</span>
-        {Object.keys(TEAM_LABEL).map(t => (
-          <span key={t} className="flex items-center gap-1">
-            <span className="inline-block w-2 h-2" style={{ backgroundColor: TEAM_HEX[t] }} />
-            {TEAM_LABEL[t]}
-          </span>
-        ))}
-        <span className="flex items-center gap-1 ml-2">
-          <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-amber-400" />
+        <span className="flex items-center gap-1">
+          <span className="inline-block" style={{ width: 12, height: 2, backgroundColor: EDGE_SAME_TEAM }} />
+          INFLUENCE WITHIN A TEAM
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block" style={{ width: 12, height: 2, backgroundColor: EDGE_CROSS_TEAM }} />
+          INFLUENCE ACROSS TEAMS
+        </span>
+        <span className="flex items-center gap-1 ml-1">
+          <span className="inline-block w-2.5 h-2.5 border-2 border-amber-400" />
           YOURS TO DIRECT
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-teal-400" />
+          <span className="inline-block w-2.5 h-2.5 border-2 border-teal-400" />
           SIGNED A CARD
         </span>
       </div>
-      <svg viewBox={`0 0 ${ACT1_MAP_W} ${ACT1_MAP_H}`} className="w-full block select-none">
+
+      <svg viewBox={`0 0 ${layout.width} ${layout.height}`} className="w-full block select-none">
         <defs>
-          <marker id="inf-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-            <path d="M 0 0 L 6 3 L 0 6 z" fill="#78716c" />
+          <marker id="org-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+            <path d="M 0 0 L 6 3 L 0 6 z" fill={EDGE_SAME_TEAM} />
           </marker>
-          <marker id="inf-arrow-hot" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+          <marker id="org-arrow-cross" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+            <path d="M 0 0 L 6 3 L 0 6 z" fill={EDGE_CROSS_TEAM} />
+          </marker>
+          <marker id="org-arrow-hot" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
             <path d="M 0 0 L 6 3 L 0 6 z" fill="#fbbf24" />
           </marker>
         </defs>
 
+        {/* ---- the company's own chart: reporting lines, drawn underneath everything ---- */}
+        <g stroke="#3a3330" strokeWidth="0.5" fill="none">
+          <line x1={layout.root.cx} y1={layout.root.y + layout.root.h} x2={layout.root.cx} y2={layout.headerY - 5.5} />
+          <line
+            x1={layout.teamBoxes[Object.keys(TEAM_LABEL)[0]].cx}
+            y1={layout.headerY - 5.5}
+            x2={layout.teamBoxes[Object.keys(TEAM_LABEL)[Object.keys(TEAM_LABEL).length - 1]].cx}
+            y2={layout.headerY - 5.5}
+          />
+          {Object.values(layout.teamBoxes).map((tb, i) => (
+            <line key={`drop-${i}`} x1={tb.cx} y1={layout.headerY - 5.5} x2={tb.cx} y2={tb.y} />
+          ))}
+          {Object.values(layout.teamBoxes).map((tb, i) => (
+            <line key={`spine-${i}`} x1={tb.spineX} y1={tb.y + tb.h} x2={tb.spineX} y2={tb.spineEndY} />
+          ))}
+          {workers.map(w => {
+            const c = layout.cards[w.id];
+            const tb = layout.teamBoxes[c.team];
+            if (!c || !tb) return null;
+            const innerX = c.col === 0 ? c.x + c.w : c.x;
+            return <line key={`stub-${w.id}`} x1={tb.spineX} y1={c.cy} x2={innerX} y2={c.cy} />;
+          })}
+        </g>
+
+        <rect x={layout.root.x} y={layout.root.y} width={layout.root.w} height={layout.root.h} rx="1" fill="#1c1917" stroke="#44403c" strokeWidth="0.5" />
+        <text x={layout.root.cx} y={layout.root.y + 5} textAnchor="middle" fontSize="3.6" fill="#a8a29e" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.3">THE STUDIO</text>
+        <text x={layout.root.cx} y={layout.root.y + 9.5} textAnchor="middle" fontSize="2.6" fill="#57534e" fontFamily="'Courier New', monospace">{workers.length} WORKERS · PL-A-EYE RUNS THE FLOOR</text>
+
+        {Object.entries(layout.teamBoxes).map(([team, tb]) => (
+          <g key={team}>
+            <rect x={tb.x} y={tb.y} width={tb.w} height={tb.h} rx="1" fill="#1c1917" stroke={TEAM_HEX[team]} strokeWidth="0.5" strokeOpacity="0.7" />
+            <rect x={tb.x} y={tb.y} width={tb.w} height="1.4" fill={TEAM_HEX[team]} fillOpacity="0.8" />
+            <text x={tb.cx} y={tb.y + 7.4} textAnchor="middle" fontSize="4" fill="#d6d3d1" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.25">{TEAM_LABEL[team]}</text>
+          </g>
+        ))}
+
+        {/* ---- the real structure, drawn on top of the official one ---- */}
         {edges.map((e, i) => {
-          const a = layout[e.from.id];
-          const b = layout[e.to.id];
+          const a = layout.cards[e.from.id];
+          const b = layout.cards[e.to.id];
           if (!a || !b) return null;
-          const dx = b.x - a.x, dy = b.y - a.y;
-          const d = Math.max(0.01, Math.sqrt(dx * dx + dy * dy));
-          const rA = nodeRadius(e.from) + 0.8;
-          const rB = nodeRadius(e.to) + 2.4;
-          const x1 = a.x + (dx / d) * rA, y1 = a.y + (dy / d) * rA;
-          const x2 = b.x - (dx / d) * rB, y2 = b.y - (dy / d) * rB;
+          const dx = b.cx - a.cx, dy = b.cy - a.cy;
+          const p1 = cardEdgePoint(a, dx, dy, 0.4);
+          const p2 = cardEdgePoint(b, -dx, -dy, 1.8);
           const hot = active != null && (e.from.id === active || e.to.id === active);
+          const dim = active != null && !hot;
           return (
             <line
               key={i}
-              x1={x1} y1={y1} x2={x2} y2={y2}
-              stroke={hot ? "#fbbf24" : "#57534e"}
-              strokeWidth={(hot ? 0.35 : 0.18) + (e.weight / 100) * 0.7}
-              strokeOpacity={active != null && !hot ? 0.18 : 0.75}
-              markerEnd={hot ? "url(#inf-arrow-hot)" : "url(#inf-arrow)"}
+              x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+              stroke={hot ? "#fbbf24" : e.crossTeam ? EDGE_CROSS_TEAM : EDGE_SAME_TEAM}
+              strokeWidth={(hot ? 0.6 : e.crossTeam ? 0.44 : 0.28) + (e.weight / 100) * 0.7}
+              strokeOpacity={dim ? 0.14 : e.crossTeam ? 1 : 0.6}
+              markerEnd={hot ? "url(#org-arrow-hot)" : e.crossTeam ? "url(#org-arrow-cross)" : "url(#org-arrow)"}
             />
           );
         })}
 
         {planArrows.map((e, i) => {
-          const a = layout[e.actorId];
-          const b = layout[e.targetId];
+          const a = layout.cards[e.actorId];
+          const b = layout.cards[e.targetId];
           if (!a || !b) return null;
-          const dx = b.x - a.x, dy = b.y - a.y;
-          const d = Math.max(0.01, Math.sqrt(dx * dx + dy * dy));
+          const dx = b.cx - a.cx, dy = b.cy - a.cy;
+          const p1 = cardEdgePoint(a, dx, dy, 0.8);
+          const p2 = cardEdgePoint(b, -dx, -dy, 2.2);
           return (
             <line
               key={`plan-${i}`}
-              x1={a.x + (dx / d) * 6} y1={a.y + (dy / d) * 6}
-              x2={b.x - (dx / d) * 7} y2={b.y - (dy / d) * 7}
-              stroke="#f59e0b" strokeWidth="0.55" strokeDasharray="1.6 1.2" strokeOpacity="0.9"
-              markerEnd="url(#inf-arrow-hot)"
+              x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+              stroke="#f59e0b" strokeWidth="0.5" strokeDasharray="1.6 1.2" strokeOpacity="0.95"
+              markerEnd="url(#org-arrow-hot)"
             />
           );
         })}
 
         {edgePulses.map((ev, i) => {
-          const a = layout[ev.from];
-          const b = layout[ev.to];
+          const a = layout.cards[ev.from];
+          const b = layout.cards[ev.to];
           if (!a || !b) return null;
+          const dx = b.cx - a.cx, dy = b.cy - a.cy;
+          const p1 = cardEdgePoint(a, dx, dy, 0.4);
+          const p2 = cardEdgePoint(b, -dx, -dy, 1.5);
           return (
             <line
               key={`pulse-${stepKey}-${i}`}
               className="edge-pulse"
-              x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+              x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
               pathLength="20"
               stroke={ev.tone === "down" ? "#f87171" : "#2dd4bf"}
               strokeWidth="0.9"
@@ -1949,84 +2008,82 @@ function Act1FloorMap({ workers, influence, layout, planEntries = [], onSelect, 
           );
         })}
 
+        {/* ---- people ---- */}
         {workers.map(w => {
-          const p = layout[w.id];
-          if (!p) return null;
-          const r = nodeRadius(w);
+          const c = layout.cards[w.id];
+          if (!c) return null;
           const tier = supportTier(w.support);
           const hl = highlights ? highlights[w.id] : null;
-          const connected = active != null && (active === w.id || edges.some(e => (e.from.id === active && e.to.id === w.id) || (e.to.id === active && e.from.id === w.id)));
-          const dimOthers = active != null && !connected;
-          const planLabels = plannedTargets[w.id];
+          const planLabels = plannedByWorker[w.id];
+          const dim = active != null && !connectedToActive(w.id);
+          const border = w.burned ? "#44403c" : w.organizer ? "#f59e0b" : w.signed ? "#2dd4bf" : "#44403c";
+          const status = w.organizer ? "ON COMMITTEE" : w.signed ? "SIGNED" : "";
           return (
             <g
               key={w.id}
-              transform={`translate(${p.x} ${p.y})`}
-              opacity={w.burned ? 0.35 : dimOthers ? 0.4 : 1}
+              opacity={w.burned ? 0.4 : dim ? 0.35 : 1}
               className={w.burned ? "" : "cursor-pointer"}
               onClick={() => !w.burned && onSelect(w)}
               onMouseEnter={() => setHoverId(w.id)}
               onMouseLeave={() => setHoverId(null)}
             >
+              <rect x={c.x} y={c.y} width={c.w} height={c.h} rx="1.2" fill="#1c1917" stroke={border} strokeWidth={w.organizer || w.signed ? 0.75 : 0.5} />
+              <rect x={c.x} y={c.y} width="1.6" height={c.h} rx="0.4" fill={TEAM_HEX[w.team]} fillOpacity={w.burned ? 0.3 : 0.9} />
               {planLabels && !w.burned && (
-                <circle r={r + 2} fill="none" stroke="#f59e0b" strokeWidth="0.45" strokeDasharray="1.4 1" />
-              )}
-              {w.signed && !w.burned && (
-                <circle r={r + 1.2} fill="none" stroke="#2dd4bf" strokeWidth="0.55" strokeOpacity="0.85" />
-              )}
-              {w.organizer && !w.burned && (
-                <circle className="leader-pulse" r={r + 2.6} fill="none" stroke="#f59e0b" strokeWidth="0.5" strokeOpacity="0.6" />
+                <rect x={c.x - 1.3} y={c.y - 1.3} width={c.w + 2.6} height={c.h + 2.6} rx="1.6" fill="none" stroke="#f59e0b" strokeWidth="0.45" strokeDasharray="1.6 1.2" />
               )}
               {hl && (hl.signed || hl.burned) && (
-                <circle
+                <rect
                   key={`flash-${stepKey}-${w.id}`}
                   className="ring-flash"
-                  r={r + 3}
+                  x={c.x - 2} y={c.y - 2} width={c.w + 4} height={c.h + 4} rx="2"
                   fill="none"
                   stroke={hl.burned ? "#f87171" : "#2dd4bf"}
                 />
               )}
-              <circle r={r} fill="#1c1917" stroke={w.burned ? "#57534e" : tier.hex} strokeWidth="0.8" />
-              {!w.burned && (
-                <rect x={-(r + 1.4)} y={-(r + 1.4)} width="1.9" height="1.9" fill={TEAM_HEX[w.team]} />
+
+              <text x={c.x + 3.6} y={c.y + 6.6} fontSize="3.9" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{w.name.toUpperCase()}</text>
+              <text x={c.x + c.w - 2.6} y={c.y + 7.6} textAnchor="end" fontSize="5.6" fontWeight="bold" fill={w.burned ? "#57534e" : tier.hex} fontFamily="'Courier New', monospace">{w.burned ? "—" : w.support}</text>
+
+              <rect x={c.x + 3.6} y={c.y + 10.4} width="24" height="1.8" rx="0.5" fill="#292524" />
+              <rect x={c.x + 3.6} y={c.y + 10.4} width={24 * (w.fulfillment / 100)} height="1.8" rx="0.5" fill={FULFILL_HEX} fillOpacity={w.burned ? 0.3 : 0.85} />
+              <text x={c.x + 29.4} y={c.y + 12.1} fontSize="2.4" fill="#78716c" fontFamily="'Courier New', monospace">{w.fulfillment}</text>
+
+              {planLabels ? (
+                <text x={c.x + 3.6} y={c.y + 18} fontSize="2.6" fill="#fbbf24" fontFamily="'Courier New', monospace">{planLabels.join(" + ")}</text>
+              ) : status ? (
+                <text x={c.x + 3.6} y={c.y + 18} fontSize="2.6" fill={w.organizer ? "#f59e0b" : "#2dd4bf"} fontFamily="'Courier New', monospace">{status}</text>
+              ) : null}
+              {w.burned && (
+                <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#78716c" fontFamily="'Courier New', monospace">OUT OF PLAY</text>
               )}
-              {!w.burned && (
-                <g transform={`translate(${r + 1.1} ${-3})`}>
-                  <rect width="0.9" height="6" fill="#292524" />
-                  <rect y={6 - (6 * w.fulfillment) / 100} width="0.9" height={(6 * w.fulfillment) / 100} fill={FULFILL_HEX} />
-                </g>
-              )}
-              {w.burned ? (
-                <text textAnchor="middle" dominantBaseline="central" fontSize="4.2" fill="#78716c">✕</text>
-              ) : (
-                <text textAnchor="middle" dominantBaseline="central" fontSize="3.1" fill="#d6d3d1" fontFamily="'Courier New', monospace" fontWeight="bold">{w.support}</text>
-              )}
+
               {hl && hl.delta !== 0 && !w.burned && (
+                // Inside the card, not floating above it: the note box for the same person
+                // is drawn later in this group and would paint straight over a floating delta.
                 <text
                   key={`delta-${stepKey}-${w.id}`}
                   className="delta-float"
-                  textAnchor="middle"
-                  y={-(r + 2.2)}
-                  fontSize="3.2"
+                  x={c.x + c.w - 2.6}
+                  y={c.y + 18}
+                  textAnchor="end"
+                  fontSize="3.4"
                   fontWeight="bold"
                   fill={hl.delta > 0 ? "#2dd4bf" : "#f87171"}
                   fontFamily="'Courier New', monospace"
-                >{hl.delta > 0 ? "+" : ""}{hl.delta}</text>
-              )}
-              <text textAnchor="middle" y={r + 3.6} fontSize="3" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.1">{w.name.toUpperCase()}</text>
-              {planLabels && (
-                <text textAnchor="middle" y={r + 6.6} fontSize="2.3" fill="#fbbf24" fontFamily="'Courier New', monospace">{planLabels.join(" + ")}</text>
+                >{hl.delta > 0 ? "+" : ""}{hl.delta} support</text>
               )}
               {notes && notes[w.id] && (
                 <g key={`note-${stepKey}-${w.id}`} className="note-float">
-                  <rect x={-17} y={-(r + 12)} width={34} height={6.4} rx={1} fill="#1c1917" stroke="#57534e" strokeWidth="0.3" />
-                  <text x={0} y={-(r + 8.2)} textAnchor="middle" fontSize="2.4" fill="#e7e5e4" fontFamily="'Courier New', monospace">{truncateNote(notes[w.id], 26)}</text>
+                  <rect x={c.cx - 18} y={c.y - 8.6} width={36} height={6.6} rx={1} fill="#0c0a09" stroke="#57534e" strokeWidth="0.3" />
+                  <text x={c.cx} y={c.y - 4.2} textAnchor="middle" fontSize="2.5" fill="#e7e5e4" fontFamily="'Courier New', monospace">{truncateNote(notes[w.id], 27)}</text>
                 </g>
               )}
             </g>
           );
         })}
       </svg>
+
       <div className="border-t border-stone-800 px-3 py-2 min-h-[3.6rem]">
         {hovered ? (
           <div className="text-[10px] text-stone-400 leading-snug">
@@ -2035,22 +2092,30 @@ function Act1FloorMap({ workers, influence, layout, planEntries = [], onSelect, 
             <span className="text-stone-500"> — {hovered.hook}</span>
             <div className="mt-0.5">
               {hoveredOut.length > 0 ? (
-                <span className="text-stone-500">Moves: <span className="text-amber-400">{hoveredOut.map(t => `${nameOf(t.id)} (${t.weight})`).join(", ")}</span>. </span>
+                <span className="text-stone-500">Moves: <span className="text-amber-400">{hoveredOut.map(t => `${nameOf(t.id)}${teamOf(t.id) !== hovered.team ? " ↗" : ""} (${t.weight})`).join(", ")}</span>. </span>
               ) : (
                 <span className="text-stone-600 italic">No mapped influence on anyone yet. </span>
               )}
               {hovered.revealed ? (
-                <span className="text-stone-500">Moved by: <span className="text-stone-300">{hoveredIn.length ? hoveredIn.map(t => `${nameOf(t.id)} (${t.weight})`).join(", ") : "nobody in particular"}</span>.</span>
+                <span className="text-stone-500">Moved by: <span className="text-stone-300">{hoveredIn.length ? hoveredIn.map(t => `${nameOf(t.id)}${teamOf(t.id) !== hovered.team ? " ↗" : ""} (${t.weight})`).join(", ") : "nobody in particular"}</span>.</span>
               ) : (
                 <span className="text-stone-600 italic">Who moves them: unmapped.</span>
               )}
             </div>
           </div>
         ) : (
-          <div className="text-[10px] text-stone-600 italic">
-            {anyRevealed
-              ? "Arrows point from a person to whoever they can move; thicker means more influence. Numbers inside the circles are support. Click anyone to plan."
-              : "You can see who your own two people reach. The rest of the floor's web — who moves whom — stays invisible until you map it. Click anyone to plan."}
+          <div className="text-[10px] text-stone-500 leading-snug">
+            <div>
+              {anyRevealed
+                ? "The boxes are the company's chart. The arrows are who actually moves whom — they don't line up. Click anyone to plan."
+                : "The boxes are the company's chart. You can see who your own two people reach; the rest of the floor's influence is invisible until you map it. Click anyone to plan."}
+            </div>
+            {edges.length > 0 && (
+              <div className="text-stone-500 not-italic mt-0.5">
+                Of the {edges.length} influence {edges.length === 1 ? "line" : "lines"} you've mapped, <span className="text-stone-200 font-bold">{crossCount}</span> cross team boundaries.
+                {crossCount > 0 && " The org chart is not the map you organize on."}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2073,7 +2138,6 @@ function ActOneGame({ onGraduate }) {
   const pendingRef = useRef(null);
   const planKeyRef = useRef(0);
 
-  const floorLayout = useMemo(() => computeFloorLayout(ACT1_WORKERS_SEED.map(w => ({ ...w })), influence), [influence]);
 
   const organizers = workers.filter(w => w.organizer && !w.burned);
   // Burned workers stay counted: they signed, and the petition doesn't un-sign them.
@@ -2494,7 +2558,7 @@ function ActOneGame({ onGraduate }) {
           {week === 1 && (
             <div className="mb-4 flex items-start gap-2 text-stone-300 text-xs border border-stone-700 bg-stone-900/60 px-3 py-2">
               <MessageCircle size={14} className="shrink-0 mt-0.5" />
-              <span>Week one. Click anyone on the floor, pick which of your two people talks to them, and watch how much the choice of who matters. The number inside each circle is their support for unionizing.</span>
+              <span>Week one. The boxes are the company's org chart; the arrows over it are who actually moves whom. Click anyone, pick which of your two people talks to them, and watch how much the choice of who matters. The big number on each card is their support for unionizing.</span>
             </div>
           )}
           {unlockMapping && !anyRevealedBeyondStart && (
@@ -2519,7 +2583,7 @@ function ActOneGame({ onGraduate }) {
           <Act1FloorMap
             workers={workers}
             influence={influence}
-            layout={floorLayout}
+            layout={ORG_LAYOUT}
             planEntries={planEntries}
             onSelect={(w) => setSelectedWorker(w)}
           />
@@ -2580,7 +2644,7 @@ function ActOneGame({ onGraduate }) {
           <Act1FloorMap
             workers={resStep.workers}
             influence={influence}
-            layout={floorLayout}
+            layout={ORG_LAYOUT}
             planEntries={[]}
             onSelect={() => {}}
             highlights={resHighlights}
