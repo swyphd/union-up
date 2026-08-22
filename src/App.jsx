@@ -3189,7 +3189,7 @@ function ActOneGame({ onGraduate }) {
         <div className="max-w-xl mx-auto px-6 py-16 text-center anim-rise">
           <div className="font-stencil text-5xl mb-2 text-teal-400">RECOGNIZED</div>
           <div className="flex justify-center mb-3"><Stars count={act1Stars(wonOnWeek)} /></div>
-          <p className="text-amber-400 text-sm mb-5">{signedCount} of {ACT1_TOTAL_WORKERS} cards — {cardPct}% — in {wonOnWeek} weeks. No election needed.</p>
+          <p className="text-amber-400 text-sm mb-5">{signedCount} of {ACT1_TOTAL_WORKERS} cards — {cardPct}% — in {wonOnWeek} week{wonOnWeek === 1 ? "" : "s"}. No election needed.</p>
           <p className="text-stone-400 mb-6 leading-relaxed text-sm">
             The count was lopsided enough that fighting it looked worse than losing it. The company recognized the union
             voluntarily rather than spend three months and a consultant's retainer losing an election everyone could already see coming.
