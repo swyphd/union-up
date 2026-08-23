@@ -1611,6 +1611,127 @@ function IntroSequence({ beats, visuals = {}, doneLabel, onDone }) {
   );
 }
 
+// Endings are not intros. The result is the payoff, so the headline, tally and stars are
+// never gated behind a click — they land the moment the screen opens. What gets paced is
+// the part underneath: what it means, what it doesn't mean, and who got you there. The
+// actions live on the last beat, and SKIP jumps straight to them rather than leaving.
+function OutcomeTally({ tally }) {
+  return (
+    <div className="flex items-center justify-center gap-7 font-mono">
+      <div><div className="text-[10px] text-stone-500 tracking-wide">YES</div><div className="text-3xl font-bold text-teal-400">{tally.yes}</div></div>
+      <div><div className="text-[10px] text-stone-500 tracking-wide">NO</div><div className="text-3xl font-bold text-red-400">{tally.no}</div></div>
+      <div><div className="text-[10px] text-stone-500 tracking-wide">DIDN'T VOTE</div><div className="text-3xl font-bold text-stone-500">{tally.out}</div></div>
+    </div>
+  );
+}
+
+function StarThresholdLine({ week }) {
+  const earned = act1Stars(week);
+  const cell = (n, label) => (
+    <span className={n === earned ? "text-amber-400 font-bold" : "text-stone-600"}>{"★".repeat(n)} {label}</span>
+  );
+  return (
+    <div className="flex items-center justify-center gap-4 text-[10px] tracking-wide mt-2 flex-wrap">
+      {cell(3, `≤${ACT1_STAR_WEEKS.three} wks`)}
+      {cell(2, `≤${ACT1_STAR_WEEKS.two} wks`)}
+      {cell(1, "finished")}
+    </div>
+  );
+}
+
+function OutcomeScreen({ tone = "win", title, stars, tally, meta, beats, visuals = {}, actions }) {
+  const [step, setStep] = useState(0);
+  const last = step === beats.length - 1;
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") {
+        if (!last) { e.preventDefault(); setStep(i => i + 1); }
+      } else if (e.key === "ArrowLeft") {
+        setStep(i => Math.max(0, i - 1));
+      } else if (e.key === "Escape") {
+        setStep(beats.length - 1);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [last, beats.length]);
+
+  const beat = beats[step];
+  return (
+    <div className="max-w-xl mx-auto px-6 py-14 anim-rise">
+      <div className="text-center">
+        <div className={`font-stencil text-4xl sm:text-5xl leading-tight mb-2 ${tone === "loss" ? "text-red-500" : "text-teal-400"}`}>{title}</div>
+        {stars != null && (
+          <>
+            <div className="flex justify-center"><Stars count={stars} /></div>
+            {meta?.week != null && <StarThresholdLine week={meta.week} />}
+          </>
+        )}
+        {tally && <div className="mt-4"><OutcomeTally tally={tally} /></div>}
+        {meta?.line && <p className="text-amber-400 text-sm mt-4">{meta.line}</p>}
+      </div>
+
+      <div className="border-t border-stone-800 mt-6 pt-5 min-h-[8.5rem]">
+        <div key={step} className="anim-rise">
+          {beat.lines.map((line, i) => (
+            <p key={i} className={`leading-relaxed mb-2 ${beat.quiet ? "text-stone-500 text-xs italic" : "text-stone-300 text-sm"}`}>{line}</p>
+          ))}
+          {beat.visual && visuals[beat.visual] && <div className="mt-4">{visuals[beat.visual]}</div>}
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="flex items-center gap-1.5 mb-4">
+          {beats.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setStep(i)}
+              aria-label={`Step ${i + 1}`}
+              className={`h-1 flex-1 transition-colors ${i === step ? "bg-amber-400" : i < step ? "bg-stone-600" : "bg-stone-800"}`}
+            />
+          ))}
+        </div>
+        {last ? (
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">{actions}</div>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <button
+              onClick={() => setStep(i => Math.max(0, i - 1))}
+              disabled={step === 0}
+              className={`text-xs tracking-wide transition-colors ${step === 0 ? "text-stone-800 cursor-not-allowed" : "text-stone-500 hover:text-stone-300"}`}
+            >
+              ◂ BACK
+            </button>
+            <button
+              onClick={() => setStep(i => i + 1)}
+              className="font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-2.5 tracking-wide transition-colors"
+            >
+              NEXT ▸
+            </button>
+            <button onClick={() => setStep(beats.length - 1)} className="text-xs tracking-wide text-stone-600 hover:text-stone-400 transition-colors">
+              SKIP
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OutcomeRoster({ workers }) {
+  return (
+    <div className="border border-teal-900 bg-teal-950/20 p-3 text-left">
+      <div className="text-[10px] text-teal-400 font-bold mb-2 tracking-wide">THE COMMITTEE THAT GOT IT THERE:</div>
+      {workers.map(w => (
+        <div key={w.id} className="text-xs text-stone-300 mb-1">
+          <span className="font-bold text-stone-100">{w.name}</span> — {w.hook}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Act Two's beats depend on who survived Act One, so they're built rather than declared.
 function act2IntroBeats(leaders) {
   const beats = [
@@ -3264,48 +3385,29 @@ function ActOneGame({ onGraduate }) {
       )}
 
       {phase === "victory" && (
-        <div className="max-w-xl mx-auto px-6 py-16 text-center anim-rise">
-          <div className="font-stencil text-5xl mb-2 text-teal-400">THE UNION CARRIES IT</div>
-          <div className="flex justify-center mb-3"><Stars count={act1Stars(wonOnWeek)} /></div>
-          {voteResult && (
-            <div className="flex items-center justify-center gap-6 mb-4 font-mono">
-              <div><div className="text-[10px] text-stone-500">YES</div><div className="text-3xl font-bold text-teal-400">{voteResult.yes}</div></div>
-              <div><div className="text-[10px] text-stone-500">NO</div><div className="text-3xl font-bold text-red-400">{voteResult.no}</div></div>
-              <div><div className="text-[10px] text-stone-500">DIDN'T VOTE</div><div className="text-3xl font-bold text-stone-500">{voteResult.out}</div></div>
-            </div>
-          )}
-          <p className="text-amber-400 text-sm mb-5">Won on the ballot in week {wonOnWeek} — filed week {filedWeek} with {signedCount} cards.</p>
-          <p className="text-stone-400 mb-5 leading-relaxed text-sm">
-            A majority of the ballots cast came back yes, and the labor board certifies it. This floor has a union — not a petition,
-            not a showing of interest, a certified bargaining unit that the company is legally required to sit down with.
-            Nobody upstairs gets to pretend this is a few disgruntled people anymore.
-          </p>
-          <p className="text-stone-500 mb-5 leading-relaxed text-xs italic">
-            Winning the election is not the end of the process. Certification only obliges the company to bargain — it doesn't oblige
-            them to agree, and a first contract can take years. The committee you built is the thing that gets you one.
-          </p>
-          <div className="text-left border border-stone-700 bg-stone-900/60 p-3 mb-5 text-[11px] text-stone-400 space-y-1">
-            <div className="flex justify-between"><span className={wonOnWeek <= ACT1_STAR_WEEKS.three ? "text-amber-400" : ""}>★★★ — {ACT1_STAR_WEEKS.three} weeks or fewer</span><span>{wonOnWeek <= ACT1_STAR_WEEKS.three ? "EARNED" : ""}</span></div>
-            <div className="flex justify-between"><span className={wonOnWeek > ACT1_STAR_WEEKS.three && wonOnWeek <= ACT1_STAR_WEEKS.two ? "text-amber-400" : ""}>★★ — {ACT1_STAR_WEEKS.two} weeks or fewer</span><span>{wonOnWeek > ACT1_STAR_WEEKS.three && wonOnWeek <= ACT1_STAR_WEEKS.two ? "EARNED" : ""}</span></div>
-            <div className="flex justify-between"><span className={wonOnWeek > ACT1_STAR_WEEKS.two ? "text-amber-400" : ""}>★ — got there</span><span>{wonOnWeek > ACT1_STAR_WEEKS.two ? "EARNED" : ""}</span></div>
-          </div>
-          <div className="text-left border border-teal-900 bg-teal-950/20 p-3 mb-6">
-            <div className="text-[10px] text-teal-400 font-bold mb-2 tracking-wide">THE COMMITTEE THAT GOT IT THERE:</div>
-            {organizers.map(w => (
-              <div key={w.id} className="text-xs text-stone-300 mb-1">
-                <span className="font-bold text-stone-100">{w.name}</span> — {w.hook}
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 justify-center">
-            <button onClick={() => graduate(true)} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
-              GET CALLED UP
-            </button>
-            <button onClick={startOver} className="font-stencil text-xl border-2 border-stone-700 hover:border-stone-500 text-stone-300 px-8 py-3 tracking-wide transition-colors">
-              RUN IT FASTER
-            </button>
-          </div>
-        </div>
+        <OutcomeScreen
+          tone="win"
+          title="THE UNION CARRIES IT"
+          stars={act1Stars(wonOnWeek)}
+          tally={voteResult}
+          meta={{ week: wonOnWeek, line: `Won on the ballot in week ${wonOnWeek} — filed week ${filedWeek} with ${signedCount} cards.` }}
+          beats={[
+            { lines: [
+              "A majority of the ballots cast came back yes, and the labor board certifies it.",
+              "This floor has a union — a bargaining unit the company is legally required to sit down with.",
+            ]},
+            { lines: [
+              "Winning the election is not the end of the process. Certification obliges them to bargain, not to agree.",
+              "A first contract can take years. The committee you built is the thing that gets you one.",
+            ], quiet: true },
+            { lines: ["These are the people who came through when it counted."], visual: "roster" },
+          ]}
+          visuals={{ roster: <OutcomeRoster workers={organizers} /> }}
+          actions={<>
+            <button onClick={() => graduate(true)} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">GET CALLED UP</button>
+            <button onClick={startOver} className="font-stencil text-xl border-2 border-stone-700 hover:border-stone-500 text-stone-300 px-8 py-3 tracking-wide transition-colors">RUN IT FASTER</button>
+          </>}
+        />
       )}
 
       {showFilePrompt && (
@@ -3376,51 +3478,52 @@ function ActOneGame({ onGraduate }) {
       )}
 
       {phase === "recognized" && (
-        <div className="max-w-xl mx-auto px-6 py-16 text-center anim-rise">
-          <div className="font-stencil text-5xl mb-2 text-teal-400">RECOGNIZED</div>
-          <div className="flex justify-center mb-3"><Stars count={act1Stars(wonOnWeek)} /></div>
-          <p className="text-amber-400 text-sm mb-5">{signedCount} of {ACT1_TOTAL_WORKERS} cards — {cardPct}% — in {wonOnWeek} week{wonOnWeek === 1 ? "" : "s"}. No election needed.</p>
-          <p className="text-stone-400 mb-6 leading-relaxed text-sm">
-            The count was lopsided enough that fighting it looked worse than losing it. The company recognized the union
-            voluntarily rather than spend three months and a consultant's retainer losing an election everyone could already see coming.
-            This is the outcome almost nobody gets, and the only way to get it is to be overwhelming.
-          </p>
-          <div className="text-left border border-teal-900 bg-teal-950/20 p-3 mb-6">
-            <div className="text-[10px] text-teal-400 font-bold mb-2 tracking-wide">THE COMMITTEE THAT GOT IT THERE:</div>
-            {organizers.map(w => (
-              <div key={w.id} className="text-xs text-stone-300 mb-1"><span className="font-bold text-stone-100">{w.name}</span> — {w.hook}</div>
-            ))}
-          </div>
-          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+        <OutcomeScreen
+          tone="win"
+          title="RECOGNIZED"
+          stars={act1Stars(wonOnWeek)}
+          meta={{ week: wonOnWeek, line: `${signedCount} of ${ACT1_TOTAL_WORKERS} cards — ${cardPct}% — in ${wonOnWeek} week${wonOnWeek === 1 ? "" : "s"}. No election needed.` }}
+          beats={[
+            { lines: [
+              "The count was lopsided enough that fighting it looked worse than losing it.",
+              "The company recognized the union rather than spend three months losing an election everyone could already see coming.",
+            ]},
+            { lines: [
+              "This is the outcome almost nobody gets. The only way to get it is to be overwhelming.",
+            ], quiet: true },
+            { lines: ["These are the people who came through when it counted."], visual: "roster" },
+          ]}
+          visuals={{ roster: <OutcomeRoster workers={organizers} /> }}
+          actions={<>
             <button onClick={() => graduate(true)} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">GET CALLED UP</button>
             <button onClick={startOver} className="font-stencil text-xl border-2 border-stone-700 hover:border-stone-500 text-stone-300 px-8 py-3 tracking-wide transition-colors">RUN IT AGAIN</button>
-          </div>
-        </div>
+          </>}
+        />
       )}
 
       {phase === "defeat" && voteResult && (
-        <div className="max-w-xl mx-auto px-6 py-16 text-center anim-rise">
-          <div className="font-stencil text-5xl mb-3 text-red-500">THE VOTE COMES BACK NO</div>
-          <div className="flex items-center justify-center gap-6 mb-5 font-mono">
-            <div><div className="text-[10px] text-stone-500">YES</div><div className="text-3xl font-bold text-teal-400">{voteResult.yes}</div></div>
-            <div><div className="text-[10px] text-stone-500">NO</div><div className="text-3xl font-bold text-red-500">{voteResult.no}</div></div>
-            <div><div className="text-[10px] text-stone-500">DIDN'T VOTE</div><div className="text-3xl font-bold text-stone-500">{voteResult.out}</div></div>
-          </div>
-          <p className="text-stone-400 mb-4 leading-relaxed text-sm">
-            {voteResult.out > voteResult.yes
-              ? `More people stayed at their desks than voted yes. Every one of them was a vote you could have had.`
-              : `It came down to the ballots cast, and there weren't enough of them.`}
-            {" "}Under labor law there's no second attempt for a year. The committee holds, quietly, and waits.
-          </p>
-          <p className="text-stone-500 mb-6 leading-relaxed text-xs">
-            Thirty percent gets you an election. It doesn't win one. Between the petition and the ballot the company
-            got four uninterrupted weeks with everyone you hadn't locked down — and a signature on a card was never the same
-            thing as a yes in a booth.
-          </p>
-          <button onClick={startOver} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
-            START OVER
-          </button>
-        </div>
+        <OutcomeScreen
+          tone="loss"
+          title="THE VOTE COMES BACK NO"
+          tally={voteResult}
+          meta={{ line: `Filed week ${filedWeek} with ${signedCount} cards. The ballot was week ${wonOnWeek}.` }}
+          beats={[
+            { lines: [
+              voteResult.out > voteResult.yes
+                ? "More people stayed at their desks than voted yes. Every one of them was a vote you could have had."
+                : "It came down to the ballots cast, and there weren't enough of them.",
+              "Under labor law there's no second attempt for a year. The committee holds, quietly, and waits.",
+            ]},
+            { lines: [
+              "Thirty percent gets you an election. It doesn't win one.",
+              "Between the petition and the ballot, the company got four uninterrupted weeks with everyone you hadn't locked down.",
+            ]},
+            { lines: [
+              "A signature on a card was never the same thing as a yes in a booth.",
+            ], quiet: true },
+          ]}
+          actions={<button onClick={startOver} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">START OVER</button>}
+        />
       )}
 
             {selectedWorker && phase === "plan" && (
