@@ -921,38 +921,12 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
 
       {/* INTRO */}
       {phase === "intro" && (
-        <div className="max-w-2xl mx-auto px-6 py-16 text-center anim-rise">
-          <div className="font-stencil text-4xl text-amber-400 mb-4">THERE'S NO CONTINUE</div>
-          <p className="text-stone-400 leading-relaxed mb-2">
-            You proved it could be done at one studio. Now four more under the same PE-owned parent, twelve weeks,
-            and you're coordinating instead of doing every conversation yourself.
-          </p>
-          <p className="text-stone-500 text-sm leading-relaxed mb-2">
-            PerfAxis runs all four of these studios the same way it ran the first one — same stack-ranking algorithm,
-            same engagement scores, same nobody-to-appeal-to. What worked once wasn't a fluke. It's a system, and
-            systems can be organized against at scale.
-          </p>
-          <p className="text-stone-500 text-sm leading-relaxed mb-4">
-            Every week you still allocate 10 actions of organizer time across the sites — but with a team behind you, your total stamina reserve runs deeper before anyone needs a break.
-            Visibility brings retaliation. Your team can burn out. Workers can lose their nerve.
-            None of it resets when you make a mistake.
-          </p>
-          {recruitedLeaders.length > 0 && (
-            <div className="mb-8 text-left border border-teal-900 bg-teal-950/20 p-3">
-              <div className="text-[10px] text-teal-400 font-bold mb-2 tracking-wide">YOUR TEAM, FROM THE SHOP FLOOR:</div>
-              <div className="space-y-1">
-                {recruitedLeaders.map((l, i) => (
-                  <div key={i} className="text-xs text-stone-300">
-                    <span className="font-bold text-stone-100">{l.name}</span> — strong on {l.trait === "legal" ? "legal grievances" : l.trait === "antiunion" ? "countering anti-union pressure" : l.trait === "committee" ? "building shop committees" : "keeping morale up"}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <button onClick={() => setPhase("allocate")} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
-            BEGIN CAMPAIGN
-          </button>
-        </div>
+        <IntroSequence
+          beats={act2IntroBeats(recruitedLeaders)}
+          visuals={{ roster: <IntroRosterVisual leaders={recruitedLeaders} /> }}
+          doneLabel="BEGIN CAMPAIGN"
+          onDone={() => setPhase("allocate")}
+        />
       )}
 
       {/* ALLOCATE PHASE */}
@@ -1567,6 +1541,136 @@ const ACT1_WORKERS_SEED = [
   { id: 19, name: "Marcus", team: "qa", trait: "committee", support: 42, fulfillment: 66, hook: "Ran the studio's mentorship program until it got cut for 'focus.' Still mentors people anyway, on his own time." },
   { id: 20, name: "Delphine", team: "production", trait: "antiunion", support: 22, fulfillment: 88, hook: "Narrative lead, four years inside this world. Thinks a union fight will slow the ship down right when the game finally needs to land." },
 ];
+
+// Shared by both acts: one beat per click, never more than two lines, with a progress
+// bar, back-navigation, a skip for replays, and keyboard control. State lives here, so
+// leaving the intro phase unmounts it and a replay starts from the top on its own.
+function IntroSequence({ beats, visuals = {}, doneLabel, onDone }) {
+  const [step, setStep] = useState(0);
+  const last = step === beats.length - 1;
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (last) onDone(); else setStep(i => i + 1);
+      } else if (e.key === "ArrowLeft") {
+        setStep(i => Math.max(0, i - 1));
+      } else if (e.key === "Escape") {
+        onDone();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [last, onDone]);
+
+  const beat = beats[step];
+  const accent = beat.tone === "red" ? "text-red-400" : "text-amber-400";
+  return (
+    <div className="max-w-2xl mx-auto px-6 py-16 min-h-[70vh] flex flex-col">
+      <div key={step} className="flex-1 flex flex-col justify-center anim-rise">
+        <div className={`text-[10px] tracking-[0.35em] mb-3 ${beat.tone === "red" ? "text-red-500" : "text-stone-500"}`}>{beat.kicker}</div>
+        <div className={`font-stencil text-3xl sm:text-4xl leading-tight mb-4 ${accent}`}>{beat.title}</div>
+        {beat.lines.map((line, i) => (
+          <p key={i} className="text-stone-300 text-base leading-relaxed mb-2">{line}</p>
+        ))}
+        {beat.visual && visuals[beat.visual] && <div className="mt-6">{visuals[beat.visual]}</div>}
+      </div>
+
+      <div className="mt-10">
+        <div className="flex items-center gap-1.5 mb-4">
+          {beats.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setStep(i)}
+              aria-label={`Step ${i + 1}`}
+              className={`h-1 flex-1 transition-colors ${i === step ? "bg-amber-400" : i < step ? "bg-stone-600" : "bg-stone-800"}`}
+            />
+          ))}
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <button
+            onClick={() => setStep(i => Math.max(0, i - 1))}
+            disabled={step === 0}
+            className={`text-xs tracking-wide transition-colors ${step === 0 ? "text-stone-800 cursor-not-allowed" : "text-stone-500 hover:text-stone-300"}`}
+          >
+            ◂ BACK
+          </button>
+          <button
+            onClick={() => (last ? onDone() : setStep(i => i + 1))}
+            className="font-stencil text-lg sm:text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-2.5 tracking-wide transition-colors"
+          >
+            {last ? doneLabel : "NEXT ▸"}
+          </button>
+          <button onClick={onDone} className="text-xs tracking-wide text-stone-600 hover:text-stone-400 transition-colors">
+            SKIP
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Act Two's beats depend on who survived Act One, so they're built rather than declared.
+function act2IntroBeats(leaders) {
+  const beats = [
+    {
+      kicker: "AFTER THE VOTE",
+      title: "WORD TRAVELS",
+      lines: ["You won one shop. The other studios under the same parent heard about it inside a week."],
+    },
+    {
+      kicker: "THE PARENT COMPANY",
+      title: "FOUR MORE STUDIOS",
+      lines: [
+        "PerfAxis runs all four the way it ran yours — same stack ranking, same nobody to appeal to.",
+        "What worked once wasn't a fluke. It was a system, and systems can be organized at scale.",
+      ],
+      tone: "red",
+    },
+    {
+      kicker: "YOUR JOB CHANGED",
+      title: "YOU'RE NOT IN THE ROOM ANYMORE",
+      lines: [
+        "You're one organizer with four sites and one calendar.",
+        "Every week you decide where your ten actions of time go — and where they don't.",
+      ],
+    },
+  ];
+  if (leaders.length) {
+    beats.push({
+      kicker: "YOU DIDN'T COME ALONE",
+      title: "THE SHOP FLOOR CAME WITH YOU",
+      lines: [
+        `${["Nobody", "One person", "Two people", "Three people", "Four people"][leaders.length] || `${leaders.length} people`} who proved themselves in the first campaign came with you.`,
+        "Station each of them at a site — their strength only helps where you post them.",
+      ],
+      visual: "roster",
+    });
+  }
+  beats.push({
+    kicker: "THE GOAL",
+    title: "TWELVE WEEKS. TWO WINS.",
+    lines: [
+      "Unionize two of the four sites and the campaign carries.",
+      "Visibility brings retaliation, people lose their nerve, and none of it resets.",
+    ],
+  });
+  return beats;
+}
+
+function IntroRosterVisual({ leaders }) {
+  return (
+    <div className="flex flex-col items-start gap-1.5">
+      {leaders.map((l, i) => (
+        <div key={i} className="border border-teal-800 bg-teal-950/20 px-3 py-1.5 text-xs">
+          <span className="font-bold text-stone-100">{l.name}</span>
+          <span className="text-stone-500"> — strong on {TRAIT_LABEL[l.trait]}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ---------- THE OPENING ----------
 // One beat per click, never more than two lines. Everything that the game teaches in
@@ -2363,7 +2467,6 @@ function ActOneGame({ onGraduate }) {
   const [voteResult, setVoteResult] = useState(null);
   const [showFilePrompt, setShowFilePrompt] = useState(false);
   const [sawFilePrompt, setSawFilePrompt] = useState(false);
-  const [introStep, setIntroStep] = useState(0);
   const pendingRef = useRef(null);
   const planKeyRef = useRef(0);
 
@@ -2423,26 +2526,6 @@ function ActOneGame({ onGraduate }) {
   const { banner: resBanner } = resStep
     ? splitLinesByEntity(resStep.lines, resStep.workers.map(w => ({ id: w.id, name: w.name })))
     : { banner: [] };
-
-  // The intro is a click-through, so it should be a key-through too.
-  useEffect(() => {
-    if (phase !== "intro") return;
-    const onKey = (e) => {
-      if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        setIntroStep(i => {
-          if (i >= ACT1_INTRO_BEATS.length - 1) { setPhase("plan"); return i; }
-          return i + 1;
-        });
-      } else if (e.key === "ArrowLeft") {
-        setIntroStep(i => Math.max(0, i - 1));
-      } else if (e.key === "Escape") {
-        setPhase("plan");
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [phase]);
 
   function addPlan(actorId, type, targetId = null) {
     planKeyRef.current += 1;
@@ -2904,7 +2987,6 @@ function ActOneGame({ onGraduate }) {
     setVoteResult(null);
     setShowFilePrompt(false);
     setSawFilePrompt(false);
-    setIntroStep(0);
     setResolutionSteps([]);
     setStepIndex(0);
     setSelectedWorker(null);
@@ -2992,58 +3074,14 @@ function ActOneGame({ onGraduate }) {
         )}
       </div>
 
-      {phase === "intro" && (() => {
-        const beat = ACT1_INTRO_BEATS[introStep];
-        const last = introStep === ACT1_INTRO_BEATS.length - 1;
-        const accent = beat.tone === "red" ? "text-red-400" : "text-amber-400";
-        return (
-          <div className="max-w-2xl mx-auto px-6 py-16 min-h-[70vh] flex flex-col">
-            <div key={introStep} className="flex-1 flex flex-col justify-center anim-rise">
-              <div className={`text-[10px] tracking-[0.35em] mb-3 ${beat.tone === "red" ? "text-red-500" : "text-stone-500"}`}>{beat.kicker}</div>
-              <div className={`font-stencil text-3xl sm:text-4xl leading-tight mb-4 ${accent}`}>{beat.title}</div>
-              {beat.lines.map((line, i) => (
-                <p key={i} className="text-stone-300 text-base leading-relaxed mb-2">{line}</p>
-              ))}
-              {beat.visual === "committee" && <div className="mt-6"><IntroCommitteeVisual /></div>}
-              {beat.visual === "influence" && <div className="mt-6"><IntroInfluenceVisual /></div>}
-            </div>
-
-            <div className="mt-10">
-              <div className="flex items-center gap-1.5 mb-4">
-                {ACT1_INTRO_BEATS.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setIntroStep(i)}
-                    aria-label={`Step ${i + 1}`}
-                    className={`h-1 flex-1 transition-colors ${i === introStep ? "bg-amber-400" : i < introStep ? "bg-stone-600" : "bg-stone-800"}`}
-                  />
-                ))}
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <button
-                  onClick={() => setIntroStep(i => Math.max(0, i - 1))}
-                  disabled={introStep === 0}
-                  className={`text-xs tracking-wide transition-colors ${introStep === 0 ? "text-stone-800 cursor-not-allowed" : "text-stone-500 hover:text-stone-300"}`}
-                >
-                  ◂ BACK
-                </button>
-                <button
-                  onClick={() => (last ? setPhase("plan") : setIntroStep(i => i + 1))}
-                  className="font-stencil text-lg sm:text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-2.5 tracking-wide transition-colors"
-                >
-                  {last ? "I'M FED UP" : "NEXT ▸"}
-                </button>
-                <button
-                  onClick={() => setPhase("plan")}
-                  className="text-xs tracking-wide text-stone-600 hover:text-stone-400 transition-colors"
-                >
-                  SKIP
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {phase === "intro" && (
+        <IntroSequence
+          beats={ACT1_INTRO_BEATS}
+          visuals={{ committee: <IntroCommitteeVisual />, influence: <IntroInfluenceVisual /> }}
+          doneLabel="I'M FED UP"
+          onDone={() => setPhase("plan")}
+        />
+      )}
 
       {phase === "plan" && (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
