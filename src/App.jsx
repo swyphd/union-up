@@ -1620,7 +1620,9 @@ function OutcomeTally({ tally }) {
     <div className="flex items-center justify-center gap-7 font-mono">
       <div><div className="text-[10px] text-stone-500 tracking-wide">YES</div><div className="text-3xl font-bold text-teal-400">{tally.yes}</div></div>
       <div><div className="text-[10px] text-stone-500 tracking-wide">NO</div><div className="text-3xl font-bold text-red-400">{tally.no}</div></div>
-      <div><div className="text-[10px] text-stone-500 tracking-wide">DIDN'T VOTE</div><div className="text-3xl font-bold text-stone-500">{tally.out}</div></div>
+      {tally.out != null && (
+        <div><div className="text-[10px] text-stone-500 tracking-wide">DIDN'T VOTE</div><div className="text-3xl font-bold text-stone-500">{tally.out}</div></div>
+      )}
     </div>
   );
 }
@@ -2246,7 +2248,10 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
   return { x: card.cx + dx * t, y: card.cy + dy * t };
 }
 
-function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [], onSelect, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null }) {
+// labels lets a second act reuse this board with its own vocabulary — the geometry,
+// influence arrows and card layout are identical, only the words change.
+const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD", organizerCard: "ON COMMITTEE", signedCard: "SIGNED" };
+function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [], onSelect, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
   const anyRevealed = workers.some(w => w.revealed && !w.organizer);
   const active = hoverId != null ? hoverId : focusId;
@@ -2281,7 +2286,7 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
   planEntries.forEach(e => {
     const key = e.targetId != null ? e.targetId : e.actorId;
     if (!plannedByWorker[key]) plannedByWorker[key] = [];
-    plannedByWorker[key].push(ACT1_ACTION[e.type].short);
+    plannedByWorker[key].push(planLabel(e));
   });
   const planArrows = planEntries.filter(e => e.targetId != null);
 
@@ -2322,11 +2327,11 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
         </span>
         <span className="flex items-center gap-1 ml-1">
           <span className="inline-block w-2.5 h-2.5 border-2 border-amber-400" />
-          YOURS TO DIRECT
+          {labels.organizerLegend}
         </span>
         <span className="flex items-center gap-1">
           <span className="inline-block w-2.5 h-2.5 border-2 border-teal-400" />
-          SIGNED A CARD
+          {labels.signedLegend}
         </span>
       </div>
 
@@ -2440,7 +2445,7 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
           const planLabels = plannedByWorker[w.id];
           const dim = active != null && !connectedToActive(w.id);
           const border = w.burned ? "#44403c" : w.organizer ? "#f59e0b" : w.signed ? "#2dd4bf" : "#44403c";
-          const status = w.organizer ? "ON COMMITTEE" : w.signed ? "SIGNED" : "";
+          const status = w.organizer ? labels.organizerCard : w.signed ? labels.signedCard : "";
           return (
             <g
               key={w.id}
@@ -2567,7 +2572,7 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
   );
 }
 
-function ActOneGame({ onGraduate }) {
+function ActOneGame({ onGraduate, onPrototype }) {
   const [week, setWeek] = useState(1);
   const [phase, setPhase] = useState("intro"); // intro, plan, resolving, victory
   const [influence] = useState(() => generateInfluence(ACT1_WORKERS_SEED));
@@ -3570,6 +3575,15 @@ function ActOneGame({ onGraduate }) {
           >
             Skip to Phase 2 (playtest — doesn't save)
           </button>
+          {onPrototype && (
+            <button
+              onClick={onPrototype}
+              title="A vertical slice of the proposed first-contract act. Doesn't save."
+              className="text-[10px] text-stone-600 hover:text-amber-400 underline transition-colors ml-3"
+            >
+              First Contract prototype
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -3857,6 +3871,527 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
 }
 
 // =====================================================================================
+// PROTOTYPE — THE FIRST CONTRACT
+// A vertical slice, not a finished act. It exists to test one question: does
+// "run an action → get a real turnout number → spend it at the table" feel good?
+//
+// Deliberately NOT in the slice: turnover, decertification, ULP charges, the bargaining
+// survey, open bargaining, direct dealing, the community campaign. Four ladder rungs,
+// three issues, eight turns.
+// =====================================================================================
+
+const CONTRACT_TURNS = 8;
+const CAT_HOURS = 3;
+const CAT_JOIN_REQ = 70;
+
+// The escalation ladder. Each rung is a structure test: it costs prep, it produces a
+// measured turnout, and that number is the only thing the company actually responds to.
+const ACTION_LADDER = [
+  {
+    key: "letter", rank: 1, label: "Open letter to management", hours: 1,
+    floor: 15, span: 55, threshold: 0.55, payout: 14,
+    blurb: "Everyone who signs puts their name on a piece of paper the company has to read.",
+  },
+  {
+    key: "stickers", rank: 2, label: "Sticker day", hours: 2,
+    floor: 32, span: 55, threshold: 0.6, payout: 24,
+    blurb: "One day, everyone wears it. Management counts stickers walking down the hall.",
+  },
+  {
+    key: "march", rank: 3, label: "March on the boss", hours: 3,
+    floor: 48, span: 52, threshold: 0.5, payout: 42,
+    blurb: "A delegation walks into the studio head's office, unannounced, with a demand.",
+  },
+  {
+    key: "worktorule", rank: 4, label: "No voluntary overtime", hours: 4,
+    floor: 58, span: 48, threshold: 0.5, payout: 64,
+    blurb: "Nobody stays past their hours. Three weeks from a milestone, that is a loaded gun.",
+  },
+];
+
+const CONTRACT_ISSUES = [
+  {
+    id: "wages", label: "WAGES",
+    tiers: ["The company's offer — 1.5%, under inflation", "Keeps pace with inflation", "A real raise, and a floor under QA"],
+    costs: [0, 30, 75],
+  },
+  {
+    id: "justcause", label: "JUST CAUSE",
+    tiers: ["At-will. A PerfAxis score still decides who goes", "Progressive discipline, on paper", "Just cause, and an appeal that reaches a human"],
+    costs: [0, 45, 95],
+  },
+  {
+    id: "ai", label: "PL-A-EYE",
+    tiers: ["No language at all", "The company must disclose what it overrides", "No override of credited work. No unit jobs replaced"],
+    costs: [0, 40, 105],
+  },
+];
+const CONTRACT_MAX_TIERS = CONTRACT_ISSUES.length * 2;
+
+function makeContractWorkers() {
+  // They just voted the union in, so nobody is hostile — but voting yes once and
+  // showing up for something are different things, which is the whole level.
+  return ACT1_WORKERS_SEED.map((w, i) => ({
+    ...w,
+    commitment: clamp(38 + rand(38) + (w.organizer ? 22 : 0)),
+    fulfillment: clamp(w.fulfillment + rand(9) - 4),
+    cat: !!w.organizer,
+    participated: false,
+    revealed: true,
+    history: [],
+  }));
+}
+
+// Who turns people out: the people on the contract action team who carry weight with them.
+function catBacking(influence, workers, id) {
+  return workers
+    .filter(x => x.cat && x.id !== id)
+    .reduce((sum, x) => sum + infOn(influence, x.id, id), 0);
+}
+
+// Commitment says whether they'd act at all. Fulfillment says how far they'll go:
+// somebody who loves this job will sign a letter but won't hold a milestone hostage.
+function participationChance(w, tier, backing) {
+  const ready = Math.max(0, Math.min(1, (w.commitment - tier.floor) / tier.span));
+  const drag = (w.fulfillment / 100) * (tier.rank >= 3 ? 0.42 : 0.10);
+  const pull = Math.min(0.22, backing / 420);
+  return Math.max(0, Math.min(0.97, ready * (1 - drag) + pull));
+}
+
+function projectedTurnout(workers, influence, tier) {
+  if (!tier) return 0;
+  return workers.reduce((n, w) => n + participationChance(w, tier, catBacking(influence, workers, w.id)), 0);
+}
+
+const contractTierSum = (issues) => issues.reduce((n, i) => n + i.tier, 0);
+
+// Ratification: they vote on what you actually brought back, not on how hard you tried.
+function ratifyYesChance(w, issues) {
+  const won = contractTierSum(issues) / CONTRACT_MAX_TIERS;
+  return Math.max(0.02, Math.min(0.96, 0.12 + won * 0.62 + (w.commitment - 45) / 190));
+}
+
+function ContractPrototype({ onExit }) {
+  const [influence] = useState(() => generateInfluence(ACT1_WORKERS_SEED));
+  const [workers, setWorkers] = useState(makeContractWorkers);
+  const [turn, setTurn] = useState(1);
+  const [phase, setPhase] = useState("plan"); // plan, result, ratify
+  const [leverage, setLeverage] = useState(0);
+  const [issues, setIssues] = useState(CONTRACT_ISSUES.map(i => ({ id: i.id, tier: 0 })));
+  const [planEntries, setPlanEntries] = useState([]);
+  const [actionPlan, setActionPlan] = useState(null); // { tierKey, leadId }
+  const [result, setResult] = useState(null);
+  const [ratification, setRatification] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const planKey = useRef(0);
+
+  const cat = workers.filter(w => w.cat);
+  const hoursUsed = (id) =>
+    planEntries.filter(e => e.actorId === id).reduce((n, e) => n + (e.type === "oneOnOne" ? 2 : 3), 0) +
+    (actionPlan?.leadId === id ? ACTION_LADDER.find(t => t.key === actionPlan.tierKey).hours : 0);
+  const hoursLeft = (w) => CAT_HOURS - hoursUsed(w.id);
+  const totalHours = cat.length * CAT_HOURS;
+  const totalUsed = cat.reduce((n, o) => n + hoursUsed(o.id), 0);
+
+  const tier = actionPlan ? ACTION_LADDER.find(t => t.key === actionPlan.tierKey) : null;
+  const projection = tier ? projectedTurnout(workers, influence, tier) : 0;
+  const issueDef = (id) => CONTRACT_ISSUES.find(i => i.id === id);
+
+  function addPlan(actorId, type, targetId) {
+    planKey.current += 1;
+    setPlanEntries(p => [...p, { key: planKey.current, actorId, type, targetId }]);
+  }
+  function advanceIssue(id) {
+    const cur = issues.find(i => i.id === id);
+    const cost = issueDef(id).costs[cur.tier + 1];
+    if (cur.tier >= 2 || leverage < cost) return;
+    setLeverage(l => l - cost);
+    setIssues(list => list.map(i => (i.id === id ? { ...i, tier: i.tier + 1 } : i)));
+  }
+
+  function resolveTurn() {
+    let w = workers.map(x => ({ ...x, participated: false }));
+    const byId = (id) => w.find(x => x.id === id);
+    const lines = [];
+    const notes = {};
+    let gained = 0;
+
+    planEntries.filter(e => e.type === "oneOnOne").forEach(e => {
+      const a = byId(e.actorId), t = byId(e.targetId);
+      if (!a || !t) return;
+      const weight = infOn(influence, a.id, t.id);
+      const gain = Math.max(1, Math.round(11 * (0.45 + 0.85 * (weight / 100)) * affinityMult(a, t)));
+      const before = t.commitment;
+      t.commitment = clamp(t.commitment + gain);
+      notes[t.id] = `${a.name} +${t.commitment - before}`;
+      lines.push(`${a.name} sits down with ${t.name}. Commitment ${before} → ${t.commitment}.`);
+    });
+
+    planEntries.filter(e => e.type === "recruit").forEach(e => {
+      const t = byId(e.targetId);
+      if (!t || t.cat || t.commitment < CAT_JOIN_REQ) return;
+      t.cat = true;
+      notes[t.id] = "JOINS THE CAT";
+      lines.push(`${t.name} joins the contract action team — ${CAT_HOURS} more hours a week, and everyone they can turn out.`);
+    });
+
+    let actionResult = null;
+    if (tier) {
+      const lead = byId(actionPlan.leadId);
+      const showed = [];
+      const sat = [];
+      w.forEach(x => {
+        const backing = catBacking(influence, w, x.id) + infOn(influence, lead.id, x.id) * 0.5;
+        if (Math.random() < participationChance(x, tier, backing)) { x.participated = true; showed.push(x); }
+        else sat.push(x);
+      });
+      const share = showed.length / w.length;
+      const strong = share >= tier.threshold;
+      const payout = strong
+        ? Math.round(tier.payout * Math.min(1.35, share / tier.threshold))
+        : Math.round(tier.payout * 0.25 * (share / tier.threshold));
+      gained = payout;
+      // No note per participant — the card already rings teal and says TURNED OUT.
+      // Sixteen floating labels at once buries the board they're drawn on.
+      if (strong) {
+        showed.forEach(x => { x.commitment = clamp(x.commitment + 4); });
+        lines.push(`${showed.length} of ${w.length} took part. The company's negotiator noticed, and the room changed. +${payout} leverage.`);
+      } else {
+        w.forEach(x => { x.commitment = clamp(x.commitment - 3); });
+        lines.push(`Only ${showed.length} of ${w.length} took part. A thin turnout is worse than none — it shows them exactly how little you can move. +${payout} leverage.`);
+      }
+      actionResult = { tier, showed: showed.length, sat: sat.length, total: w.length, share, strong, payout, names: showed.map(x => x.name) };
+    } else {
+      // A quiet fortnight is not neutral. This is how units die.
+      w.forEach(x => { if (!x.cat) x.commitment = clamp(x.commitment - 3); });
+      lines.push("No action this fortnight. Bargaining happened in a room nobody saw, and the floor drifted.");
+    }
+
+    setWorkers(w);
+    setLeverage(l => l + gained);
+    setResult({ lines, notes, action: actionResult, gained });
+    setPhase("result");
+  }
+
+  function nextTurn() {
+    setPlanEntries([]);
+    setActionPlan(null);
+    if (turn >= CONTRACT_TURNS) {
+      const yes = [];
+      const no = [];
+      workers.forEach(w => (Math.random() < ratifyYesChance(w, issues) ? yes : no).push(w.name));
+      setRatification({ yes: yes.length, no: no.length, passed: yes.length > no.length });
+      setPhase("ratify");
+      return;
+    }
+    setTurn(t => t + 1);
+    setPhase("plan");
+  }
+
+  const boardWorkers = workers.map(w => ({ ...w, support: w.commitment, organizer: w.cat, signed: w.participated }));
+  const labels = { organizerLegend: "ON THE ACTION TEAM", signedLegend: "TURNED OUT LAST TIME", organizerCard: "ACTION TEAM", signedCard: "TURNED OUT" };
+  const canResolve = planEntries.length > 0 || actionPlan;
+  const overBudget = cat.some(o => hoursLeft(o) < 0);
+
+  return (
+    <div className="min-h-screen bg-stone-950 text-stone-200 font-mono">
+      <GlobalStyle />
+      <div className="border-b-2 border-stone-800 bg-stone-900 px-4 py-3 sm:px-6 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="font-stencil text-2xl sm:text-3xl tracking-wide text-amber-400">THE FIRST CONTRACT</div>
+          <div className="text-[10px] sm:text-xs tracking-[0.2em] text-stone-500">PROTOTYPE SLICE — NOT A FINISHED ACT</div>
+        </div>
+        <div className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm">
+          <div className="text-center">
+            <div className="text-stone-500 text-[10px]">FORTNIGHT</div>
+            <div className="text-lg font-bold text-stone-100">{Math.min(turn, CONTRACT_TURNS)} / {CONTRACT_TURNS}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-stone-500 text-[10px]">LEVERAGE</div>
+            <div className="text-lg font-bold text-amber-400">{leverage}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-stone-500 text-[10px]">CONTRACT</div>
+            <div className="text-lg font-bold text-teal-400">{contractTierSum(issues)} / {CONTRACT_MAX_TIERS}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-stone-500 text-[10px]">ACTION TEAM</div>
+            <div className="text-lg font-bold text-stone-100">{cat.length}</div>
+            <div className="text-[9px] text-stone-600">{totalHours} hrs</div>
+          </div>
+        </div>
+      </div>
+
+      {phase === "ratify" && ratification && (
+        <OutcomeScreen
+          tone={ratification.passed ? "win" : "loss"}
+          title={ratification.passed ? "RATIFIED" : "VOTED DOWN"}
+          tally={{ yes: ratification.yes, no: ratification.no }}
+          meta={{ line: `${contractTierSum(issues)} of ${CONTRACT_MAX_TIERS} tiers won across three issues.` }}
+          beats={[
+            { lines: ratification.passed
+              ? ["The membership ratifies. This floor has a contract — the first one is always the hardest, and most units never get here."]
+              : ["The membership votes it down. You bargained a deal the people who have to live under it wouldn't accept.", "Winning at the table while the floor stops paying attention is how this usually goes wrong."] },
+            { lines: [
+              `Wages: ${issueDef("wages").tiers[issues.find(i => i.id === "wages").tier]}.`,
+              `Just cause: ${issueDef("justcause").tiers[issues.find(i => i.id === "justcause").tier]}.`,
+            ]},
+            { lines: [`PL-A-EYE: ${issueDef("ai").tiers[issues.find(i => i.id === "ai").tier]}.`], quiet: true },
+          ]}
+          actions={<button onClick={onExit} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">BACK TO THE GAME</button>}
+        />
+      )}
+
+      {(phase === "plan" || phase === "result") && (
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
+          {turn === 1 && phase === "plan" && (
+            <div className="mb-4 flex items-start gap-2 text-stone-300 text-xs border border-stone-700 bg-stone-900/60 px-3 py-2">
+              <Megaphone size={14} className="shrink-0 mt-0.5" />
+              <span>You won the election. Now the company has to bargain — but not to agree. The number on each card is <span className="text-stone-100 font-bold">commitment</span>: whether they'll actually do something, not whether they support the union. Run an action, and whatever turnout you get is the only argument the company answers to.</span>
+            </div>
+          )}
+
+          {/* THE TABLE */}
+          <div className="border-2 border-stone-800 bg-stone-900 p-4 mb-6">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+              <div className="font-stencil text-lg tracking-wide text-stone-200">AT THE TABLE</div>
+              <div className="text-xs text-stone-400">Spend leverage to move an issue. You will not be able to afford everything.</div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {CONTRACT_ISSUES.map(def => {
+                const cur = issues.find(i => i.id === def.id);
+                const maxed = cur.tier >= 2;
+                const cost = maxed ? null : def.costs[cur.tier + 1];
+                const afford = !maxed && leverage >= cost;
+                return (
+                  <div key={def.id} className={`border p-2.5 ${maxed ? "border-teal-800 bg-teal-950/20" : "border-stone-700"}`}>
+                    <div className="text-[10px] tracking-wide text-stone-500 mb-1">{def.label}</div>
+                    <div className="text-xs text-stone-200 leading-snug mb-2 min-h-[3rem]">{def.tiers[cur.tier]}</div>
+                    <div className="flex items-center gap-1 mb-2">
+                      {[0, 1, 2].map(t => (
+                        <div key={t} className={`h-1 flex-1 ${t <= cur.tier ? "bg-teal-500" : "bg-stone-800"}`} />
+                      ))}
+                    </div>
+                    {maxed ? (
+                      <div className="text-[10px] text-teal-400 font-bold">WON</div>
+                    ) : (
+                      <button
+                        onClick={() => advanceIssue(def.id)}
+                        disabled={!afford}
+                        className={`w-full text-xs py-1.5 tracking-wide transition-colors ${afford ? "bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold" : "border border-stone-800 text-stone-600 cursor-not-allowed"}`}
+                      >
+                        PUSH IT — {cost} LEVERAGE
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <Act1FloorMap
+            workers={boardWorkers}
+            influence={influence}
+            planEntries={planEntries}
+            planLabel={(e) => (e.type === "oneOnOne" ? "1:1" : "recruit")}
+            onSelect={(w) => phase === "plan" && setSelected(w)}
+            notes={phase === "result" ? result?.notes : null}
+            stepKey={turn}
+            labels={labels}
+          />
+
+          {phase === "result" ? (
+            <div className="border-2 border-amber-700 bg-stone-900 p-4">
+              {result.action ? (
+                <>
+                  <div className="font-stencil text-xl tracking-wide text-amber-400 mb-1">{result.action.tier.label.toUpperCase()}</div>
+                  <div className="flex items-end gap-3 mb-2">
+                    <div className={`font-stencil text-5xl ${result.action.strong ? "text-teal-400" : "text-red-400"}`}>{result.action.showed}</div>
+                    <div className="text-stone-500 text-lg mb-1">of {result.action.total} took part</div>
+                    <div className="ml-auto text-right">
+                      <div className="text-[10px] text-stone-500">LEVERAGE GAINED</div>
+                      <div className="text-2xl font-bold text-amber-400">+{result.gained}</div>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-stone-800 mb-1">
+                    <div className={result.action.strong ? "h-full bg-teal-500" : "h-full bg-red-500"} style={{ width: `${result.action.share * 100}%` }} />
+                    <div className="relative" style={{ marginTop: -8, marginLeft: `${result.action.tier.threshold * 100}%`, width: 2, height: 8, background: "#e7e5e4" }} />
+                  </div>
+                  <div className="text-[10px] text-stone-500 mb-3">The white mark is what this action needed to land: {Math.round(result.action.tier.threshold * 100)}%.</div>
+                </>
+              ) : (
+                <div className="font-stencil text-xl tracking-wide text-stone-400 mb-2">A QUIET FORTNIGHT</div>
+              )}
+              <div className="bg-stone-950/60 border border-stone-800 p-2 space-y-0.5 max-h-32 overflow-y-auto mb-3">
+                {result.lines.map((l, i) => <div key={i} className="text-[10px] text-stone-400">▸ {l}</div>)}
+              </div>
+              <button onClick={nextTurn} className="w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2.5 tracking-wide transition-colors">
+                {turn >= CONTRACT_TURNS ? "TAKE IT TO A RATIFICATION VOTE" : "NEXT FORTNIGHT"}
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* THE ACTION */}
+              <div className="border-2 border-stone-800 bg-stone-900 p-4 mb-4">
+                <div className="font-stencil text-lg tracking-wide text-stone-200 mb-1">CALL AN ACTION</div>
+                <p className="text-[10px] text-stone-500 mb-3">One per fortnight. Pick who leads it — the people they carry weight with are likelier to show.</p>
+                <div className="grid gap-2 sm:grid-cols-2 mb-3">
+                  {ACTION_LADDER.map(t => {
+                    const chosen = actionPlan?.tierKey === t.key;
+                    const proj = projectedTurnout(workers, influence, t);
+                    const lands = proj / workers.length >= t.threshold;
+                    return (
+                      <button
+                        key={t.key}
+                        onClick={() => setActionPlan(a => (a?.tierKey === t.key ? null : { tierKey: t.key, leadId: a?.leadId ?? cat[0]?.id }))}
+                        className={`text-left border-2 p-2.5 transition-colors ${chosen ? "border-amber-500 bg-amber-950/30" : "border-stone-700 hover:bg-stone-800/60"}`}
+                      >
+                        <div className="flex items-baseline justify-between">
+                          <span className="text-xs text-stone-100 font-bold">{t.label}</span>
+                          <span className="text-[10px] text-stone-500">{t.hours}h</span>
+                        </div>
+                        <div className="text-[10px] text-stone-400 leading-snug mt-0.5">{t.blurb}</div>
+                        <div className={`text-[10px] mt-1 ${lands ? "text-teal-400" : "text-red-400"}`}>
+                          Projected ~{Math.round(proj)} of {workers.length} · needs {Math.round(t.threshold * workers.length)} to land
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {tier && (
+                  <div className="border border-stone-700 bg-stone-950/60 p-2.5">
+                    <div className="text-[10px] text-stone-500 tracking-wide mb-1.5">WHO LEADS IT</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {cat.map(o => (
+                        <button
+                          key={o.id}
+                          onClick={() => setActionPlan(a => ({ ...a, leadId: o.id }))}
+                          className={`border px-2 py-1 text-[11px] transition-colors ${actionPlan.leadId === o.id ? "border-amber-500 bg-amber-950/30 text-stone-100" : "border-stone-700 text-stone-400 hover:bg-stone-800/60"}`}
+                        >
+                          {o.name}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-[10px] text-amber-400 mt-2">
+                      Projected turnout with this lead: ~{Math.round(projection)} of {workers.length}.
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* HOURS */}
+              <div className="border-2 border-stone-800 bg-stone-900 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-stencil text-lg tracking-wide text-stone-200">PLAN FORTNIGHT {turn}</div>
+                  <div className={`text-sm font-bold ${overBudget ? "text-red-500" : totalUsed === totalHours ? "text-teal-400" : "text-amber-400"}`}>{totalUsed} / {totalHours} HOURS</div>
+                </div>
+                <p className="text-[10px] text-stone-500 mb-3">Click anyone on the board for a one-on-one, or to bring them onto the action team.</p>
+                <div className="space-y-2 mb-3">
+                  {cat.map(o => {
+                    const mine = planEntries.filter(e => e.actorId === o.id);
+                    const leading = actionPlan?.leadId === o.id ? ACTION_LADDER.find(t => t.key === actionPlan.tierKey) : null;
+                    const left = hoursLeft(o);
+                    return (
+                      <div key={o.id} className={`border px-3 py-2 ${left < 0 ? "border-red-700 bg-red-950/20" : "border-stone-700"}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-amber-400">{o.name} <span className="text-stone-500 font-normal">({TEAM_LABEL[o.team]})</span></span>
+                          <span className={`text-[10px] font-bold ${left < 0 ? "text-red-400" : left === 0 ? "text-teal-400" : "text-stone-400"}`}>{left} of {CAT_HOURS} hrs left</span>
+                        </div>
+                        {leading && <div className="text-[10px] text-amber-300 mt-1">▸ Leads: {leading.label} ({leading.hours}h)</div>}
+                        {mine.map(e => (
+                          <div key={e.key} className="flex items-center justify-between text-[10px] text-stone-300 mt-0.5">
+                            <span>▸ {e.type === "oneOnOne" ? "One-on-one" : "Bring onto the action team"} — {workers.find(x => x.id === e.targetId)?.name} <span className="text-stone-600">({e.type === "oneOnOne" ? 2 : 3}h)</span></span>
+                            <button onClick={() => setPlanEntries(p => p.filter(x => x.key !== e.key))} className="text-stone-600 hover:text-red-400">✕</button>
+                          </div>
+                        ))}
+                        {!leading && mine.length === 0 && <div className="text-[10px] text-stone-600 italic mt-1">Idle this fortnight.</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={resolveTurn}
+                  disabled={!canResolve || overBudget}
+                  className={`w-full font-stencil text-lg py-2.5 tracking-wide transition-colors ${!canResolve || overBudget ? "bg-stone-800 text-stone-600 cursor-not-allowed" : "bg-amber-500 hover:bg-amber-400 text-stone-950"}`}
+                >
+                  {overBudget ? "OVER BUDGET" : canResolve ? `RESOLVE FORTNIGHT ${turn}` : "PLAN SOMETHING FIRST"}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {selected && phase === "plan" && (() => {
+        const w = workers.find(x => x.id === selected.id);
+        const backing = catBacking(influence, workers, w.id);
+        const actors = cat.filter(o => o.id !== w.id);
+        return (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto" onClick={() => setSelected(null)}>
+            <div className="bg-stone-900 border-2 border-stone-700 max-w-md w-full p-5 my-auto" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-stencil text-2xl text-amber-400">{w.name}</div>
+                <button onClick={() => setSelected(null)}><X size={18} className="text-stone-500 hover:text-stone-200" /></button>
+              </div>
+              <p className="text-xs text-stone-400 mb-3">{w.hook}</p>
+              <StatRow label="COMMITMENT" value={w.commitment} hex={supportTier(w.commitment).hex} align="left"
+                info="Whether this person will actually do something — not whether they support the union. They already voted yes. Commitment is what turns that into showing up." />
+              <StatRow label="JOB FULFILLMENT" value={w.fulfillment} hex={FULFILL_HEX} align="left"
+                info="Still decides who can move them. It also decides how far they'll go: somebody who loves this job will sign a letter but won't hold a milestone hostage."
+                sub={`${fulfillmentLabel(w.fulfillment)} — expect them at the low rungs, not the high ones.`} />
+              <div className="text-[10px] text-stone-400 border-t border-stone-800 pt-2 mb-3">
+                {backing} points of influence on them comes from the action team. That's what pulls them out on the day.
+              </div>
+              <div className="text-[10px] text-stone-500 tracking-wide mb-1">TURNOUT ODDS</div>
+              <div className="grid grid-cols-2 gap-1 mb-3">
+                {ACTION_LADDER.map(t => (
+                  <div key={t.key} className="text-[10px] text-stone-400 border border-stone-800 px-2 py-1">
+                    {t.label}: <span className="text-stone-200 font-bold">{Math.round(participationChance(w, t, backing) * 100)}%</span>
+                  </div>
+                ))}
+              </div>
+              {w.cat ? (
+                <div className="text-xs text-amber-400">Already on the contract action team.</div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-[10px] text-stone-500 tracking-wide">WHO DOES IT</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {actors.map(o => (
+                      <button key={o.id} onClick={() => { addPlan(o.id, "oneOnOne", w.id); setSelected(null); }}
+                        disabled={hoursLeft(o) < 2}
+                        className={`border px-2 py-1 text-[11px] transition-colors ${hoursLeft(o) < 2 ? "border-stone-800 text-stone-700 cursor-not-allowed" : "border-stone-700 text-stone-300 hover:bg-stone-800/60"}`}>
+                        {o.name} <span className="text-stone-600">· inf {infOn(influence, o.id, w.id)}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="text-[10px] text-stone-500">Click a name to spend 2 of their hours on a one-on-one.</div>
+                  <button
+                    onClick={() => { const o = actors.find(x => hoursLeft(x) >= 3); if (o) { addPlan(o.id, "recruit", w.id); setSelected(null); } }}
+                    disabled={w.commitment < CAT_JOIN_REQ || !actors.some(x => hoursLeft(x) >= 3)}
+                    className={`w-full text-left border-2 px-3 py-2 transition-colors ${w.commitment >= CAT_JOIN_REQ && actors.some(x => hoursLeft(x) >= 3) ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                  >
+                    <div className="text-xs text-amber-300">Bring onto the contract action team <span className="text-stone-500">3h</span></div>
+                    <div className="text-[10px] text-stone-400 mt-0.5">
+                      {w.commitment < CAT_JOIN_REQ
+                        ? `Needs ${CAT_JOIN_REQ} commitment — they're at ${w.commitment}.`
+                        : `+${CAT_HOURS} hours a fortnight, and everyone they can turn out becomes yours.`}
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      <div className="fixed bottom-2 right-2 z-40">
+        <button onClick={onExit} className="text-[10px] text-stone-600 hover:text-stone-400 underline transition-colors">Leave the prototype</button>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================================
 // TOP-LEVEL WRAPPER — Act 1 (one shop) graduates into Act 2 (the citywide campaign)
 // =====================================================================================
 
@@ -3932,8 +4467,10 @@ export default function PermadeathOrganizing() {
         </div>
       </div>
     );
+  } else if (act === "contract") {
+    content = <ContractPrototype onExit={() => setAct("shop")} />;
   } else if (act === "shop") {
-    content = <ActOneGame onGraduate={handleGraduate} />;
+    content = <ActOneGame onGraduate={handleGraduate} onPrototype={() => setAct("contract")} />;
   } else {
     content = <ActTwoGame recruitedLeaders={recruitedLeaders} onFullRestart={handleFullRestart} />;
   }
