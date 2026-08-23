@@ -1568,6 +1568,117 @@ const ACT1_WORKERS_SEED = [
   { id: 20, name: "Delphine", team: "production", trait: "antiunion", support: 22, fulfillment: 88, hook: "Narrative lead, four years inside this world. Thinks a union fight will slow the ship down right when the game finally needs to land." },
 ];
 
+// ---------- THE OPENING ----------
+// One beat per click, never more than two lines. Everything that the game teaches in
+// context later — mapping, public actions, recruiting, how filing works — is deliberately
+// not here. The intro carries the situation and exactly one rule: you direct your people.
+const ACT1_INTRO_BEATS = [
+  {
+    kicker: "THE STUDIO",
+    title: "FOUR YEARS ON ONE GAME",
+    lines: [
+      "It used to feel like something worth building.",
+      "Now it belongs to a private equity firm, three acquisitions deep.",
+    ],
+  },
+  {
+    kicker: "SIX MONTHS AGO",
+    title: "THEY ROLLED OUT PL-A-EYE",
+    lines: [
+      "An AI that makes design calls for the game you've spent four years on.",
+      "It overrides your designers and contradicts your playtesters.",
+    ],
+    tone: "red",
+  },
+  {
+    kicker: "SO YOU ESCALATE",
+    title: "THERE'S NO ONE TO APPEAL TO",
+    lines: [
+      "Just a model, running numbers on work it has never played.",
+      "There's no fixing a system that isn't listening by asking nicer.",
+    ],
+    tone: "red",
+  },
+  {
+    kicker: "WHAT YOU HAVE",
+    title: "TWO PEOPLE, ALREADY SURE",
+    lines: [
+      "Camille was in a union at her last studio. Wendell was here before the acquisition.",
+      "That is the entire campaign right now.",
+    ],
+    visual: "committee",
+  },
+  {
+    kicker: "THE ONE RULE",
+    title: "YOU DON'T TALK TO THE FLOOR",
+    lines: [
+      "You direct the two people who are already in.",
+      "Every hour you spend is Camille or Wendell having the conversation, not you.",
+    ],
+  },
+  {
+    kicker: "WHY IT MATTERS WHO",
+    title: "INFLUENCE RUNS PERSON TO PERSON",
+    lines: [
+      "The same conversation lands three times harder between two people who actually move each other.",
+      "A stranger saying the very same thing barely moves her at all.",
+    ],
+    visual: "influence",
+  },
+  {
+    kicker: "THE GOAL",
+    title: "30% GETS YOU AN ELECTION",
+    lines: [
+      "It does not win you one — and you choose when to file.",
+      "The rest you'll learn on the floor.",
+    ],
+  },
+];
+
+// The two beats that get a picture instead of another sentence: the people you actually
+// have, drawn as the cards they'll be on the board, and the influence idea in one arrow.
+function IntroCommitteeVisual() {
+  const people = [
+    { name: "CAMILLE", team: "qa", support: 88, fulfillment: 50 },
+    { name: "WENDELL", team: "production", support: 85, fulfillment: 30 },
+  ];
+  return (
+    <div className="flex gap-4 flex-wrap">
+      {people.map(p => (
+        <div key={p.name} className="relative border-2 border-amber-500 bg-stone-950 w-44 px-3 py-2 text-left">
+          <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: TEAM_HEX[p.team] }} />
+          <div className="flex items-baseline justify-between pl-1.5">
+            <span className="font-stencil text-base tracking-wide text-stone-100">{p.name}</span>
+            <span className="font-mono text-xl font-bold text-teal-400">{p.support}</span>
+          </div>
+          <div className="h-1.5 bg-stone-800 mt-1.5 ml-1.5">
+            <div className="h-full" style={{ width: `${p.fulfillment}%`, backgroundColor: FULFILL_HEX }} />
+          </div>
+          <div className="text-[9px] text-amber-500 font-mono mt-1.5 ml-1.5 tracking-wide">ON COMMITTEE</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function IntroInfluenceVisual() {
+  return (
+    <svg viewBox="0 0 220 46" className="w-full max-w-md block">
+      <defs>
+        <marker id="intro-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+          <path d="M 0 0 L 6 3 L 0 6 z" fill="#fbbf24" />
+        </marker>
+      </defs>
+      <rect x="4" y="14" width="62" height="26" rx="2" fill="#1c1917" stroke="#f59e0b" strokeWidth="1" />
+      <text x="35" y="31" textAnchor="middle" fontSize="9" fill="#e7e5e4" fontFamily="Impact, 'Arial Black', sans-serif">CAMILLE</text>
+      <line x1="70" y1="27" x2="140" y2="27" stroke="#fbbf24" strokeWidth="2" markerEnd="url(#intro-arrow)" />
+      <text x="106" y="20" textAnchor="middle" fontSize="8" fill="#fbbf24" fontFamily="'Courier New', monospace">influence 71</text>
+      <rect x="148" y="14" width="62" height="26" rx="2" fill="#1c1917" stroke="#44403c" strokeWidth="1" />
+      <text x="179" y="31" textAnchor="middle" fontSize="9" fill="#a8a29e" fontFamily="Impact, 'Arial Black', sans-serif">NALEDI</text>
+    </svg>
+  );
+}
+
 // ---------- THE ELECTION ----------
 // 30% of the unit on cards is the legal minimum to petition — it is not the number you
 // win on. Filing starts a clock: the employer campaigns hard for four weeks, and then a
@@ -2252,6 +2363,7 @@ function ActOneGame({ onGraduate }) {
   const [voteResult, setVoteResult] = useState(null);
   const [showFilePrompt, setShowFilePrompt] = useState(false);
   const [sawFilePrompt, setSawFilePrompt] = useState(false);
+  const [introStep, setIntroStep] = useState(0);
   const pendingRef = useRef(null);
   const planKeyRef = useRef(0);
 
@@ -2311,6 +2423,26 @@ function ActOneGame({ onGraduate }) {
   const { banner: resBanner } = resStep
     ? splitLinesByEntity(resStep.lines, resStep.workers.map(w => ({ id: w.id, name: w.name })))
     : { banner: [] };
+
+  // The intro is a click-through, so it should be a key-through too.
+  useEffect(() => {
+    if (phase !== "intro") return;
+    const onKey = (e) => {
+      if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setIntroStep(i => {
+          if (i >= ACT1_INTRO_BEATS.length - 1) { setPhase("plan"); return i; }
+          return i + 1;
+        });
+      } else if (e.key === "ArrowLeft") {
+        setIntroStep(i => Math.max(0, i - 1));
+      } else if (e.key === "Escape") {
+        setPhase("plan");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase]);
 
   function addPlan(actorId, type, targetId = null) {
     planKeyRef.current += 1;
@@ -2772,6 +2904,7 @@ function ActOneGame({ onGraduate }) {
     setVoteResult(null);
     setShowFilePrompt(false);
     setSawFilePrompt(false);
+    setIntroStep(0);
     setResolutionSteps([]);
     setStepIndex(0);
     setSelectedWorker(null);
@@ -2859,39 +2992,58 @@ function ActOneGame({ onGraduate }) {
         )}
       </div>
 
-      {phase === "intro" && (
-        <div className="max-w-2xl mx-auto px-6 py-14 anim-rise">
-          <div className="font-stencil text-4xl text-amber-400 mb-4 text-center">TWO OF YOU. TWENTY OF THEM.</div>
-          <div className="text-left border border-red-900 bg-red-950/20 p-3 mb-5">
-            <p className="text-stone-300 text-sm leading-relaxed mb-3">
-              Ownership stopped really listening a long time ago. Raises dried up. The studio used to feel like
-              something worth building — now it belongs to a private equity firm three acquisitions deep.
-            </p>
-            <p className="text-stone-300 text-sm leading-relaxed mb-3">
-              Six months ago, corporate stopped even pretending. They rolled out{" "}
-              <span className="text-red-400 font-bold">PL-A-EYE</span>, an AI system that makes design decisions
-              for the game your studio has spent four years crafting. It pushes updates, overrides your actual
-              designers, and contradicts your playtesters. Appeal it and there's no one to appeal to.
-            </p>
-            <p className="text-stone-300 text-sm leading-relaxed">
-              Two people on this floor are already sure about what has to happen next: <span className="text-amber-400 font-bold">Camille</span>, who
-              was in a union at her last studio, and <span className="text-amber-400 font-bold">Wendell</span>, who
-              was here before the acquisition. That's the whole campaign right now.
-            </p>
+      {phase === "intro" && (() => {
+        const beat = ACT1_INTRO_BEATS[introStep];
+        const last = introStep === ACT1_INTRO_BEATS.length - 1;
+        const accent = beat.tone === "red" ? "text-red-400" : "text-amber-400";
+        return (
+          <div className="max-w-2xl mx-auto px-6 py-16 min-h-[70vh] flex flex-col">
+            <div key={introStep} className="flex-1 flex flex-col justify-center anim-rise">
+              <div className={`text-[10px] tracking-[0.35em] mb-3 ${beat.tone === "red" ? "text-red-500" : "text-stone-500"}`}>{beat.kicker}</div>
+              <div className={`font-stencil text-3xl sm:text-4xl leading-tight mb-4 ${accent}`}>{beat.title}</div>
+              {beat.lines.map((line, i) => (
+                <p key={i} className="text-stone-300 text-base leading-relaxed mb-2">{line}</p>
+              ))}
+              {beat.visual === "committee" && <div className="mt-6"><IntroCommitteeVisual /></div>}
+              {beat.visual === "influence" && <div className="mt-6"><IntroInfluenceVisual /></div>}
+            </div>
+
+            <div className="mt-10">
+              <div className="flex items-center gap-1.5 mb-4">
+                {ACT1_INTRO_BEATS.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setIntroStep(i)}
+                    aria-label={`Step ${i + 1}`}
+                    className={`h-1 flex-1 transition-colors ${i === introStep ? "bg-amber-400" : i < introStep ? "bg-stone-600" : "bg-stone-800"}`}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  onClick={() => setIntroStep(i => Math.max(0, i - 1))}
+                  disabled={introStep === 0}
+                  className={`text-xs tracking-wide transition-colors ${introStep === 0 ? "text-stone-800 cursor-not-allowed" : "text-stone-500 hover:text-stone-300"}`}
+                >
+                  ◂ BACK
+                </button>
+                <button
+                  onClick={() => (last ? setPhase("plan") : setIntroStep(i => i + 1))}
+                  className="font-stencil text-lg sm:text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-2.5 tracking-wide transition-colors"
+                >
+                  {last ? "I'M FED UP" : "NEXT ▸"}
+                </button>
+                <button
+                  onClick={() => setPhase("plan")}
+                  className="text-xs tracking-wide text-stone-600 hover:text-stone-400 transition-colors"
+                >
+                  SKIP
+                </button>
+              </div>
+            </div>
           </div>
-          <div className="text-left border border-stone-700 bg-stone-900/60 p-3 mb-5 space-y-2 text-xs text-stone-400 leading-relaxed">
-            <div><span className="text-amber-400 font-bold">YOU DON'T TALK TO THE FLOOR YOURSELF.</span> You direct the people who are already in. Every hour you spend is Camille or Wendell having a conversation, taking a public stand, or asking someone to sign.</div>
-            <div><span className="text-amber-400 font-bold">WHO ASKS MATTERS MORE THAN WHAT'S ASKED.</span> Influence runs person to person. A conversation between two people who move each other lands three times harder than the same conversation between strangers.</div>
-            <div><span className="text-amber-400 font-bold">{Math.round(ACT1_CARD_THRESHOLD * 100)}% GETS YOU AN ELECTION. IT DOESN'T WIN ONE.</span> {ACT1_CARDS_NEEDED} signed cards out of {ACT1_TOTAL_WORKERS} is all the NLRB needs to schedule a vote — and you decide when to file. Then the company gets {ELECTION_WEEKS} weeks to campaign, and a secret ballot is decided by a majority of the votes actually cast. File at the minimum and you will almost certainly lose. Keep organizing and you win a vote you should never have been close to losing.</div>
-            <div><span className="text-amber-400 font-bold">THERE'S NO DEADLINE.</span> The fewer weeks it takes, the better you did — but a fast loss is still a loss, and there's no second election for a year.</div>
-          </div>
-          <div className="text-center">
-            <button onClick={() => setPhase("plan")} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
-              I'M FED UP
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {phase === "plan" && (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
