@@ -1531,13 +1531,13 @@ const ACT1_WORKERS_SEED = [
   { id: 9, name: "Sofia", team: "production", trait: "committee", support: 30, fulfillment: 70, hook: "Unofficial team mom. The first to notice when people are struggling before anyone else does." },
   { id: 10, name: "Jake", team: "engineering", trait: "morale", support: 36, fulfillment: 45, hook: "His hours are technically 40 but the Slack pings don't stop until midnight. He's been tracking it. Nobody's compensating him for it." },
   { id: 11, name: "Camille", team: "qa", trait: "legal", support: 88, fulfillment: 50, organizer: true, hook: "Was in a union at her last studio. Doesn't advertise it — but she knows exactly how this is supposed to go." },
-  { id: 12, name: "Roz", team: "engineering", trait: "legal", support: 26, fulfillment: 78, hook: "Principal engineer. Genuinely loves this codebase — she wrote half of it. Which is exactly why watching PL-A-EYE overwrite her systems is unbearable." },
+  { id: 12, name: "Roz", team: "engineering", trait: "legal", support: 26, fulfillment: 78, hook: "Principal engineer. Genuinely loves this codebase — she wrote half of it. Which is exactly why watching Play-Eye overwrite her systems is unbearable." },
   { id: 13, name: "Omar", team: "qa", trait: "antiunion", support: 18, fulfillment: 40, hook: "Keeps his head down and his numbers up. He's been told he's 'on the list' for a lead role two years running." },
   { id: 14, name: "Fen", team: "production", trait: "morale", support: 44, fulfillment: 82, hook: "Concept artist. Loves this game more than anyone in the building, and can't stand what the building does to the people making it." },
   { id: 15, name: "Gus", team: "engineering", trait: "committee", support: 14, fulfillment: 65, hook: "Twenty-two years in games, four studios. Was around for one union drive that fell apart badly. Doesn't intend to live through a second." },
   { id: 16, name: "Naledi", team: "qa", trait: "legal", support: 52, fulfillment: 22, hook: "Runs the entire QA pipeline on a coordinator's title and a coordinator's pay. Hasn't taken a full weekend since March." },
   { id: 17, name: "Theo", team: "production", trait: "morale", support: 28, fulfillment: 48, hook: "Audio, contract-to-hire for the third contract running. His renewal is up in eleven weeks and he knows exactly who signs it." },
-  { id: 18, name: "Iris", team: "engineering", trait: "antiunion", support: 37, fulfillment: 20, hook: "Built the internal tools team's best work. PL-A-EYE replaced it in a single sprint and nobody told her before the all-hands." },
+  { id: 18, name: "Iris", team: "engineering", trait: "antiunion", support: 37, fulfillment: 20, hook: "Built the internal tools team's best work. Play-Eye replaced it in a single sprint and nobody told her before the all-hands." },
   { id: 19, name: "Marcus", team: "qa", trait: "committee", support: 42, fulfillment: 66, hook: "Ran the studio's mentorship program until it got cut for 'focus.' Still mentors people anyway, on his own time." },
   { id: 20, name: "Delphine", team: "production", trait: "antiunion", support: 22, fulfillment: 88, hook: "Narrative lead, four years inside this world. Thinks a union fight will slow the ship down right when the game finally needs to land." },
 ];
@@ -2111,7 +2111,7 @@ function signChance(actor, target, weight) {
 
 const PUBLIC_TIERS = {
   small: { base: 6, heat: 3, burn: 0, selfSupport: 3, blurb: "Wears the button on the floor all week and answers questions about it." },
-  medium: { base: 11, heat: 7, burn: 0.06, selfSupport: 5, blurb: "Puts their name at the top of an open letter about the PL-A-EYE rollout." },
+  medium: { base: 11, heat: 7, burn: 0.06, selfSupport: 5, blurb: "Puts their name at the top of an open letter about the Play-Eye rollout." },
   large: { base: 19, heat: 14, burn: 0.18, selfSupport: 8, blurb: "Stands up at the all-hands and says it out loud, with their name on it." },
 };
 // The second time someone wears the button it isn't news, and the third time even less.
@@ -2367,7 +2367,7 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
 
         <rect x={layout.root.x} y={layout.root.y} width={layout.root.w} height={layout.root.h} rx="1" fill="#1c1917" stroke="#44403c" strokeWidth="0.5" />
         <text x={layout.root.cx} y={layout.root.y + 5} textAnchor="middle" fontSize="3.6" fill="#a8a29e" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.3">THE STUDIO</text>
-        <text x={layout.root.cx} y={layout.root.y + 9.5} textAnchor="middle" fontSize="2.6" fill="#57534e" fontFamily="'Courier New', monospace">{workers.length} WORKERS · PL-A-EYE RUNS THE FLOOR</text>
+        <text x={layout.root.cx} y={layout.root.y + 9.5} textAnchor="middle" fontSize="2.6" fill="#57534e" fontFamily="'Courier New', monospace">{workers.length} WORKERS · PLAY-EYE RUNS THE FLOOR</text>
 
         {Object.entries(layout.teamBoxes).map(([team, tb]) => (
           <g key={team}>
@@ -3920,7 +3920,7 @@ const CONTRACT_ISSUES = [
     costs: [0, 42, 86],
   },
   {
-    id: "ai", label: "PL-A-EYE",
+    id: "ai", label: "PLAY-EYE",
     tiers: ["No language at all", "The company must disclose what it overrides", "No override of credited work. No unit jobs replaced"],
     costs: [0, 38, 92],
   },
@@ -4176,7 +4176,7 @@ function ContractPrototype({ onExit }) {
               `Wages: ${issueDef("wages").tiers[issues.find(i => i.id === "wages").tier]}.`,
               `Just cause: ${issueDef("justcause").tiers[issues.find(i => i.id === "justcause").tier]}.`,
             ]},
-            { lines: [`PL-A-EYE: ${issueDef("ai").tiers[issues.find(i => i.id === "ai").tier]}.`], quiet: true },
+            { lines: [`Play-Eye: ${issueDef("ai").tiers[issues.find(i => i.id === "ai").tier]}.`], quiet: true },
           ]}
           actions={ratification.passed || turn >= CONTRACT_MONTHS ? (
             <button onClick={onExit} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">BACK TO THE GAME</button>
