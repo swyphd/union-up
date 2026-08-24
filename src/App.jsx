@@ -1814,14 +1814,14 @@ const ACT1_INTRO_BEATS = [
     title: "They rolled out Play-Eye",
     lines: [
       "An AI that makes design calls for the game we've spent four years on. It overrides our designers and contradicts our playtesters.",
-      "Apparently micro-transactions instill pride and accomplishment.",
+      "Play-Eye insists micro-transactions instill pride and a sense of accomplishment.",
     ],
     tone: "red",
   },
   {
     kicker: "We've tried everything",
     title: "There's nobody to appeal to",
-    lines: ["The hedge fund doesn't listen, the AI doesn't care. We can't fix a system that isn't listening by asking nicer."],
+    lines: ["The hedge fund doesn't listen, the AI doesn't care. We can't fix a system that isn't listening just by asking nicer. We have to unionize."],
     tone: "red",
   },
   {
@@ -1835,12 +1835,12 @@ const ACT1_INTRO_BEATS = [
   {
     kicker: "Your role",
     lines: [
-      "You've seen this before. You know you can't parachute in and fix their problems.",
-      "But you can help them build the structure needed to reclaim control of the studio.",
+      "You're a seasoned worker advocate. You know you can't parachute in and fix our problems.",
+      "But you can help us build the structure needed to reclaim control of our studio.",
     ],
   },
   {
-    kicker: "Relationships matter",
+    kicker: "Gameplay",
     title: "Influence runs person to person",
     lines: [
       "The same conversation is more powerful when there's an existing relationship there.",
