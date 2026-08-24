@@ -3880,7 +3880,13 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
 // three issues, eight turns.
 // =====================================================================================
 
-const CONTRACT_TURNS = 8;
+// One turn is a month, and twelve of them is the certification year — the window in
+// which the employer must bargain and cannot be challenged. Run it out without a contract
+// and the union you won in Act One goes to a decertification vote.
+const CONTRACT_MONTHS = 12;
+// Leverage is perishable. A sticker day three months ago doesn't frighten anybody today,
+// so an unspent stack cools every month. Hoarding it is not a strategy.
+const LEVERAGE_COOLING = 0.8;
 const CAT_HOURS = 3;
 const CAT_JOIN_REQ = 70;
 
@@ -3913,17 +3919,17 @@ const CONTRACT_ISSUES = [
   {
     id: "wages", label: "WAGES",
     tiers: ["The company's offer — 1.5%, under inflation", "Keeps pace with inflation", "A real raise, and a floor under QA"],
-    costs: [0, 30, 75],
+    costs: [0, 28, 66],
   },
   {
     id: "justcause", label: "JUST CAUSE",
     tiers: ["At-will. A PerfAxis score still decides who goes", "Progressive discipline, on paper", "Just cause, and an appeal that reaches a human"],
-    costs: [0, 45, 95],
+    costs: [0, 42, 86],
   },
   {
     id: "ai", label: "PL-A-EYE",
     tiers: ["No language at all", "The company must disclose what it overrides", "No override of credited work. No unit jobs replaced"],
-    costs: [0, 40, 105],
+    costs: [0, 38, 92],
   },
 ];
 const CONTRACT_MAX_TIERS = CONTRACT_ISSUES.length * 2;
@@ -3971,6 +3977,14 @@ function ratifyYesChance(w, issues) {
   return Math.max(0.02, Math.min(0.96, 0.12 + won * 0.62 + (w.commitment - 45) / 190));
 }
 
+// After the certification year, the question stops being what's in the contract and
+// becomes whether there's still a union at all. Nothing to show for a year of bargaining
+// is exactly how a unit gets decertified.
+function keepUnionChance(w, issues) {
+  const won = contractTierSum(issues) / CONTRACT_MAX_TIERS;
+  return Math.max(0.03, Math.min(0.97, 0.26 + won * 0.36 + (w.commitment - 45) / 165));
+}
+
 function ContractPrototype({ onExit }) {
   const [influence] = useState(() => generateInfluence(ACT1_WORKERS_SEED));
   const [workers, setWorkers] = useState(makeContractWorkers);
@@ -3982,22 +3996,32 @@ function ContractPrototype({ onExit }) {
   const [actionPlan, setActionPlan] = useState(null); // { tierKey, leadId }
   const [result, setResult] = useState(null);
   const [ratification, setRatification] = useState(null);
+  const [decert, setDecert] = useState(null);
   const [selected, setSelected] = useState(null);
   const planKey = useRef(0);
 
   const cat = workers.filter(w => w.cat);
+  // One-on-ones and recruiting come out of one person's three hours. A collective action
+  // is prepped by the whole team, so it draws on the pool — otherwise the four-hour rung
+  // could never be chosen by anybody, which is exactly the lock this replaced.
   const hoursUsed = (id) =>
-    planEntries.filter(e => e.actorId === id).reduce((n, e) => n + (e.type === "oneOnOne" ? 2 : 3), 0) +
-    (actionPlan?.leadId === id ? ACTION_LADDER.find(t => t.key === actionPlan.tierKey).hours : 0);
+    planEntries.filter(e => e.actorId === id).reduce((n, e) => n + (e.type === "oneOnOne" ? 2 : 3), 0);
   const hoursLeft = (w) => CAT_HOURS - hoursUsed(w.id);
   const totalHours = cat.length * CAT_HOURS;
-  const totalUsed = cat.reduce((n, o) => n + hoursUsed(o.id), 0);
+  const actionHours = actionPlan ? ACTION_LADDER.find(t => t.key === actionPlan.tierKey).hours : 0;
+  const totalUsed = cat.reduce((n, o) => n + hoursUsed(o.id), 0) + actionHours;
 
   const tier = actionPlan ? ACTION_LADDER.find(t => t.key === actionPlan.tierKey) : null;
   const projection = tier ? projectedTurnout(workers, influence, tier) : 0;
   const issueDef = (id) => CONTRACT_ISSUES.find(i => i.id === id);
+  const ratifyProjection = workers.reduce((n, w) => n + ratifyYesChance(w, issues), 0);
+  const cooled = Math.floor(leverage * LEVERAGE_COOLING);
+  const monthsLeft = CONTRACT_MONTHS - turn;
 
   function addPlan(actorId, type, targetId) {
+    // One of each per person per month — stacking two recruits on the same worker just
+    // burns hours, and it stacks up unreadably on their card.
+    if (planEntries.some(e => e.type === type && e.targetId === targetId)) return;
     planKey.current += 1;
     setPlanEntries(p => [...p, { key: planKey.current, actorId, type, targetId }]);
   }
@@ -4062,9 +4086,9 @@ function ContractPrototype({ onExit }) {
       }
       actionResult = { tier, showed: showed.length, sat: sat.length, total: w.length, share, strong, payout, names: showed.map(x => x.name) };
     } else {
-      // A quiet fortnight is not neutral. This is how units die.
+      // A quiet month is not neutral. This is how units die.
       w.forEach(x => { if (!x.cat) x.commitment = clamp(x.commitment - 3); });
-      lines.push("No action this fortnight. Bargaining happened in a room nobody saw, and the floor drifted.");
+      lines.push("No action this month. Bargaining happened in a room nobody saw, and the floor drifted.");
     }
 
     setWorkers(w);
@@ -4073,17 +4097,34 @@ function ContractPrototype({ onExit }) {
     setPhase("result");
   }
 
+  function callRatification() {
+    const yes = [];
+    const no = [];
+    workers.forEach(w => (Math.random() < ratifyYesChance(w, issues) ? yes : no).push(w.name));
+    setRatification({ yes: yes.length, no: no.length, passed: yes.length > no.length, month: turn });
+    setPhase("ratify");
+  }
+
+  function runDecert() {
+    const keep = [];
+    const drop = [];
+    workers.forEach(w => (Math.random() < keepUnionChance(w, issues) ? keep : drop).push(w.name));
+    setDecert({ keep: keep.length, drop: drop.length, survived: keep.length > drop.length });
+    setPhase("decert");
+  }
+
+  function backToTable() {
+    // A deal voted down isn't the end — you go back, with a floor that trusts you less.
+    setWorkers(ws => ws.map(w => ({ ...w, commitment: clamp(w.commitment - 6) })));
+    setRatification(null);
+    setPhase("plan");
+  }
+
   function nextTurn() {
     setPlanEntries([]);
     setActionPlan(null);
-    if (turn >= CONTRACT_TURNS) {
-      const yes = [];
-      const no = [];
-      workers.forEach(w => (Math.random() < ratifyYesChance(w, issues) ? yes : no).push(w.name));
-      setRatification({ yes: yes.length, no: no.length, passed: yes.length > no.length });
-      setPhase("ratify");
-      return;
-    }
+    if (turn >= CONTRACT_MONTHS) { runDecert(); return; }
+    setLeverage(l => Math.floor(l * LEVERAGE_COOLING));
     setTurn(t => t + 1);
     setPhase("plan");
   }
@@ -4091,7 +4132,8 @@ function ContractPrototype({ onExit }) {
   const boardWorkers = workers.map(w => ({ ...w, support: w.commitment, organizer: w.cat, signed: w.participated }));
   const labels = { organizerLegend: "ON THE ACTION TEAM", signedLegend: "TURNED OUT LAST TIME", organizerCard: "ACTION TEAM", signedCard: "TURNED OUT" };
   const canResolve = planEntries.length > 0 || actionPlan;
-  const overBudget = cat.some(o => hoursLeft(o) < 0);
+  const overBudget = cat.some(o => hoursLeft(o) < 0) || totalUsed > totalHours;
+  const poolLeft = totalHours - totalUsed;
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-mono">
@@ -4103,12 +4145,17 @@ function ContractPrototype({ onExit }) {
         </div>
         <div className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm">
           <div className="text-center">
-            <div className="text-stone-500 text-[10px]">FORTNIGHT</div>
-            <div className="text-lg font-bold text-stone-100">{Math.min(turn, CONTRACT_TURNS)} / {CONTRACT_TURNS}</div>
+            <div className="text-stone-500 text-[10px]">MONTH</div>
+            <div className="text-lg font-bold text-stone-100">{Math.min(turn, CONTRACT_MONTHS)} / {CONTRACT_MONTHS}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-stone-500 text-[10px]">CERT YEAR</div>
+            <div className={`text-lg font-bold ${monthsLeft <= 2 ? "text-red-500" : monthsLeft <= 4 ? "text-amber-400" : "text-teal-400"}`}>{Math.max(0, monthsLeft)} left</div>
           </div>
           <div className="text-center">
             <div className="text-stone-500 text-[10px]">LEVERAGE</div>
             <div className="text-lg font-bold text-amber-400">{leverage}</div>
+            <div className="text-[9px] text-stone-600">cools to {cooled}</div>
           </div>
           <div className="text-center">
             <div className="text-stone-500 text-[10px]">CONTRACT</div>
@@ -4131,12 +4178,37 @@ function ContractPrototype({ onExit }) {
           beats={[
             { lines: ratification.passed
               ? ["The membership ratifies. This floor has a contract — the first one is always the hardest, and most units never get here."]
-              : ["The membership votes it down. You bargained a deal the people who have to live under it wouldn't accept.", "Winning at the table while the floor stops paying attention is how this usually goes wrong."] },
+              : ["The membership votes it down. You bargained a deal the people who have to live under it wouldn't accept.", turn >= CONTRACT_MONTHS ? "And the certification year is gone." : "You can go back to the table — but the clock doesn't stop, and the floor trusts you a little less."] },
             { lines: [
               `Wages: ${issueDef("wages").tiers[issues.find(i => i.id === "wages").tier]}.`,
               `Just cause: ${issueDef("justcause").tiers[issues.find(i => i.id === "justcause").tier]}.`,
             ]},
             { lines: [`PL-A-EYE: ${issueDef("ai").tiers[issues.find(i => i.id === "ai").tier]}.`], quiet: true },
+          ]}
+          actions={ratification.passed || turn >= CONTRACT_MONTHS ? (
+            <button onClick={onExit} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">BACK TO THE GAME</button>
+          ) : (
+            <>
+              <button onClick={backToTable} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">BACK TO THE TABLE</button>
+              <button onClick={onExit} className="font-stencil text-xl border-2 border-stone-700 hover:border-stone-500 text-stone-300 px-8 py-3 tracking-wide transition-colors">LEAVE IT</button>
+            </>
+          )}
+        />
+      )}
+
+      {phase === "decert" && decert && (
+        <OutcomeScreen
+          tone={decert.survived ? "win" : "loss"}
+          title={decert.survived ? "STILL A UNION" : "DECERTIFIED"}
+          tally={{ yes: decert.keep, no: decert.drop }}
+          meta={{ line: `The certification year ran out with ${contractTierSum(issues)} of ${CONTRACT_MAX_TIERS} tiers won and no contract.` }}
+          beats={[
+            { lines: decert.survived
+              ? ["A year of bargaining with nothing signed, and the company petitioned to decertify. The floor held anyway — barely.",
+                 "You keep the union. You still don't have a contract, and now everyone knows how long the company is willing to wait."]
+              : ["A year of bargaining produced nothing anyone could hold, and enough of the floor voted to be rid of it.",
+                 "This is how most first contracts actually fail. Not a lost strike — a year of meetings nobody could see."] },
+            { lines: ["The employer never has to agree. They only have to outlast you, and twelve months is not a long time to wait."], quiet: true },
           ]}
           actions={<button onClick={onExit} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">BACK TO THE GAME</button>}
         />
@@ -4155,7 +4227,7 @@ function ContractPrototype({ onExit }) {
           <div className="border-2 border-stone-800 bg-stone-900 p-4 mb-6">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
               <div className="font-stencil text-lg tracking-wide text-stone-200">AT THE TABLE</div>
-              <div className="text-xs text-stone-400">Spend leverage to move an issue. You will not be able to afford everything.</div>
+              <div className="text-xs text-stone-400">Spend leverage to move an issue. You will not be able to afford everything — and it cools 20% a month if you sit on it.</div>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               {CONTRACT_ISSUES.map(def => {
@@ -4189,6 +4261,29 @@ function ContractPrototype({ onExit }) {
             </div>
           </div>
 
+          {phase === "plan" && turn >= 2 && (
+            <div className={`mb-6 border-2 px-3 py-3 ${monthsLeft <= 3 ? "border-red-700 bg-red-950/20" : "border-teal-800 bg-teal-950/10"}`}>
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex-1 min-w-[17rem]">
+                  <div className={`font-stencil text-lg tracking-wide ${monthsLeft <= 3 ? "text-red-400" : "text-teal-400"}`}>
+                    {monthsLeft <= 3 ? `THE CERTIFICATION YEAR ENDS IN ${Math.max(0, monthsLeft)} MONTH${monthsLeft === 1 ? "" : "S"}` : "YOU CAN TAKE THE DEAL YOU HAVE"}
+                  </div>
+                  <div className="text-[10px] text-stone-400 leading-relaxed mt-1">
+                    You've won <span className="text-stone-100 font-bold">{contractTierSum(issues)} of {CONTRACT_MAX_TIERS}</span> tiers. Put it to a ratification vote whenever you like — the members vote on what you actually brought back.
+                    Today it projects <span className="text-teal-400 font-bold">~{Math.round(ratifyProjection)} yes</span> to <span className="text-red-400 font-bold">~{workers.length - Math.round(ratifyProjection)} no</span>.
+                    {monthsLeft <= 3 && " Reach month 12 with no contract and the company petitions to decertify the union."}
+                  </div>
+                </div>
+                <button
+                  onClick={callRatification}
+                  className={`font-stencil text-base px-5 py-2.5 tracking-wide transition-colors shrink-0 ${monthsLeft <= 3 ? "bg-red-600 hover:bg-red-500 text-stone-950" : "bg-teal-600 hover:bg-teal-500 text-stone-950"}`}
+                >
+                  PUT IT TO A VOTE
+                </button>
+              </div>
+            </div>
+          )}
+
           <Act1FloorMap
             workers={boardWorkers}
             influence={influence}
@@ -4220,13 +4315,13 @@ function ContractPrototype({ onExit }) {
                   <div className="text-[10px] text-stone-500 mb-3">The white mark is what this action needed to land: {Math.round(result.action.tier.threshold * 100)}%.</div>
                 </>
               ) : (
-                <div className="font-stencil text-xl tracking-wide text-stone-400 mb-2">A QUIET FORTNIGHT</div>
+                <div className="font-stencil text-xl tracking-wide text-stone-400 mb-2">A QUIET MONTH</div>
               )}
               <div className="bg-stone-950/60 border border-stone-800 p-2 space-y-0.5 max-h-32 overflow-y-auto mb-3">
                 {result.lines.map((l, i) => <div key={i} className="text-[10px] text-stone-400">▸ {l}</div>)}
               </div>
               <button onClick={nextTurn} className="w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2.5 tracking-wide transition-colors">
-                {turn >= CONTRACT_TURNS ? "TAKE IT TO A RATIFICATION VOTE" : "NEXT FORTNIGHT"}
+                {turn >= CONTRACT_MONTHS ? "THE CERTIFICATION YEAR IS UP" : "NEXT MONTH"}
               </button>
             </div>
           ) : (
@@ -4234,17 +4329,22 @@ function ContractPrototype({ onExit }) {
               {/* THE ACTION */}
               <div className="border-2 border-stone-800 bg-stone-900 p-4 mb-4">
                 <div className="font-stencil text-lg tracking-wide text-stone-200 mb-1">CALL AN ACTION</div>
-                <p className="text-[10px] text-stone-500 mb-3">One per fortnight. Pick who leads it — the people they carry weight with are likelier to show.</p>
+                <p className="text-[10px] text-stone-500 mb-3">One per month. Pick who leads it — the people they carry weight with are likelier to show.</p>
                 <div className="grid gap-2 sm:grid-cols-2 mb-3">
                   {ACTION_LADDER.map(t => {
                     const chosen = actionPlan?.tierKey === t.key;
                     const proj = projectedTurnout(workers, influence, t);
                     const lands = proj / workers.length >= t.threshold;
+                    // Prep comes out of the pool, so a rung the team can't cover this month
+                    // shouldn't be selectable — better than letting the plan go over and
+                    // then refusing to resolve it.
+                    const affordable = chosen || t.hours <= poolLeft + actionHours;
                     return (
                       <button
                         key={t.key}
+                        disabled={!affordable}
                         onClick={() => setActionPlan(a => (a?.tierKey === t.key ? null : { tierKey: t.key, leadId: a?.leadId ?? cat[0]?.id }))}
-                        className={`text-left border-2 p-2.5 transition-colors ${chosen ? "border-amber-500 bg-amber-950/30" : "border-stone-700 hover:bg-stone-800/60"}`}
+                        className={`text-left border-2 p-2.5 transition-colors ${chosen ? "border-amber-500 bg-amber-950/30" : affordable ? "border-stone-700 hover:bg-stone-800/60" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
                       >
                         <div className="flex items-baseline justify-between">
                           <span className="text-xs text-stone-100 font-bold">{t.label}</span>
@@ -4282,10 +4382,13 @@ function ContractPrototype({ onExit }) {
               {/* HOURS */}
               <div className="border-2 border-stone-800 bg-stone-900 p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="font-stencil text-lg tracking-wide text-stone-200">PLAN FORTNIGHT {turn}</div>
+                  <div className="font-stencil text-lg tracking-wide text-stone-200">PLAN MONTH {turn}</div>
                   <div className={`text-sm font-bold ${overBudget ? "text-red-500" : totalUsed === totalHours ? "text-teal-400" : "text-amber-400"}`}>{totalUsed} / {totalHours} HOURS</div>
                 </div>
-                <p className="text-[10px] text-stone-500 mb-3">Click anyone on the board for a one-on-one, or to bring them onto the action team.</p>
+                <p className="text-[10px] text-stone-500 mb-3">
+                  Click anyone on the board for a one-on-one, or to bring them onto the action team. Each person has {CAT_HOURS} hours of their own;
+                  the action's prep comes out of the team's pool{actionHours > 0 ? ` (${actionHours}h this month)` : ""}.
+                </p>
                 <div className="space-y-2 mb-3">
                   {cat.map(o => {
                     const mine = planEntries.filter(e => e.actorId === o.id);
@@ -4297,14 +4400,14 @@ function ContractPrototype({ onExit }) {
                           <span className="text-xs font-bold text-amber-400">{o.name} <span className="text-stone-500 font-normal">({TEAM_LABEL[o.team]})</span></span>
                           <span className={`text-[10px] font-bold ${left < 0 ? "text-red-400" : left === 0 ? "text-teal-400" : "text-stone-400"}`}>{left} of {CAT_HOURS} hrs left</span>
                         </div>
-                        {leading && <div className="text-[10px] text-amber-300 mt-1">▸ Leads: {leading.label} ({leading.hours}h)</div>}
+                        {leading && <div className="text-[10px] text-amber-300 mt-1">▸ Leads: {leading.label} <span className="text-stone-600">(team prep, {leading.hours}h from the pool)</span></div>}
                         {mine.map(e => (
                           <div key={e.key} className="flex items-center justify-between text-[10px] text-stone-300 mt-0.5">
                             <span>▸ {e.type === "oneOnOne" ? "One-on-one" : "Bring onto the action team"} — {workers.find(x => x.id === e.targetId)?.name} <span className="text-stone-600">({e.type === "oneOnOne" ? 2 : 3}h)</span></span>
                             <button onClick={() => setPlanEntries(p => p.filter(x => x.key !== e.key))} className="text-stone-600 hover:text-red-400">✕</button>
                           </div>
                         ))}
-                        {!leading && mine.length === 0 && <div className="text-[10px] text-stone-600 italic mt-1">Idle this fortnight.</div>}
+                        {!leading && mine.length === 0 && <div className="text-[10px] text-stone-600 italic mt-1">Idle this month.</div>}
                       </div>
                     );
                   })}
@@ -4314,7 +4417,7 @@ function ContractPrototype({ onExit }) {
                   disabled={!canResolve || overBudget}
                   className={`w-full font-stencil text-lg py-2.5 tracking-wide transition-colors ${!canResolve || overBudget ? "bg-stone-800 text-stone-600 cursor-not-allowed" : "bg-amber-500 hover:bg-amber-400 text-stone-950"}`}
                 >
-                  {overBudget ? "OVER BUDGET" : canResolve ? `RESOLVE FORTNIGHT ${turn}` : "PLAN SOMETHING FIRST"}
+                  {overBudget ? "OVER BUDGET" : canResolve ? `RESOLVE MONTH ${turn}` : "PLAN SOMETHING FIRST"}
                 </button>
               </div>
             </>
@@ -4358,8 +4461,8 @@ function ContractPrototype({ onExit }) {
                   <div className="flex flex-wrap gap-1.5">
                     {actors.map(o => (
                       <button key={o.id} onClick={() => { addPlan(o.id, "oneOnOne", w.id); setSelected(null); }}
-                        disabled={hoursLeft(o) < 2}
-                        className={`border px-2 py-1 text-[11px] transition-colors ${hoursLeft(o) < 2 ? "border-stone-800 text-stone-700 cursor-not-allowed" : "border-stone-700 text-stone-300 hover:bg-stone-800/60"}`}>
+                        disabled={hoursLeft(o) < 2 || poolLeft < 2}
+                        className={`border px-2 py-1 text-[11px] transition-colors ${hoursLeft(o) < 2 || poolLeft < 2 ? "border-stone-800 text-stone-700 cursor-not-allowed" : "border-stone-700 text-stone-300 hover:bg-stone-800/60"}`}>
                         {o.name} <span className="text-stone-600">· inf {infOn(influence, o.id, w.id)}</span>
                       </button>
                     ))}
@@ -4367,14 +4470,14 @@ function ContractPrototype({ onExit }) {
                   <div className="text-[10px] text-stone-500">Click a name to spend 2 of their hours on a one-on-one.</div>
                   <button
                     onClick={() => { const o = actors.find(x => hoursLeft(x) >= 3); if (o) { addPlan(o.id, "recruit", w.id); setSelected(null); } }}
-                    disabled={w.commitment < CAT_JOIN_REQ || !actors.some(x => hoursLeft(x) >= 3)}
-                    className={`w-full text-left border-2 px-3 py-2 transition-colors ${w.commitment >= CAT_JOIN_REQ && actors.some(x => hoursLeft(x) >= 3) ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                    disabled={w.commitment < CAT_JOIN_REQ || !actors.some(x => hoursLeft(x) >= 3) || poolLeft < 3}
+                    className={`w-full text-left border-2 px-3 py-2 transition-colors ${w.commitment >= CAT_JOIN_REQ && actors.some(x => hoursLeft(x) >= 3) && poolLeft >= 3 ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
                   >
                     <div className="text-xs text-amber-300">Bring onto the contract action team <span className="text-stone-500">3h</span></div>
                     <div className="text-[10px] text-stone-400 mt-0.5">
                       {w.commitment < CAT_JOIN_REQ
                         ? `Needs ${CAT_JOIN_REQ} commitment — they're at ${w.commitment}.`
-                        : `+${CAT_HOURS} hours a fortnight, and everyone they can turn out becomes yours.`}
+                        : `+${CAT_HOURS} hours a month, and everyone they can turn out becomes yours.`}
                     </div>
                   </button>
                 </div>
