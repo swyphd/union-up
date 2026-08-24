@@ -1569,10 +1569,14 @@ function IntroSequence({ beats, visuals = {}, doneLabel, onDone }) {
   return (
     <div className="max-w-2xl mx-auto px-6 py-16 min-h-[70vh] flex flex-col">
       <div key={step} className="flex-1 flex flex-col justify-center anim-rise">
-        <div className={`text-[10px] tracking-[0.35em] mb-3 ${beat.tone === "red" ? "text-red-500" : "text-stone-500"}`}>{beat.kicker}</div>
-        <div className={`font-stencil text-3xl sm:text-4xl leading-tight mb-4 ${accent}`}>{beat.title}</div>
+        <div className={`text-[10px] tracking-[0.3em] mb-3 ${beat.tone === "red" ? "text-red-500" : "text-stone-500"}`}>{beat.kicker}</div>
+        {beat.title && <div className={`font-stencil text-3xl sm:text-4xl leading-tight mb-4 ${accent}`}>{beat.title}</div>}
         {beat.lines.map((line, i) => (
-          <p key={i} className="text-stone-300 text-base leading-relaxed mb-2">{line}</p>
+          // A beat with no headline leads on its first line instead, so it still has a
+          // visual anchor rather than opening on body copy.
+          <p key={i} className={!beat.title && i === 0
+            ? `text-xl sm:text-2xl leading-snug mb-3 ${accent}`
+            : "text-stone-300 text-base leading-relaxed mb-2"}>{line}</p>
         ))}
         {beat.visual && visuals[beat.visual] && <div className="mt-6">{visuals[beat.visual]}</div>}
       </div>
@@ -1801,64 +1805,53 @@ function IntroRosterVisual({ leaders }) {
 // not here. The intro carries the situation and exactly one rule: you direct your people.
 const ACT1_INTRO_BEATS = [
   {
-    kicker: "THE STUDIO",
-    title: "FOUR YEARS ON ONE GAME",
-    lines: [
-      "It used to feel like something worth building.",
-      "Now it belongs to a private equity firm, three acquisitions deep.",
-    ],
+    kicker: "Our Studio",
+    title: "We spent years building our name",
+    lines: ["It used to feel like something worth building. Now it belongs to a private equity firm."],
   },
   {
-    kicker: "SIX MONTHS AGO",
-    title: "THEY ROLLED OUT PL-A-EYE",
+    kicker: "Six months ago",
+    title: "They rolled out Play-Eye",
     lines: [
-      "An AI that makes design calls for the game you've spent four years on.",
-      "It overrides your designers and contradicts your playtesters.",
+      "An AI that makes design calls for the game we've spent four years on. It overrides our designers and contradicts our playtesters.",
+      "Apparently micro-transactions instill pride and accomplishment.",
     ],
     tone: "red",
   },
   {
-    kicker: "SO YOU ESCALATE",
-    title: "THERE'S NO ONE TO APPEAL TO",
-    lines: [
-      "Just a model, running numbers on work it has never played.",
-      "There's no fixing a system that isn't listening by asking nicer.",
-    ],
+    kicker: "We've tried everything",
+    title: "There's nobody to appeal to",
+    lines: ["The hedge fund doesn't listen, the AI doesn't care. We can't fix a system that isn't listening by asking nicer."],
     tone: "red",
   },
   {
-    kicker: "WHAT YOU HAVE",
-    title: "TWO PEOPLE, ALREADY SURE",
+    kicker: "Where we're at",
     lines: [
-      "Camille was in a union at her last studio. Wendell was here before the acquisition.",
-      "That is the entire campaign right now.",
+      "Wendell was here before the acquisition. I'm Camille, and I was in a union at my last studio.",
+      "We are ready to take back control, but we need your help.",
     ],
     visual: "committee",
   },
   {
-    kicker: "THE ONE RULE",
-    title: "YOU DON'T TALK TO THE FLOOR",
+    kicker: "Your role",
     lines: [
-      "You direct the two people who are already in.",
-      "Every hour you spend is Camille or Wendell having the conversation, not you.",
+      "You've seen this before. You know you can't parachute in and fix their problems.",
+      "But you can help them build the structure needed to reclaim control of the studio.",
     ],
   },
   {
-    kicker: "WHY IT MATTERS WHO",
-    title: "INFLUENCE RUNS PERSON TO PERSON",
+    kicker: "Relationships matter",
+    title: "Influence runs person to person",
     lines: [
-      "The same conversation lands three times harder between two people who actually move each other.",
-      "A stranger saying the very same thing barely moves her at all.",
+      "The same conversation is more powerful when there's an existing relationship there.",
+      "Guide Wendell and Camille to have the right conversations with the right people.",
     ],
     visual: "influence",
   },
   {
-    kicker: "THE GOAL",
-    title: "30% GETS YOU AN ELECTION",
-    lines: [
-      "It does not win you one — and you choose when to file.",
-      "The rest you'll learn on the floor.",
-    ],
+    kicker: "The goal",
+    title: "30% support for unionizing forces an election",
+    lines: ["No guarantee of a win, just opens the door for a majority vote on whether the studio should be controlled by Play-Eye or the workers who actually love the game."],
   },
 ];
 
@@ -3204,7 +3197,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
         <IntroSequence
           beats={ACT1_INTRO_BEATS}
           visuals={{ committee: <IntroCommitteeVisual />, influence: <IntroInfluenceVisual /> }}
-          doneLabel="I'M FED UP"
+          doneLabel="LET'S GO"
           onDone={() => setPhase("plan")}
         />
       )}
