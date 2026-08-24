@@ -3204,12 +3204,6 @@ function ActOneGame({ onGraduate, onPrototype }) {
 
       {phase === "plan" && (
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
-          {week === 1 && (
-            <div className="mb-4 flex items-start gap-2 text-stone-300 text-xs border border-stone-700 bg-stone-900/60 px-3 py-2">
-              <MessageCircle size={14} className="shrink-0 mt-0.5" />
-              <span>Week one. The boxes are the company's org chart; the arrows over it are who actually moves whom. Click anyone, pick which of your two people talks to them, and watch how much the choice of who matters. The big number on each card is their support for unionizing.</span>
-            </div>
-          )}
           {unlockMapping && !anyRevealedBeyondStart && (
             <div className="mb-4 flex items-start gap-2 text-amber-300 text-xs border border-amber-700 bg-amber-950/30 px-3 py-2">
               <Radio size={14} className="shrink-0 mt-0.5" />
