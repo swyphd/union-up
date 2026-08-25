@@ -2244,7 +2244,7 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 // labels lets a second act reuse this board with its own vocabulary — the geometry,
 // influence arrows and card layout are identical, only the words change.
 const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD", organizerCard: "ON COMMITTEE", signedCard: "SIGNED" };
-function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [], onSelect, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
+function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [], onSelect, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
   const anyRevealed = workers.some(w => w.revealed && !w.organizer);
   const active = hoverId != null ? hoverId : focusId;
@@ -2439,6 +2439,9 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
           const dim = active != null && !connectedToActive(w.id);
           const border = w.burned ? "#44403c" : w.organizer ? "#f59e0b" : w.signed ? "#2dd4bf" : "#44403c";
           const status = w.organizer ? labels.organizerCard : w.signed ? labels.signedCard : "";
+          // Only while the player is still spending the week: during a resolution the
+          // right-hand slot belongs to the support delta.
+          const budget = hoursLeft && !w.burned && !hl && hoursLeft[w.id] != null ? hoursLeft[w.id] : null;
           return (
             <g
               key={w.id}
@@ -2471,14 +2474,24 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
               <text x={c.x + 29.4} y={c.y + 12.3} fontSize="2.8" fill="#78716c" fontFamily="'Courier New', monospace">{w.fulfillment}</text>
 
               {planLabels ? (
-                <text x={c.x + 3.6} y={c.y + 18} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), 21)}</text>
+                <text x={c.x + 3.6} y={c.y + 18} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), budget != null ? 17 : 21)}</text>
               ) : status ? (
                 <text x={c.x + 3.6} y={c.y + 18} fontSize="2.9" fill={w.organizer ? "#f59e0b" : "#2dd4bf"} fontFamily="'Courier New', monospace">{status}</text>
               ) : null}
               {w.burned && (
                 <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#78716c" fontFamily="'Courier New', monospace">OUT OF PLAY</text>
               )}
-              {!w.burned && !hl && w.underPressure > 0 && (
+              {/* The hours budget lives on the card so the player can see it without
+                  leaving the board. On someone the company is working on it goes red,
+                  which is also the week their budget is cut — one token, both facts. */}
+              {budget != null && (
+                <text
+                  x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.9" fontWeight="bold"
+                  fill={budget < 0 ? "#f87171" : w.underPressure > 0 ? "#f87171" : budget === 0 ? "#2dd4bf" : "#f59e0b"}
+                  fontFamily="'Courier New', monospace"
+                >{budget}h</text>
+              )}
+              {budget == null && !w.burned && !hl && w.underPressure > 0 && (
                 <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#f87171" fontFamily="'Courier New', monospace">WORKED ON</text>
               )}
 
@@ -3144,6 +3157,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
     }
   }
 
+  const organizerHours = Object.fromEntries(organizers.map(o => [o.id, hoursLeftFor(o)]));
   const canResolve = planEntries.length > 0 && organizers.every(o => hoursLeftFor(o) >= 0);
   const overBudget = organizers.some(o => hoursLeftFor(o) < 0);
 
@@ -3288,6 +3302,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
             influence={influence}
             layout={ORG_LAYOUT}
             planEntries={planEntries}
+            hoursLeft={organizerHours}
             onSelect={(w) => setSelectedWorker(w)}
           />
 
@@ -4280,6 +4295,7 @@ function ContractPrototype({ onExit }) {
             notes={phase === "result" ? result?.notes : null}
             stepKey={turn}
             labels={labels}
+            hoursLeft={phase === "plan" ? Object.fromEntries(cat.map(o => [o.id, hoursLeft(o)])) : null}
           />
 
           {phase === "result" ? (
