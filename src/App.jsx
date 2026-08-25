@@ -1276,12 +1276,12 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
             <div className="flex items-center justify-between mb-1">
               <div className="font-stencil text-lg tracking-wide text-stone-200">ALLOCATE ORGANIZER TIME</div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Pips
-                  filled={Math.max(0, Math.min(10, totalAllocated))}
+                <HourPie
+                  left={Math.max(0, remaining)}
                   total={10}
                   hex={remaining < 0 ? "#f87171" : remaining === 0 ? "#2dd4bf" : "#fbbf24"}
-                  size={10}
-                  gap={4}
+                  size={22}
+                  label={`${Math.max(0, remaining)} of 10 actions left this week`}
                 />
                 <span className={`text-xs font-bold ${remaining < 0 ? "text-red-500" : remaining === 0 ? "text-teal-400" : "text-stone-500"}`}>
                   {remaining < 0 ? `${Math.abs(remaining)} OVER` : remaining === 0 ? "ALL SPENT" : `${remaining} LEFT`}
@@ -3075,11 +3075,68 @@ function Pips({ filled = 0, total = 0, hex = "#fbbf24", size = 7, gap = 3, dim =
     </span>
   );
 }
-// The price tag on every action button.
+// ---------- TIME IS A PIE, NOT PIPS ----------
+// Pips mean commitment. Hours are a different resource and get a different shape: a
+// week cut into as many slices as the person has hours, filled with what's left. The
+// promotion to a fourth hour re-cuts the same circle into quarters instead of thirds,
+// which makes the promotion something you can see rather than read.
+function pieSlicePath(cx, cy, r, i, n) {
+  const a0 = (-90 + (i * 360) / n) * (Math.PI / 180);
+  const a1 = (-90 + ((i + 1) * 360) / n) * (Math.PI / 180);
+  const x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0);
+  const x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1);
+  return `M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${360 / n > 180 ? 1 : 0} 1 ${x1} ${y1} Z`;
+}
+
+// Bare SVG shapes, so the same pie can be drawn inside the floor map's own <svg> and
+// inside a standalone one in the panels.
+function HourPieShapes({ cx, cy, r, left, total, hex, sw = 0.9, bg = "#1c1917" }) {
+  const n = Math.max(1, total);
+  const lit = Math.max(0, Math.min(n, left));
+  if (n === 1) {
+    return <circle cx={cx} cy={cy} r={r} fill={lit >= 1 ? hex : "none"} stroke={hex} strokeWidth={sw} strokeOpacity={lit >= 1 ? 1 : 0.4} />;
+  }
+  return (
+    <>
+      {Array.from({ length: n }).map((_, i) => (
+        // A filled wedge is cut from its neighbours in the panel colour, so three hours
+        // still read as thirds instead of one solid disc. An empty wedge keeps its own
+        // faint outline, so you can count the slices on a week that's fully spent.
+        <path
+          key={i}
+          d={pieSlicePath(cx, cy, r, i, n)}
+          fill={i < lit ? hex : "none"}
+          stroke={i < lit ? bg : hex}
+          strokeWidth={sw}
+          strokeOpacity={i < lit ? 1 : 0.35}
+          strokeLinejoin="round"
+        />
+      ))}
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke={hex} strokeWidth={sw} strokeOpacity="0.6" />
+    </>
+  );
+}
+
+function HourPie({ left, total, hex = "#fbbf24", size = 15, label }) {
+  return (
+    <span className="inline-flex items-center shrink-0" title={label ?? `${left} of ${total} hour${total === 1 ? "" : "s"} left`}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block overflow-visible">
+        <HourPieShapes cx={size / 2} cy={size / 2} r={size / 2 - 1} left={left} total={total} hex={hex} sw={1} />
+      </svg>
+    </span>
+  );
+}
+
+// The price tag on every action button. Not a pie: a pie shows time REMAINING, and a
+// second pie next to it showing time SPENT would read as the same shape meaning the
+// opposite thing.
 function CostPips({ hours, affordable = true }) {
   return (
-    <span className="inline-flex items-center gap-1.5" title={`${hours} hour${hours === 1 ? "" : "s"}`}>
-      <Pips filled={hours} total={hours} hex={affordable ? "#fbbf24" : "#57534e"} size={6} gap={2.5} />
+    <span
+      className={`text-xs font-bold tabular-nums shrink-0 ${affordable ? "text-amber-400" : "text-stone-600"}`}
+      title={`${hours} hour${hours === 1 ? "" : "s"}`}
+    >
+      {hours}h
     </span>
   );
 }
@@ -3536,13 +3593,10 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                 const hex = budget < 0 || w.underPressure > 0 ? "#f87171" : budget === 0 ? "#2dd4bf" : "#f59e0b";
                 return (
                   <g>
-                    {Array.from({ length: Math.max(total, budget) }).map((_, i) => (
-                      <circle
-                        key={i}
-                        cx={c.x + c.w - 2.6 - i * 3.1} cy={c.y + 17.2} r="1.15"
-                        fill={i < budget ? hex : "none"} stroke={hex} strokeOpacity={i < budget ? 1 : 0.4} strokeWidth="0.35"
-                      />
-                    ))}
+                    <HourPieShapes
+                      cx={c.x + c.w - 4.4} cy={c.y + 17.1} r="2.9"
+                      left={budget} total={total} hex={hex} sw="0.3" bg="#1c1917"
+                    />
                     {budget < 0 && <text x={c.x + c.w - 2.6} y={c.y + 18.2} textAnchor="end" fontSize="2.9" fontWeight="bold" fill="#f87171" fontFamily="'Courier New', monospace">OVER</text>}
                   </g>
                 );
@@ -4867,7 +4921,9 @@ function ActOneGame({ onGraduate, onPrototype }) {
                         {focusActorId === o.id && <span className="text-[10px] text-amber-300 font-bold">{"\u25B8"} PICK A TARGET</span>}
                       </span>
                       <span className="flex items-center gap-2">
-                        <Pips filled={Math.max(0, left)} total={Math.max(hoursFor(o), left)} hex={left < 0 ? "#f87171" : left === 0 ? "#2dd4bf" : "#fbbf24"} size={7} gap={2.5} />
+                        <HourPie left={Math.max(0, left)} total={Math.max(hoursFor(o), left)} hex={left < 0 ? "#f87171" : left === 0 ? "#2dd4bf" : "#fbbf24"} size={17}
+                          label={`${left} of ${hoursFor(o)} hours left this week`} />
+                        {left < 0 && <span className="text-[11px] font-bold text-red-400">{Math.abs(left)} OVER</span>}
                         {o.shaken > 0 && <span className="text-[10px] text-red-400 font-bold">UNDER WATCH</span>}
                       </span>
                     </div>
@@ -5337,7 +5393,8 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
           <div className="space-y-2">
             <div className="text-xs text-stone-500 tracking-wide flex items-center gap-2 flex-wrap">
               <span>{worker.name}</span>
-              <Pips filled={Math.max(0, hoursLeftFor(worker))} total={hoursFor(worker)} hex="#fbbf24" size={8} gap={3} />
+              <HourPie left={Math.max(0, hoursLeftFor(worker))} total={hoursFor(worker)} hex="#fbbf24" size={19}
+                label={`${hoursLeftFor(worker)} of ${hoursFor(worker)} hours left this week`} />
               {worker.shaken > 0 && <span className="text-red-400"> — under a manager's eye this week</span>}
             </div>
             <div className="border border-stone-800 bg-stone-950/50 px-3 py-2 text-xs">
@@ -5424,7 +5481,8 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                       <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: infTrait(o).hex }} title={infTrait(o).label} />
                     </div>
                     <div className="text-[11px] flex items-center gap-1.5">
-                      <Pips filled={Math.max(0, hoursLeftFor(o))} total={hoursFor(o)} hex={hoursLeftFor(o) <= 0 ? "#f87171" : "#fbbf24"} size={5} gap={2} />
+                      <HourPie left={Math.max(0, hoursLeftFor(o))} total={hoursFor(o)} hex={hoursLeftFor(o) <= 0 ? "#f87171" : "#fbbf24"} size={13}
+                        label={`${hoursLeftFor(o)} of ${hoursFor(o)} hours left`} />
                       <span className="text-stone-500">inf {wgtKnown ? wgt : "?"}</span>
                     </div>
                   </button>
