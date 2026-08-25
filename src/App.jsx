@@ -3229,7 +3229,7 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 
 // labels lets a second act reuse this board with its own vocabulary — the geometry,
 // influence arrows and card layout are identical, only the words change.
-const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD", organizerCard: "ON COMMITTEE", signedCard: "SIGNED" };
+const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD" };
 function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOUT, planEntries = [], onSelect, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
   const anyRevealed = workers.some(w => w.revealed && !w.organizer);
@@ -3282,18 +3282,6 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
     <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
       <div className="flex items-center justify-between px-3 pt-2 flex-wrap gap-y-1">
         <div className="font-stencil text-lg tracking-wide text-stone-200">THE FLOOR</div>
-        <div className="flex items-center gap-3 text-[11px] text-stone-500 flex-wrap justify-end">
-          {SUPPORT_TIERS.map(t => (
-            <span key={t.label} className="flex items-center gap-1">
-              <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: t.hex }} />
-              {t.label}
-            </span>
-          ))}
-          <span className="flex items-center gap-1">
-            <span className="inline-block" style={{ width: 3, height: 8, backgroundColor: FULFILL_HEX }} />
-            FULFILLMENT
-          </span>
-        </div>
       </div>
       <div className="flex items-center gap-3 text-[11px] text-stone-500 flex-wrap px-3 pb-1">
         <span className="flex items-center gap-1">
@@ -3427,7 +3415,6 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
           const planLabels = plannedByWorker[w.id];
           const dim = active != null && !connectedToActive(w.id);
           const border = w.burned ? "#44403c" : w.organizer ? "#f59e0b" : w.signed ? "#2dd4bf" : "#44403c";
-          const status = w.organizer ? labels.organizerCard : w.signed ? labels.signedCard : "";
           // Only while the player is still spending the week: during a resolution the
           // right-hand slot belongs to the support delta.
           const budget = hoursLeft && !w.burned && !hl && hoursLeft[w.id] != null ? hoursLeft[w.id] : null;
@@ -3479,7 +3466,24 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                         strokeWidth="0.35"
                       />
                     ))}
-                    <text x={c.x + 20.5} y={c.y + 12.3} fontSize="2.6" fill={rung.hex} fillOpacity="0.8" fontFamily="'Courier New', monospace">{rung.label}</text>
+                    {/* Common ground, on the board. A glyph you have surfaced is drawn;
+                        one you haven't is a hollow tick, so the card shows how much of
+                        this person you still don't know. The player doesn't need to
+                        decode a glyph to use it — matching two cards is the whole read,
+                        and hovering spells the names out underneath. */}
+                    {affList(w).slice(0, 5).map((t, i) => {
+                      const seen = knownAff(w).includes(t);
+                      return (
+                        <text
+                          key={t}
+                          x={c.x + 19.4 + i * 3.1}
+                          y={c.y + 12.4}
+                          fontSize={seen ? "3" : "2.8"}
+                          fill={seen ? "#a8a29e" : "#57534e"}
+                          fontFamily="'Courier New', monospace"
+                        >{seen ? AFF_BY_ID[t]?.glyph ?? "\u25CF" : "\u00b7"}</text>
+                      );
+                    })}
                     {w.guarded > 0 && <text x={c.x + c.w - 3} y={c.y + 12.3} fontSize="2.8" fill="#f87171" textAnchor="end" fontFamily="'Courier New', monospace">!</text>}
                     {staleWeek != null && cardStaleSoon(w, staleWeek) && (
                       <text x={c.x + c.w - 3} y={c.y + 8.4} fontSize="2.2" fill="#fbbf24" textAnchor="end" fontFamily="'Courier New', monospace">
@@ -3492,8 +3496,6 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
 
               {planLabels ? (
                 <text x={c.x + 3.6} y={c.y + 18} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), budget != null ? 17 : 21)}</text>
-              ) : status ? (
-                <text x={c.x + 3.6} y={c.y + 18} fontSize="2.9" fill={w.organizer ? "#f59e0b" : "#2dd4bf"} fontFamily="'Courier New', monospace">{status}</text>
               ) : null}
               {w.burned && (
                 <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#78716c" fontFamily="'Courier New', monospace">OUT OF PLAY</text>
@@ -3571,6 +3573,21 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
             <span className={`font-bold ${supportTier(hovered.support).text}`}>{hovered.name}{hovered.burned ? " (OUT OF PLAY)" : ""}</span>
             <span className="text-stone-500"> ({TEAM_LABEL[hovered.team]}) — support <span className="text-stone-300 font-bold">{hovered.support}</span> · {fulfillmentLabel(hovered.fulfillment).toLowerCase()} ({hovered.fulfillment}){hovered.signed ? " · SIGNED" : ""}</span>
             <span className="text-stone-500"> — {hovered.hook}</span>
+            <div className="mt-0.5">
+              <span className="text-stone-500">Common ground: </span>
+              {knownAff(hovered).length ? (
+                <span className="text-stone-300">
+                  {knownAff(hovered).map(t => `${AFF_BY_ID[t]?.glyph ?? ""} ${AFF_BY_ID[t]?.label ?? t}`).join("  ·  ")}
+                </span>
+              ) : (
+                <span className="text-stone-600 italic">nothing surfaced yet</span>
+              )}
+              {affList(hovered).length > knownAff(hovered).length && (
+                <span className="text-stone-600 italic">
+                  {knownAff(hovered).length ? " · " : " · "}{affList(hovered).length - knownAff(hovered).length} still unknown
+                </span>
+              )}
+            </div>
             <div className="mt-0.5">
               {hoveredOut.length > 0 ? (
                 <span className="text-stone-500">Moves: <span className="text-amber-400">{hoveredOut.map(t => `${nameOf(t.id)}${teamOf(t.id) !== hovered.team ? " ↗" : ""} (${t.weight})`).join(", ")}</span>. </span>
@@ -5635,7 +5652,7 @@ function ContractPrototype({ onExit }) {
   }
 
   const boardWorkers = workers.map(w => ({ ...w, support: w.commitment, organizer: w.cat, signed: w.participated }));
-  const labels = { organizerLegend: "ON THE ACTION TEAM", signedLegend: "TURNED OUT LAST TIME", organizerCard: "ACTION TEAM", signedCard: "TURNED OUT" };
+  const labels = { organizerLegend: "ON THE ACTION TEAM", signedLegend: "TURNED OUT LAST TIME" };
   const canResolve = planEntries.length > 0 || actionPlan;
   const overBudget = cat.some(o => hoursLeft(o) < 0) || totalUsed > totalHours;
   const poolLeft = totalHours - totalUsed;
