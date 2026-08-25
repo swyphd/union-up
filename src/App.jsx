@@ -4209,7 +4209,9 @@ function ActOneGame({ onGraduate, onPrototype }) {
 
     if (!consultantNext.active && (committeeNow >= CONSULTANT_TRIGGER_COMMITTEE || signedForTrigger >= ACT1_CARDS_NEEDED - 2)) {
       consultantNext = { ...consultantNext, active: true, arrivedWeek: week };
-      consultantLines.push(`A consultant from ${CONSULTANT_FIRM} is on site by Wednesday. ${CONSULTANT_NAME} has a badge, a corner office nobody was using, and a list of names. This is what it looks like when management decides the campaign is real.`);
+      consultantLines.push(`A consultant from ${CONSULTANT_FIRM} is on site by Wednesday. ${CONSULTANT_NAME} has a badge, a corner office nobody was using, and a list of names.`);
+      consultantLines.push(`WHAT HE DOES: two one-on-ones a week, aimed at the highest-support person who isn't already surrounded by signed coworkers. Each costs that person up to \u22128 stated support and 60% of that in true support. Every ${CONSULTANT_SETPIECE_GAP} weeks he runs one set piece \u2014 a raise offered to a waverer, or a job threat aimed at your most isolated committee member \u2014 ${CONSULTANT_MAX_EACH} of each, all campaign.`);
+      consultantLines.push(`WHAT BLUNTS HIM: signed coworkers who carry weight with the target. Every 30 points of that backing takes 1 off the blow, to a floor of 1. Below ${KIRKMAN_SIGHT} heat he can't see your map and picks names off the org chart instead, which lands at 55% strength. Your own visibility is what teaches him where to aim.`);
     } else if (consultantNext.active) {
       // One-on-ones: he works the people closest to signing, minus whoever is already
       // surrounded by organizers. Density is the defence.
@@ -4233,7 +4235,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
         if (holdsFast(t)) {
           t.pressuredCount = (t.pressuredCount || 0) + 1;
           consultantNotes[t.id] = `${CONSULTANT_NAME_UC} gets nowhere`;
-          consultantLines.push(`${CONSULTANT_NAME} pulls ${t.name} into a room and gets exactly nothing. Stubborn cuts both ways \u2014 they were hard to bring over, and now they're impossible to take back. 0 support lost.`);
+          consultantLines.push(`NO MOVEMENT \u2014 ${t.name}: 0 stated, 0 true. STUBBORN ignores everything ${CONSULTANT_NAME} does, permanently. It cuts both ways \u2014 they were hard to bring over, and now they're impossible to take back.`);
           return;
         }
         const realBacking = signedBacking(influence, w, t.id);
@@ -4248,21 +4250,34 @@ function ActOneGame({ onGraduate, onPrototype }) {
         consultantNotes[t.id] = `${CONSULTANT_NAME_UC} works on them`;
         consultantLines.push(
           `${seesNetwork ? "TARGETED 1:1" : "ORG-CHART 1:1"} \u2014 ${t.name}: \u2212${before - t.support} stated, \u2212${Math.round((before - t.support) * 0.6)} true. ` +
+          `Base 8` +
+          (resist > 0 ? `, \u2212${resist} from ${Math.round(realBacking)} signed backing` : "") +
+          (!seesNetwork ? `, \u00d70.55 because he's guessing off the reporting line` : "") +
+          `. ` +
           `${CONSULTANT_ONE_ON_ONES[rand(CONSULTANT_ONE_ON_ONES.length)](t.name)}` +
-          (!seesNetwork ? ` He picked them off a reporting line, not a friendship \u2014 it lands at just over half strength.` : "") +
-          (resist >= 3 ? ` It lands softer than he expected: ${t.name} has heard all of it already, from people they trust more.` : "")
+          (resist >= 3 ? ` It lands soft: ${t.name} has heard all of it already, from people they trust more.` : "") +
+          (realBacking < 20 ? ` Nobody who has signed carries any weight with them, so there was nothing in the way.` : "")
         );
         t.history.push(`Week ${week}: ${CONSULTANT_NAME} worked on them (-${before - t.support} support).`);
       });
 
       if (inCampaign) {
+        // The biggest single effect in the whole counter-campaign, and the easiest to
+        // miss because it touches everybody at once. So it reports its own total.
+        let meetingTotal = 0, meetingCount = 0, meetingWorst = 0;
         w.forEach(x => {
           if (x.burned) return;
           const backing = signedBacking(influence, w, x.id);
           const hit = Math.max(1, Math.round(4 - backing / 70 - (x.signed ? 1 : 0)));
           x.support = clamp(x.support - hit);
+          meetingTotal += hit; meetingCount += 1; meetingWorst = Math.max(meetingWorst, hit);
         });
-        consultantLines.push("Another mandatory meeting on the calendar — the third this month. Paid time, catered, and no one from the union side is allowed to answer back.");
+        consultantLines.push(
+          `CAPTIVE-AUDIENCE MEETING \u2014 all ${meetingCount} workers, \u2212${meetingTotal} stated support between them, up to \u2212${meetingWorst} each. ` +
+          `Base 4, less 1 for anyone who has signed and 1 more per 70 points of signed backing behind them. ` +
+          `True support is untouched \u2014 a mandatory meeting changes what people will say out loud, not what they'd do in a booth. ` +
+          `Paid time, catered, and nobody from the union side is allowed to answer back. It runs again every week until the ballot.`
+        );
       }
 
       // Set pieces, spaced out: the raise and the threat.
@@ -4287,7 +4302,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
             mark.support = clamp(mark.support - 25);
             mark.underPressure = 2;
             consultantNotes[mark.id] = "STEPS BACK";
-            consultantLines.push(`JOB THREAT LANDS \u2014 ${mark.name} steps off the committee: \u221225 support, and everyone they carry loses ground. ${mark.name} is walked into a room with ${CONSULTANT_NAME} and their manager and asked, carefully, whether they've thought about how this looks on a performance file. Nothing actionable is said. He picked the most isolated person on your committee, which is the only kind this works on.`);
+            consultantLines.push(`JOB THREAT LANDS \u2014 ${mark.name} steps off the committee: \u221225 support, and everyone they carry loses up to 5. They had ${Math.round(markBacking(mark))} signed backing, so this was a ${Math.round(foldChance * 100)}% chance of folding. ${mark.name} is walked into a room with ${CONSULTANT_NAME} and their manager and asked, carefully, whether they've thought about how this looks on a performance file. Nothing actionable is said. He picks the most isolated person on your committee, because that is the only kind this works on.`);
             mark.history.push(`Week ${week}: pressured off the committee.`);
             outgoingTies(influence, mark.id).forEach(t => {
               const other = byId(t.id);
@@ -4299,7 +4314,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
             mark.support = clamp(mark.support + 5);
             heatNext = clamp(heatNext + 8);
             consultantNotes[mark.id] = "DOESN'T BLINK";
-            consultantLines.push(`JOB THREAT BACKFIRES \u2014 ${mark.name} holds: +5 support to them, +8 heat, and everyone they carry moves toward you. ${CONSULTANT_NAME} asks how this will look on their performance file. ${mark.name} writes down the date, the time, and who was in the room, and tells everyone. Threatening someone's job over a union is illegal, and now it's documented.`);
+            consultantLines.push(`JOB THREAT BACKFIRES \u2014 ${mark.name} holds: +5 support to them, +8 heat, and everyone they carry gains up to 6. With ${Math.round(markBacking(mark))} signed backing they only had a ${Math.round(foldChance * 100)}% chance of folding \u2014 every 3 points of backing takes 1% off it. ${CONSULTANT_NAME} asks how this will look on their performance file. ${mark.name} writes down the date, the time, and who was in the room, and tells everyone. Threatening someone's job over a union is illegal, and now it's documented.`);
             mark.history.push(`Week ${week}: threatened, didn't budge, and put it on the record.`);
             outgoingTies(influence, mark.id).forEach(t => {
               const other = byId(t.id);
@@ -4310,6 +4325,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
           }
         } else if (canRaise && raisePool.length) {
           const mark = [...raisePool].sort((a, b) => a.support - b.support)[0];
+          const before35 = mark.support;
           const takeChance = Math.min(0.7, Math.max(0.05, (100 - mark.support) / 60));
           consultantNext = { ...consultantNext, raises: consultantNext.raises + 1, lastSetPiece: week };
           if (Math.random() < takeChance) {
@@ -4319,13 +4335,13 @@ function ActOneGame({ onGraduate, onPrototype }) {
             mark.underPressure = 2;
             heatNext = clamp(heatNext - 5);
             consultantNotes[mark.id] = wasSigned ? "PULLS THEIR CARD" : "TAKES THE OFFER";
-            consultantLines.push(`BUY-OFF LANDS \u2014 ${mark.name}: \u221235 support${wasSigned ? ", card withdrawn" : ""}, and \u22125 heat because a quiet raise draws no attention. They're offered a title bump and a number that solves a real problem at home. They take it.${wasSigned ? " Their card comes off the table." : ""} Nobody in the room blames them, which is the worst part.`);
+            consultantLines.push(`BUY-OFF LANDS \u2014 ${mark.name}: \u221235 support${wasSigned ? ", card withdrawn" : ""}, and \u22125 heat, because a quiet raise draws no attention. He offers it to whoever on your side is cheapest to buy: at ${before35} support that was a ${Math.round(takeChance * 100)}% chance of being taken. They're offered a title bump and a number that solves a real problem at home. They take it.${wasSigned ? " Their card comes off the table." : ""} Nobody in the room blames them, which is the worst part.`);
             mark.history.push(`Week ${week}: took the raise${wasSigned ? " and withdrew their card" : ""}.`);
           } else {
             mark.support = clamp(mark.support + 8);
             heatNext = clamp(heatNext + 6);
             consultantNotes[mark.id] = "TURNS IT DOWN";
-            consultantLines.push(`BUY-OFF REFUSED \u2014 ${mark.name}: +8 support, +6 heat, and everyone they carry moves toward you. They're offered a title bump and a raise, quietly, a week after signing on. They turn it down and repeat the offer out loud in the kitchen. Buying one person is cheap; getting caught at it is not.`);
+            consultantLines.push(`BUY-OFF REFUSED \u2014 ${mark.name}: +8 support, +6 heat, and everyone they carry gains up to 6. At ${before35} support it was a ${Math.round(takeChance * 100)}% chance of landing \u2014 the more convinced somebody already is, the less a raise is worth. They're offered a title bump and a raise, quietly, a week after signing on. They turn it down and repeat the offer out loud in the kitchen. Buying one person is cheap; getting caught at it is not.`);
             mark.history.push(`Week ${week}: refused a raise meant to buy them off, and said so publicly.`);
             outgoingTies(influence, mark.id).forEach(t => {
               const other = byId(t.id);
@@ -4643,11 +4659,31 @@ function ActOneGame({ onGraduate, onPrototype }) {
           {consultant.active && (
             <div className="mb-4 flex items-start gap-2 text-red-300 text-sm border border-red-800 bg-red-950/30 px-3 py-2">
               <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              {/* A standing readout of his rules, not a mood. It changes when his
+                  sight or his tempo does, so the player can see the threat change. */}
               <span>
-                <span className="font-bold text-red-400">{CONSULTANT_NAME.toUpperCase()} IS ON SITE.</span> Management is paying a union-avoidance
-                consultant, and he runs your playbook backwards — one-on-ones with whoever is closest to signing, plus a raise for
-                the wavering and a quiet word about someone's performance file. He picks off the isolated: a worker with signed
-                coworkers who carry real weight with them has heard it all before and barely moves. Density is the defence.
+                <span className="font-bold text-red-400">{CONSULTANT_NAME.toUpperCase()} IS ON SITE.</span>{" "}
+                <span className="text-stone-300">
+                  {stage === "campaign" ? "4" : "2"} one-on-ones a week at up to <span className="font-bold">−8 stated</span>{" "}
+                  and <span className="font-bold">−5 true</span> each, aimed at your highest-support person who isn't already covered.
+                  {stage === "campaign"
+                    ? " Plus a mandatory all-hands every week: −1 to −4 stated on every worker on the floor."
+                    : ""}
+                  {" "}{(() => {
+                    const raisesLeft = CONSULTANT_MAX_EACH - (consultant.raises || 0);
+                    const threatsLeft = CONSULTANT_MAX_EACH - (consultant.threats || 0);
+                    if (raisesLeft + threatsLeft === 0) return "Both set pieces are spent — he has no raise and no job threat left to run.";
+                    return `A set piece every ${CONSULTANT_SETPIECE_GAP} week${CONSULTANT_SETPIECE_GAP === 1 ? "" : "s"}: ${raisesLeft} raise${raisesLeft === 1 ? "" : "s"} and ${threatsLeft} job threat${threatsLeft === 1 ? "" : "s"} left.`;
+                  })()}
+                </span>{" "}
+                <span className={heat >= KIRKMAN_SIGHT || stage === "campaign" ? "text-red-400 font-bold" : "text-teal-400"}>
+                  {heat >= KIRKMAN_SIGHT || stage === "campaign"
+                    ? "He can see your map."
+                    : `He can't see your map yet — at ${heat} heat he's picking names off the org chart, at 55% strength. It changes at ${KIRKMAN_SIGHT}.`}
+                </span>{" "}
+                <span className="text-stone-400">
+                  Signed coworkers who carry weight with a target take 1 off every blow per 30 points of backing. Density is the defence.
+                </span>
               </span>
             </div>
           )}
