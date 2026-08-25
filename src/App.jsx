@@ -3322,6 +3322,8 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD" };
 function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
+  // Which common-ground mark the cursor is on, so it can name itself.
+  const [hoverAff, setHoverAff] = useState(null);
   const anyRevealed = workers.some(w => w.revealed && !w.organizer);
   const active = hoverId != null ? hoverId : focusId;
 
@@ -3571,15 +3573,32 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                   const seen = knownAff(w).includes(t);
                   const bought = isPoisoned(w, t);
                   return (
-                    <text
+                    <g
                       key={t}
-                      x={c.x + 3.9 + i * 5.8}
-                      y={c.y + 15.2}
-                      fontSize={seen ? "4.6" : "4"}
-                      fill={seen ? (bought ? "#f87171" : "#a8a29e") : "#57534e"}
-                      fillOpacity={seen && bought ? 0.75 : 1}
-                      fontFamily="'Courier New', monospace"
-                    >{seen ? AFF_BY_ID[t]?.glyph ?? "\u25CF" : "\u00b7"}</text>
+                      onMouseEnter={() => setHoverAff({
+                        x: c.x + 5.2 + i * 5.8,
+                        y: c.y + 11.4,
+                        seen,
+                        bought,
+                        label: seen ? (AFF_BY_ID[t]?.label ?? t) : "Not surfaced yet",
+                        sub: seen
+                          ? (bought ? "The company sponsors this now \u2014 it counts for nothing." : "Shared common ground makes a conversation land harder.")
+                          : "A quick chat is the cheapest way to find out.",
+                      })}
+                      onMouseLeave={() => setHoverAff(null)}
+                    >
+                      {/* An unsurfaced tick is barely a pixel wide, so the whole slot is
+                          the hover target rather than the mark itself. */}
+                      <rect x={c.x + 3.2 + i * 5.8} y={c.y + 10.8} width="5.4" height="5.6" fill="transparent" />
+                      <text
+                        x={c.x + 3.9 + i * 5.8}
+                        y={c.y + 15.2}
+                        fontSize={seen ? "4.6" : "4"}
+                        fill={seen ? (bought ? "#f87171" : "#a8a29e") : "#57534e"}
+                        fillOpacity={seen && bought ? 0.75 : 1}
+                        fontFamily="'Courier New', monospace"
+                      >{seen ? AFF_BY_ID[t]?.glyph ?? "\u25CF" : "\u00b7"}</text>
+                    </g>
                   );
                 })}
                 {w.guarded > 0 && <text x={c.x + c.w - 3} y={c.y + 15.2} fontSize="3.2" fill="#f87171" textAnchor="end" fontFamily="'Courier New', monospace">!</text>}
@@ -3680,6 +3699,29 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
             </g>
           );
         })}
+
+        {/* Last in the SVG so it sits over everything: the mark says what it is. */}
+        {hoverAff && (() => {
+          const pad = 2.2;
+          const w1 = hoverAff.label.length * 1.62 + pad * 2;
+          const w2 = hoverAff.sub.length * 1.18 + pad * 2;
+          const boxW = Math.max(w1, w2, 26);
+          const boxH = 10.4;
+          const x = Math.max(1, Math.min(layout.width - boxW - 1, hoverAff.x - boxW / 2));
+          const y = Math.max(1, hoverAff.y - boxH - 1.6);
+          const hex = hoverAff.bought ? "#f87171" : hoverAff.seen ? "#e7e5e4" : "#a8a29e";
+          return (
+            <g style={{ pointerEvents: "none" }}>
+              <rect x={x} y={y} width={boxW} height={boxH} rx="1.2" fill="#0c0a09" stroke={hex} strokeWidth="0.3" strokeOpacity="0.7" />
+              <text x={x + pad} y={y + 4.4} fontSize="2.7" fill={hex} fontFamily="'Courier New', monospace" fontWeight="bold">
+                {hoverAff.label}{hoverAff.bought ? " (bought)" : ""}
+              </text>
+              <text x={x + pad} y={y + 8.2} fontSize="2" fill="#78716c" fontFamily="'Courier New', monospace">
+                {hoverAff.sub}
+              </text>
+            </g>
+          );
+        })()}
       </svg>
 
       <div className="border-t border-stone-800 px-3 py-2 min-h-[3.6rem]">
