@@ -3313,7 +3313,7 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 // labels lets a second act reuse this board with its own vocabulary — the geometry,
 // influence arrows and card layout are identical, only the words change.
 const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD" };
-function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, onClearPlans = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
+function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
   const anyRevealed = workers.some(w => w.revealed && !w.organizer);
   const active = hoverId != null ? hoverId : focusId;
@@ -3518,6 +3518,10 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
               {planLabels && !w.burned && (
                 <rect x={c.x - 1.3} y={c.y - 1.3} width={c.w + 2.6} height={c.h + 2.6} rx="1.6" fill="none" stroke="#f59e0b" strokeWidth="0.45" strokeDasharray="1.6 1.2" />
               )}
+              {focusId === w.id && !w.burned && (
+                // The armed organizer, as a ring rather than a label.
+                <rect x={c.x - 2.2} y={c.y - 2.2} width={c.w + 4.4} height={c.h + 4.4} rx="2.2" fill="none" stroke="#fcd34d" strokeWidth="0.7" />
+              )}
               {hl && (hl.signed || hl.burned) && (
                 <rect
                   key={`flash-${stepKey}-${w.id}`}
@@ -3529,19 +3533,6 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
               )}
 
               <text x={c.x + 3.6} y={c.y + 8.2} fontSize="4.3" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{w.name.toUpperCase()}</text>
-              {onArm && w.organizer && !w.burned && (() => {
-                // The card body arms them. Their name still opens their own panel —
-                // public actions and check-ins are chosen there, not on a target.
-                const nameW = Math.max(8, w.name.length * 2.35);
-                return (
-                  <g onClick={(ev) => { ev.stopPropagation(); onSelect(w); }} style={{ cursor: "pointer" }}>
-                    <title>Open {w.name}&apos;s panel</title>
-                    <rect x={c.x + 2.6} y={c.y + 3.6} width={nameW + 2} height="6.4" fill="transparent" />
-                    <line x1={c.x + 3.6} y1={c.y + 9.5} x2={c.x + 3.6 + nameW} y2={c.y + 9.5}
-                      stroke="#f59e0b" strokeWidth="0.28" strokeDasharray="0.7 0.7" strokeOpacity="0.85" />
-                  </g>
-                );
-              })()}
               <text x={c.x + c.w - 2.6} y={c.y + 9.2} textAnchor="end" fontSize="6" fontWeight="bold" fill={w.burned ? "#57534e" : tier.hex} fontFamily="'Courier New', monospace">{w.burned ? "—" : w.support}</text>
 
               {/* Commitment ladder in the top-right corner, where the trait tick used to
@@ -3586,8 +3577,8 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                 })}
                 {w.guarded > 0 && <text x={c.x + c.w - 3} y={c.y + 15.2} fontSize="3.2" fill="#f87171" textAnchor="end" fontFamily="'Courier New', monospace">!</text>}
                 {staleWeek != null && cardStaleSoon(w, staleWeek) && (
-                  <text x={c.x + c.w - (w.guarded > 0 ? 6 : 3)} y={c.y + 15.2} fontSize="2.4" fill="#fbbf24" textAnchor="end" fontFamily="'Courier New', monospace">
-                    EXP WK{cardExpiresOn(w)}
+                  <text x={c.x + c.w - (w.guarded > 0 ? 6.5 : 3)} y={c.y + 15.2} fontSize="3.6" fill="#fbbf24" textAnchor="end" fontFamily="'Courier New', monospace">
+                    {"\u29D6"}
                   </text>
                 )}
               </g>
@@ -3595,56 +3586,34 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
               {planLabels ? (
                 <text x={c.x + 3.6} y={c.y + 17.5} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), budget != null ? 13 : 17)}</text>
               ) : null}
-              {planLabels && onClearPlans && !w.burned && (() => {
-                const cx = budget != null ? c.x + c.w - 11.6 : c.x + c.w - 4.6;
-                return (
-                  <g
-                    onClick={(ev) => { ev.stopPropagation(); onClearPlans(w.id); }}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <title>Cancel what's planned for {w.name} this week</title>
-                    <circle cx={cx} cy={c.y + 16.6} r="2.4" fill="#1c1917" stroke="#f59e0b" strokeWidth="0.35" strokeOpacity="0.8" />
-                    <path
-                      d={`M ${cx - 1.05} ${c.y + 15.6} L ${cx + 1.05} ${c.y + 17.7} M ${cx + 1.05} ${c.y + 15.6} L ${cx - 1.05} ${c.y + 17.7}`}
-                      stroke="#f59e0b" strokeWidth="0.45" strokeLinecap="round"
-                    />
-                  </g>
-                );
-              })()}
               {w.burned && (
                 <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#78716c" fontFamily="'Courier New', monospace">OUT OF PLAY</text>
               )}
               {/* The hours budget lives on the card so the player can see it without
                   leaving the board. On someone the company is working on it goes red,
                   which is also the week their budget is cut — one token, both facts. */}
-              {/* ---- ROW FOUR: the plan shelf, folded onto the card ---- */}
+              {/* ---- ROW FOUR ---- Tier is the colour of the experience bar; trouble is
+                   one mark. The hover line underneath says which, in words. */}
               {w.organizer && !w.burned && tierOf && (() => {
                 const t = tierOf(w);
                 const xp = Math.max(0, Math.min(100, w.experience || 0));
                 const idle = w.weeksIdle || 0;
-                const armed = focusId === w.id;
-                const warn = armed ? { text: "PICK A TARGET", hex: "#fcd34d" }
-                  : w.shaken > 0 ? { text: "UNDER WATCH", hex: "#f87171" }
-                  : idle >= IDLE_QUIT - 1 ? { text: "WALKS NEXT WK", hex: "#f87171" }
-                  : idle > IDLE_GRACE ? { text: `IDLE ${idle} \u00b7 \u22121 HR`, hex: "#fbbf24" }
-                  : idle > 0 ? { text: `IDLE ${idle}`, hex: "#78716c" }
+                const flag = w.shaken > 0 ? { mark: "\u25C9", hex: "#f87171" }
+                  : idle >= IDLE_QUIT - 1 ? { mark: "\u25B2", hex: "#f87171" }
+                  : idle > IDLE_GRACE ? { mark: "\u25B2", hex: "#fbbf24" }
+                  : idle > 0 ? { mark: "\u25B3", hex: "#78716c" }
                   : null;
-                // The two share one row, so the tier gives up characters to the warning
-                // rather than running underneath it. LEAD ORGANIZER + WALKS NEXT WK
-                // would otherwise overlap by a clear margin.
-                const room = (c.w - 7.2 - (warn ? warn.text.length * 1.45 + 1.5 : 0)) / 1.45;
                 return (
                   <g>
-                    <text x={c.x + 3.6} y={c.y + 21.6} fontSize="2.4" fill={t.hex} fillOpacity="0.95" fontFamily="'Courier New', monospace">{t.label.length <= room ? t.label : truncateNote(t.label.split(" ")[0], Math.max(3, Math.floor(room)))}</text>
-                    {warn && (
-                      <text x={c.x + c.w - 2.6} y={c.y + 21.6} textAnchor="end" fontSize="2.4" fontWeight="bold" fill={warn.hex} fontFamily="'Courier New', monospace">{warn.text}</text>
+                    {flag && (
+                      <text x={c.x + c.w - 3.4} y={c.y + 21.8} textAnchor="end" fontSize="3.4" fill={flag.hex} fontFamily="'Courier New', monospace">{flag.mark}</text>
                     )}
-                    {/* Experience as a hairline along the base of the card. */}
-                    <rect x={c.x + 3.6} y={c.y + 22.9} width={c.w - 6.2} height="0.7" rx="0.35" fill="#292524" />
-                    <rect x={c.x + 3.6} y={c.y + 22.9} width={(c.w - 6.2) * (xp / 100)} height="0.7" rx="0.35" fill={t.hex} fillOpacity="0.9" />
+                    <rect x={c.x + 3.6} y={c.y + 21.2} width={c.w - 7.2} height="0.8" rx="0.4" fill="#292524" />
+                    <rect x={c.x + 3.6} y={c.y + 21.2} width={(c.w - 7.2) * (xp / 100)} height="0.8" rx="0.4" fill={t.hex} fillOpacity="0.9" />
                   </g>
                 );
               })()}
+
 
               {budget != null && (() => {
                 const total = Math.max(budget, committeeHours(w));
@@ -3655,7 +3624,6 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                       cx={c.x + c.w - 4.4} cy={c.y + 16.6} r="2.7"
                       left={budget} total={total} hex={hex} sw="0.3" bg="#1c1917"
                     />
-                    {budget < 0 && <text x={c.x + c.w - 2.6} y={c.y + 18.2} textAnchor="end" fontSize="2.9" fontWeight="bold" fill="#f87171" fontFamily="'Courier New', monospace">OVER</text>}
                   </g>
                 );
               })()}
@@ -3784,6 +3752,13 @@ function ActOneGame({ onGraduate, onPrototype }) {
   // Actor-first selection: pick who acts on the shelf, then pick who they go to.
   // Target-first still works \u2014 both entry points reach the same panel.
   const [focusActorId, setFocusActorId] = useState(null);
+  // Escape clears the armed organizer, since clicking their card again is now a public
+  // action rather than a way out of the selection.
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") setFocusActorId(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [confirmStartOver, setConfirmStartOver] = useState(false);
   const [wonOnWeek, setWonOnWeek] = useState(null);
   // "drive" = collecting cards toward the 30% petition threshold. "campaign" = petition
@@ -4934,8 +4909,12 @@ function ActOneGame({ onGraduate, onPrototype }) {
             planEntries={planEntries}
             hoursLeft={organizerHours}
             tierOf={orgTier}
-            onClearPlans={(id) => setPlanEntries(es => es.filter(e => e.targetId !== id))}
-            onArm={(w) => setFocusActorId(cur => (cur === w.id ? null : w.id))}
+            onArm={(w) => {
+              // Nobody armed: this organizer takes the week. Already armed and clicked
+              // again: that's "what should Wendell do on his own" — public actions.
+              if (focusActorId === w.id) setSelectedWorker(w);
+              else setFocusActorId(w.id);
+            }}
             onSelect={(w) => setSelectedWorker(w)}
             focusId={focusActorId}
             staleWeek={week}
@@ -4946,8 +4925,8 @@ function ActOneGame({ onGraduate, onPrototype }) {
           <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
             <p className="text-xs text-stone-500 flex-1 min-w-[16rem]">
               {focusActorId
-                ? "Now click anyone on the floor \u2014 they'll do it. Click the same card again to clear the selection."
-                : "Click a committee member's card to pick who acts, then choose a target on the floor. Their underlined name opens their own panel, where public actions and check-ins live. Or click straight to someone and choose who goes to them."}
+                ? "Now click who they should work on. Click their own card again for a public action. Esc clears the selection."
+                : "Click a committee member to pick who acts this week, then click who they should work on."}
             </p>
             <span className={`text-base font-bold shrink-0 ${overBudget ? "text-red-500" : totalUsed === totalHours ? "text-teal-400" : "text-amber-400"}`}>
               {totalUsed} / {totalHours} HOURS
@@ -5149,10 +5128,12 @@ function ActOneGame({ onGraduate, onPrototype }) {
           hoursFor={hoursFor}
           week={week}
           preferActorId={focusActorId}
+          plannedFor={planEntries.filter(e => e.targetId === selectedWorker.id || (e.actorId === selectedWorker.id && !e.targetId))}
+          onCancelPlans={(key) => setPlanEntries(es => es.filter(e => e.key !== key))}
           unlockPublic={unlockPublic}
           unlockMapping={unlockMapping}
           consultantActive={consultant.active}
-          onPlan={(actorId, type, targetId) => { addPlan(actorId, type, targetId); setSelectedWorker(null); }}
+          onPlan={(actorId, type, targetId) => { addPlan(actorId, type, targetId); setSelectedWorker(null); setFocusActorId(actorId); }}
           onClose={() => setSelectedWorker(null)}
         />
       )}
@@ -5220,9 +5201,10 @@ function ActOneGame({ onGraduate, onPrototype }) {
   );
 }
 
-function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, unlockPublic, unlockMapping, consultantActive = false, onPlan, onClose }) {
+function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, unlockPublic, unlockMapping, consultantActive = false, onPlan, onClose }) {
   const others = organizers.filter(o => o.id !== worker.id);
   const [actorId, setActorId] = useState(() => {
+    if (preferActorId && preferActorId !== worker.id && others.some(o => o.id === preferActorId)) return preferActorId;
     if (worker.organizer) return worker.id;
     // If the player picked the actor off the shelf first, honour that choice.
     if (preferActorId && preferActorId !== worker.id && others.some(o => o.id === preferActorId)) return preferActorId;
@@ -5232,7 +5214,10 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
     return (ranked.find(o => hoursLeftFor(o) >= 1) || ranked[0])?.id ?? null;
   });
   const actor = allWorkers.find(w => w.id === actorId);
-  const isSelfPanel = worker.organizer;
+  const isSelfPanel = worker.organizer && (!preferActorId || preferActorId === worker.id);
+  // Armed-actor flow: the pair is already decided, so the panel is an action card for
+  // that pair rather than a place to shop for a different organizer.
+  const locked = !isSelfPanel;
 
   const out = outgoingTies(influence, worker.id).filter(t => influenceKnown(worker, allWorkers.find(w => w.id === t.id)));
   const inc = worker.revealed ? incomingTies(influence, worker.id) : [];
@@ -5264,7 +5249,9 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto" onClick={onClose}>
       <div className="bg-stone-900 border-2 border-stone-700 max-w-lg w-full p-5 my-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
-          <div className="font-stencil text-2xl text-amber-400">{worker.name}</div>
+          <div className="font-stencil text-2xl text-amber-400">
+            {locked && actor ? <>{actor.name} <span className="text-stone-500">{"\u2192"}</span> {worker.name}</> : worker.name}
+          </div>
           <button onClick={onClose}><X size={18} className="text-stone-500 hover:text-stone-200" /></button>
         </div>
         <div className="flex items-center gap-3 mb-2 flex-wrap">
@@ -5277,6 +5264,25 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
           {worker.guarded > 0 && <span className="text-[11px] font-bold text-red-400 border border-red-900 px-1.5">GUARDED · {worker.guarded}w</span>}
         </div>
 
+        {plannedFor.length > 0 && onCancelPlans && (
+          // Cancelling lives here, next to what it cancels, rather than as a mark on the
+          // board that has to be found before it can be clicked.
+          <div className="border border-amber-700 bg-amber-950/25 px-3 py-2 mb-3">
+            <div className="text-[11px] text-amber-400 font-bold tracking-wide mb-1">ALREADY PLANNED THIS WEEK</div>
+            {plannedFor.map(e => (
+              <div key={e.key} className="flex items-center justify-between gap-3 text-sm text-stone-200">
+                <span>
+                  {allWorkers.find(x => x.id === e.actorId)?.name} {"\u2192"} {ACT1_ACTION[e.type].label.toLowerCase()}
+                  <span className="text-stone-500"> ({ACT1_ACTION[e.type].hours}h)</span>
+                </span>
+                <button
+                  onClick={() => onCancelPlans(e.key)}
+                  className="text-xs font-bold border border-stone-600 hover:border-red-500 hover:text-red-400 text-stone-300 px-2 py-1 transition-colors"
+                >CANCEL</button>
+              </div>
+            ))}
+          </div>
+        )}
         {/* COMMON GROUND — promoted to the top, because it is the decision */}
         <div className="border border-stone-800 bg-stone-950/50 px-3 py-2 mb-3">
           <div className="text-[11px] text-stone-500 font-bold tracking-wide mb-1.5">
@@ -5453,8 +5459,8 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
           <div className="text-sm text-stone-500">Nobody on the committee is free to work on {worker.name} right now.</div>
         ) : (
           <div>
-            <div className="text-xs text-stone-500 font-bold mb-1 tracking-wide">WHO DOES IT</div>
-            <div className="flex flex-wrap gap-1.5 mb-2">
+            <div className={locked ? "hidden" : "text-xs text-stone-500 font-bold mb-1 tracking-wide"}>WHO DOES IT</div>
+            <div className={locked ? "hidden" : "flex flex-wrap gap-1.5 mb-2"}>
               {others.map(o => {
                 const wgt = infOn(influence, o.id, worker.id);
                 const wgtKnown = influenceKnown(o, worker);
