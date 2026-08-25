@@ -2101,6 +2101,7 @@ function cardStaleSoon(w, week) {
   const exp = cardExpiresOn(w);
   return exp != null && exp - week <= CARD_STALE_WARNING && exp - week > 0;
 }
+const ACT1_PUBLIC_UNLOCK_WEEK = 4; // three weeks of conversations first
 const ACT1_RECRUIT_REQ = 85;
 function act1Stars(week) {
   if (week <= ACT1_STAR_WEEKS.three) return 3;
@@ -3646,8 +3647,10 @@ function ActOneGame({ onGraduate, onPrototype }) {
   const totalUsed = planEntries.reduce((s, e) => s + ACT1_ACTION[e.type].hours, 0);
 
   // Progressive unlocks — a mechanic introduces itself the week it first matters.
+  // Public actions stay locked for the first three weeks: the opening of a drive is
+  // one-on-one work, and handing over the visible options early lets a player skip it.
   const unlockMapping = week >= 2;
-  const unlockPublic = week >= 2;
+  const unlockPublic = week >= ACT1_PUBLIC_UNLOCK_WEEK;
   const anyRevealedBeyondStart = workers.some(w => w.revealed && !w.organizer);
   const anyPublicDone = workers.some(w => w.history.some(h => h.includes("public")));
   const anyRecruitable = workers.some(w => w.signed && !w.organizer && !w.burned && w.trueKnown && (w.trueSupport ?? 0) >= ACT1_RECRUIT_REQ);
