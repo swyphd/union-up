@@ -2189,14 +2189,17 @@ function IntroSequence({ beats, visuals = {}, doneLabel, onDone }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [last, onDone]);
 
-  const beat = beats[step];
+  const beat = beats[Math.min(step, beats.length - 1)] || {};
+  // A mistyped key in a beat table should not be able to white-screen the game, so
+  // accept `text` as well as `lines` and tolerate a beat that has neither.
+  const beatLines = beat.lines ?? (beat.text ? [beat.text] : []);
   const accent = beat.tone === "red" ? "text-red-400" : "text-amber-400";
   return (
     <div className="max-w-3xl mx-auto px-6 py-16 min-h-[70vh] flex flex-col">
       <div key={step} className="flex-1 flex flex-col justify-center anim-rise">
         <div className={`text-base tracking-[0.22em] mb-4 ${beat.tone === "red" ? "text-red-500" : "text-stone-500"}`}>{beat.kicker}</div>
         {beat.title && <div className={`font-stencil text-3xl sm:text-4xl leading-tight mb-4 ${accent}`}>{beat.title}</div>}
-        {beat.lines.map((line, i) => (
+        {beatLines.map((line, i) => (
           // A beat with no headline leads on its first line instead, so it still has a
           // visual anchor rather than opening on body copy.
           <p key={i} className={!beat.title && i === 0
@@ -2481,7 +2484,11 @@ const ACT1_INTRO_BEATS = [
   {
     kicker: "The Brief",
     title: `You have until the game ships in week ${ACT1_SHIP_WEEK}`,
-    text: `After launch the contractors roll off, the cuts land, and this shop stops existing in this shape. Cards also go stale after ${CARD_LIFESPAN} weeks \u2014 a signature is evidence of what somebody thought the day they signed it, not a permanent fact. Move fast, or watch your early wins rot off the count.`,
+    lines: [
+      "After launch the contractors roll off, the cuts land, and this shop stops existing in this shape.",
+      `Cards go stale after ${CARD_LIFESPAN} weeks too \u2014 a signature is evidence of what somebody thought the day they signed it, not a permanent fact.`,
+      "Move fast, or watch your early wins rot off the count.",
+    ],
   },
 ];
 
