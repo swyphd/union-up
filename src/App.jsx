@@ -3248,7 +3248,7 @@ function Stars({ count, size = "text-3xl" }) {
 // is that they don't respect the boxes. Organizing runs on the second map, not the first.
 const EDGE_MIN_DRAW = 20;
 const ORG_CARD_W = 42;
-const ORG_CARD_H = 22;
+const ORG_CARD_H = 25;
 const ORG_COL_GAP = 3;
 const ORG_ROW_GAP = 4.5;
 const ORG_TEAM_GAP = 13;
@@ -3313,7 +3313,7 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 // labels lets a second act reuse this board with its own vocabulary — the geometry,
 // influence arrows and card layout are identical, only the words change.
 const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD" };
-function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOUT, planEntries = [], onSelect, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
+function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, onClearPlans = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
   const anyRevealed = workers.some(w => w.revealed && !w.organizer);
   const active = hoverId != null ? hoverId : focusId;
@@ -3506,7 +3506,10 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
               key={w.id}
               opacity={w.burned ? 0.4 : dim ? 0.35 : 1}
               className={w.burned ? "" : "cursor-pointer"}
-              onClick={() => !w.burned && onSelect(w)}
+              onClick={() => {
+                if (w.burned) return;
+                if (onArm && w.organizer) onArm(w); else onSelect(w);
+              }}
               onMouseEnter={() => setHoverId(w.id)}
               onMouseLeave={() => setHoverId(null)}
             >
@@ -3526,6 +3529,19 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
               )}
 
               <text x={c.x + 3.6} y={c.y + 6.8} fontSize="4.3" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{w.name.toUpperCase()}</text>
+              {onArm && w.organizer && !w.burned && (() => {
+                // The card body arms them. Their name still opens their own panel —
+                // public actions and check-ins are chosen there, not on a target.
+                const nameW = Math.max(8, w.name.length * 2.35);
+                return (
+                  <g onClick={(ev) => { ev.stopPropagation(); onSelect(w); }} style={{ cursor: "pointer" }}>
+                    <title>Open {w.name}&apos;s panel</title>
+                    <rect x={c.x + 2.6} y={c.y + 2.2} width={nameW + 2} height="6.4" fill="transparent" />
+                    <line x1={c.x + 3.6} y1={c.y + 8.1} x2={c.x + 3.6 + nameW} y2={c.y + 8.1}
+                      stroke="#f59e0b" strokeWidth="0.28" strokeDasharray="0.7 0.7" strokeOpacity="0.85" />
+                  </g>
+                );
+              })()}
               <text x={c.x + c.w - 2.6} y={c.y + 7.8} textAnchor="end" fontSize="6" fontWeight="bold" fill={w.burned ? "#57534e" : tier.hex} fontFamily="'Courier New', monospace">{w.burned ? "—" : w.support}</text>
 
               {/* Influence trait, as a coloured corner tick. Visible from week one. */}
@@ -3580,21 +3596,66 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
               })()}
 
               {planLabels ? (
-                <text x={c.x + 3.6} y={c.y + 18} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), budget != null ? 17 : 21)}</text>
+                <text x={c.x + 3.6} y={c.y + 17.5} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), budget != null ? 13 : 17)}</text>
               ) : null}
+              {planLabels && onClearPlans && !w.burned && (() => {
+                const cx = budget != null ? c.x + c.w - 11.6 : c.x + c.w - 4.6;
+                return (
+                  <g
+                    onClick={(ev) => { ev.stopPropagation(); onClearPlans(w.id); }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <title>Cancel what's planned for {w.name} this week</title>
+                    <circle cx={cx} cy={c.y + 16.6} r="2.4" fill="#1c1917" stroke="#f59e0b" strokeWidth="0.35" strokeOpacity="0.8" />
+                    <path
+                      d={`M ${cx - 1.05} ${c.y + 15.6} L ${cx + 1.05} ${c.y + 17.7} M ${cx + 1.05} ${c.y + 15.6} L ${cx - 1.05} ${c.y + 17.7}`}
+                      stroke="#f59e0b" strokeWidth="0.45" strokeLinecap="round"
+                    />
+                  </g>
+                );
+              })()}
               {w.burned && (
                 <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#78716c" fontFamily="'Courier New', monospace">OUT OF PLAY</text>
               )}
               {/* The hours budget lives on the card so the player can see it without
                   leaving the board. On someone the company is working on it goes red,
                   which is also the week their budget is cut — one token, both facts. */}
+              {/* ---- ROW FOUR: the plan shelf, folded onto the card ---- */}
+              {w.organizer && !w.burned && tierOf && (() => {
+                const t = tierOf(w);
+                const xp = Math.max(0, Math.min(100, w.experience || 0));
+                const idle = w.weeksIdle || 0;
+                const armed = focusId === w.id;
+                const warn = armed ? { text: "PICK A TARGET", hex: "#fcd34d" }
+                  : w.shaken > 0 ? { text: "UNDER WATCH", hex: "#f87171" }
+                  : idle >= IDLE_QUIT - 1 ? { text: "WALKS NEXT WK", hex: "#f87171" }
+                  : idle > IDLE_GRACE ? { text: `IDLE ${idle} \u00b7 \u22121 HR`, hex: "#fbbf24" }
+                  : idle > 0 ? { text: `IDLE ${idle}`, hex: "#78716c" }
+                  : null;
+                // The two share one row, so the tier gives up characters to the warning
+                // rather than running underneath it. LEAD ORGANIZER + WALKS NEXT WK
+                // would otherwise overlap by a clear margin.
+                const room = (c.w - 7.2 - (warn ? warn.text.length * 1.45 + 1.5 : 0)) / 1.45;
+                return (
+                  <g>
+                    <text x={c.x + 3.6} y={c.y + 21.6} fontSize="2.4" fill={t.hex} fillOpacity="0.95" fontFamily="'Courier New', monospace">{t.label.length <= room ? t.label : truncateNote(t.label.split(" ")[0], Math.max(3, Math.floor(room)))}</text>
+                    {warn && (
+                      <text x={c.x + c.w - 2.6} y={c.y + 21.6} textAnchor="end" fontSize="2.4" fontWeight="bold" fill={warn.hex} fontFamily="'Courier New', monospace">{warn.text}</text>
+                    )}
+                    {/* Experience as a hairline along the base of the card. */}
+                    <rect x={c.x + 3.6} y={c.y + 22.9} width={c.w - 6.2} height="0.7" rx="0.35" fill="#292524" />
+                    <rect x={c.x + 3.6} y={c.y + 22.9} width={(c.w - 6.2) * (xp / 100)} height="0.7" rx="0.35" fill={t.hex} fillOpacity="0.9" />
+                  </g>
+                );
+              })()}
+
               {budget != null && (() => {
                 const total = Math.max(budget, committeeHours(w));
                 const hex = budget < 0 || w.underPressure > 0 ? "#f87171" : budget === 0 ? "#2dd4bf" : "#f59e0b";
                 return (
                   <g>
                     <HourPieShapes
-                      cx={c.x + c.w - 4.4} cy={c.y + 17.1} r="2.9"
+                      cx={c.x + c.w - 4.4} cy={c.y + 16.6} r="2.7"
                       left={budget} total={total} hex={hex} sw="0.3" bg="#1c1917"
                     />
                     {budget < 0 && <text x={c.x + c.w - 2.6} y={c.y + 18.2} textAnchor="end" fontSize="2.9" fontWeight="bold" fill="#f87171" fontFamily="'Courier New', monospace">OVER</text>}
@@ -4874,103 +4935,33 @@ function ActOneGame({ onGraduate, onPrototype }) {
             layout={ORG_LAYOUT}
             planEntries={planEntries}
             hoursLeft={organizerHours}
+            tierOf={orgTier}
+            onClearPlans={(id) => setPlanEntries(es => es.filter(e => e.targetId !== id))}
+            onArm={(w) => setFocusActorId(cur => (cur === w.id ? null : w.id))}
             onSelect={(w) => setSelectedWorker(w)}
             focusId={focusActorId}
             staleWeek={week}
           />
 
-          <div className="border-2 border-stone-800 bg-stone-900 p-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-stencil text-lg tracking-wide text-stone-200">PLAN WEEK {week}</div>
-              <div className={`text-base font-bold ${overBudget ? "text-red-500" : totalUsed === totalHours ? "text-teal-400" : "text-amber-400"}`}>
-                {totalUsed} / {totalHours} HOURS
-              </div>
-            </div>
-            <p className="text-xs text-stone-500 mb-3">
+          {/* No shelf. Everything it carried per committee member now lives on that
+              member's own card; what's left is the one instruction and the one button. */}
+          <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-xs text-stone-500 flex-1 min-w-[16rem]">
               {focusActorId
-                ? "Now click anyone on the floor \u2014 they'll do it. Click the row again to clear the selection."
-                : "Click a committee member's row below to pick who acts, then choose a target on the floor. Or click straight to someone on the floor and choose who goes to them."}
+                ? "Now click anyone on the floor \u2014 they'll do it. Click the same card again to clear the selection."
+                : "Click a committee member's card to pick who acts, then choose a target on the floor. Their underlined name opens their own panel, where public actions and check-ins live. Or click straight to someone and choose who goes to them."}
             </p>
-            <div className="space-y-2 mb-3">
-              {organizers.map(o => {
-                const mine = planEntries.filter(e => e.actorId === o.id);
-                const left = hoursLeftFor(o);
-                return (
-                  <div
-                    key={o.id}
-                    className={`border px-3 py-2 transition-colors cursor-pointer ${
-                      focusActorId === o.id ? "border-amber-400 bg-amber-950/25"
-                      : left < 0 ? "border-red-700 bg-red-950/20"
-                      : (o.weeksIdle || 0) > IDLE_GRACE ? "border-amber-900/70 bg-amber-950/10"
-                      : "border-stone-700 hover:border-stone-500"}`}
-                    onClick={() => setFocusActorId(focusActorId === o.id ? null : o.id)}
-                  >
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="flex items-center gap-2">
-                        <button
-                          onClick={(ev) => { ev.stopPropagation(); setSelectedWorker(o); }}
-                          className="text-sm font-bold text-amber-400 hover:text-amber-300 transition-colors underline decoration-dotted underline-offset-2"
-                        >
-                          {o.name}
-                        </button>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 border"
-                          style={{ borderColor: orgTier(o).hex, color: orgTier(o).hex }}
-                          title={orgTier(o).blurb}>
-                          {orgTier(o).label}
-                        </span>
-                        {focusActorId === o.id && <span className="text-[10px] text-amber-300 font-bold">{"\u25B8"} PICK A TARGET</span>}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <HourPie left={Math.max(0, left)} total={Math.max(hoursFor(o), left)} hex={left < 0 ? "#f87171" : left === 0 ? "#2dd4bf" : "#fbbf24"} size={17}
-                          label={`${left} of ${hoursFor(o)} hours left this week`} />
-                        {left < 0 && <span className="text-[11px] font-bold text-red-400">{Math.abs(left)} OVER</span>}
-                        {o.shaken > 0 && <span className="text-[10px] text-red-400 font-bold">UNDER WATCH</span>}
-                      </span>
-                    </div>
-
-                    {/* Experience toward the next tier \u2014 growth you can watch. */}
-                    <div className="flex items-center gap-2 mt-1.5">
-                      <div className="h-1 flex-1 bg-stone-800">
-                        <div className="h-1 transition-all duration-500" style={{ width: `${o.experience || 0}%`, backgroundColor: orgTier(o).hex }} />
-                      </div>
-                      <span className="text-[10px] text-stone-600 whitespace-nowrap">
-                        {(o.experience || 0) >= 75 ? "MAXED" : `${(o.experience || 0) >= 40 ? 75 - (o.experience || 0) : 40 - (o.experience || 0)} xp to next`}
-                      </span>
-                    </div>
-
-                    {(o.weeksIdle || 0) > 0 && (
-                      <div className={`text-[11px] mt-1 ${(o.weeksIdle || 0) > IDLE_GRACE ? "text-amber-400 font-bold" : "text-stone-600"}`}>
-                        {(o.weeksIdle || 0) >= IDLE_QUIT - 1
-                          ? `${o.name} walks next week if nobody uses them or checks in.`
-                          : (o.weeksIdle || 0) > IDLE_GRACE
-                            ? `Idle ${o.weeksIdle} weeks \u2014 down an hour. Leaves at ${IDLE_QUIT}.`
-                            : `Idle ${o.weeksIdle} week${o.weeksIdle === 1 ? "" : "s"}.`}
-                      </div>
-                    )}
-                    {mine.length === 0 ? (
-                      <div className="text-xs text-stone-600 italic mt-1">Idle this week.</div>
-                    ) : (
-                      <div className="mt-1 space-y-0.5">
-                        {mine.map(e => (
-                          <div key={e.key} className="flex items-center justify-between text-xs text-stone-300">
-                            <span>▸ {ACT1_ACTION[e.type].label}{e.targetId ? ` — ${workers.find(x => x.id === e.targetId)?.name}` : ""} <CostPips hours={ACT1_ACTION[e.type].hours} /></span>
-                            <button onClick={() => removePlan(e.key)} className="text-stone-600 hover:text-red-400 transition-colors">✕</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            <button
-              onClick={resolveWeek}
-              disabled={!canResolve}
-              className={`w-full font-stencil text-lg py-2.5 tracking-wide transition-colors ${!canResolve ? "bg-stone-800 text-stone-600 cursor-not-allowed" : "bg-amber-500 hover:bg-amber-400 text-stone-950"}`}
-            >
-              {overBudget ? "OVER BUDGET — REMOVE SOMETHING" : planEntries.length === 0 ? "PLAN SOMETHING FIRST" : `RESOLVE WEEK ${week}`}
-            </button>
+            <span className={`text-base font-bold shrink-0 ${overBudget ? "text-red-500" : totalUsed === totalHours ? "text-teal-400" : "text-amber-400"}`}>
+              {totalUsed} / {totalHours} HOURS
+            </span>
           </div>
+          <button
+            onClick={resolveWeek}
+            disabled={!canResolve}
+            className={`w-full font-stencil text-lg py-2.5 mt-2 tracking-wide transition-colors ${!canResolve ? "bg-stone-800 text-stone-600 cursor-not-allowed" : "bg-amber-500 hover:bg-amber-400 text-stone-950"}`}
+          >
+            {overBudget ? "OVER BUDGET — CANCEL SOMETHING" : planEntries.length === 0 ? "PLAN SOMETHING FIRST" : `RESOLVE WEEK ${week}`}
+          </button>
         </div>
       )}
 
