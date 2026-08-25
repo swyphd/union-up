@@ -117,12 +117,125 @@ const ACT2_CAMPAIGN_TIERS = [
   { units: 6, label: "All-in for the vote", cost: 6, desc: "Everything the organizer has, fighting for this election." },
 ];
 
+const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
+const rand = (n) => Math.floor(Math.random() * n);
+
+// ---------- BLOCS AND THE DEMAND PLATFORM ----------
+// You cannot make everyone happy. Winning recognition is a unifying fight \u2014 everybody
+// wants A union. Deciding what the union will ASK FOR is where a shop fractures, because
+// bargaining capital is finite and every demand you win trades against one you didn't.
+//
+// The blocs deliberately CROSS-CUT the org chart. If they were just departments the
+// problem would be one-dimensional and solvable with arithmetic. Because status and
+// tenure run at right angles to each other, a platform that splits salaried from
+// contract may unite QA across tenure \u2014 and navigating that is the actual game.
+const BLOCS = [
+  { id: "salaried", axis: "status", label: "SALARIED", hex: "#38bdf8", blurb: "On staff, on payroll, on the org chart." },
+  { id: "contract", axis: "status", label: "CONTRACT", hex: "#fb7185", blurb: "Renewed every six months. The industry's actual two-tier." },
+  { id: "veteran",  axis: "tenure", label: "VETERANS", hex: "#fbbf24", blurb: "Been here through two acquisitions. Remember what was lost." },
+  { id: "new",      axis: "tenure", label: "NEW HIRES", hex: "#a3e635", blurb: "Under two years. Cheapest to cut, least to fall back on." },
+];
+const BLOC_BY_ID = Object.fromEntries(BLOCS.map(b => [b.id, b]));
+
+// Every shop is a different mix, so the same platform lands differently across the map.
+const LOC_COMPOSITION = {
+  downtown:   { salaried: 0.85, contract: 0.15, veteran: 0.60, new: 0.40 },
+  suburban:   { salaried: 0.25, contract: 0.75, veteran: 0.30, new: 0.70 },
+  airport:    { salaried: 0.70, contract: 0.30, veteran: 0.55, new: 0.45 },
+  university: { salaried: 0.45, contract: 0.55, veteran: 0.35, new: 0.65 },
+};
+
+// The pool. Two pairs are genuinely opposed \u2014 there is no compromise between them that
+// isn't itself a position. The universals are safe and cheap and win you nothing.
+const DEMANDS = [
+  { id: "flatraise", label: "FLAT-DOLLAR RAISE", kind: "contested",
+    desc: "The same number of dollars for everybody. Worth far more to the people earning least.",
+    effect: { salaried: -1, contract: 4, veteran: -2, new: 3 }, opposes: "pctraise" },
+  { id: "pctraise", label: "PERCENTAGE RAISE", kind: "contested",
+    desc: "The same percentage for everybody. Worth far more to the people earning most.",
+    effect: { salaried: 3, contract: -2, veteran: 4, new: -2 }, opposes: "flatraise" },
+  { id: "conversion", label: "CONTRACTOR CONVERSION", kind: "contested",
+    desc: "A path from contract to staff after eighteen months. Enormous for QA. Veterans read it as eating the raise pool.",
+    effect: { salaried: -1, contract: 5, veteran: -2, new: 2 }, opposes: "seniority" },
+  { id: "seniority", label: "SENIORITY IN LAYOFFS", kind: "contested",
+    desc: "Last in, first out. The oldest protection in the book, and it is paid for by the newest people.",
+    effect: { salaried: 1, contract: -2, veteran: 4, new: -3 }, opposes: "conversion" },
+  { id: "crunchcap", label: "CRUNCH LIMITS + PAID OT", kind: "broad",
+    desc: "Hard caps on mandatory overtime, and money when it happens anyway.",
+    effect: { salaried: 1, contract: 3, veteran: 0, new: 3 } },
+  { id: "aiclause", label: "PLAY-EYE LANGUAGE", kind: "broad",
+    desc: "No automated override of credited work without notice and a human review.",
+    effect: { salaried: 3, contract: 0, veteran: 2, new: 0 } },
+  { id: "justcause", label: "JUST CAUSE", kind: "universal",
+    desc: "No firing without a reason a human being has to say out loud. Nobody objects. Nobody is thrilled.",
+    effect: { salaried: 1, contract: 1, veteran: 1, new: 1 } },
+  { id: "grievance", label: "GRIEVANCE PROCEDURE", kind: "universal",
+    desc: "A written process for complaints. Costs the company almost nothing, which is why it's cheap to win.",
+    effect: { salaried: 1, contract: 1, veteran: 1, new: 1 } },
+];
+const DEMAND_BY_ID = Object.fromEntries(DEMANDS.map(d => [d.id, d]));
+const PLATFORM_SLOTS = 3;
+
+// ---------- HIDDEN INTENSITY ----------
+// You know QA wants conversion. You do not know how hard they will fight for it, and
+// that is what decides whether ignoring them costs you a grumble or the whole bloc.
+// Exposable the same way affinities are: spend time listening.
+const DEFECT_THRESHOLD = 35;
+function rollBlocPriorities() {
+  const pools = {
+    salaried: ["aiclause", "pctraise", "justcause"],
+    contract: ["conversion", "flatraise", "crunchcap"],
+    veteran: ["seniority", "pctraise", "aiclause"],
+    new: ["crunchcap", "flatraise", "conversion"],
+  };
+  const out = {};
+  BLOCS.forEach(b => {
+    const pool = pools[b.id];
+    out[b.id] = { top: pool[rand(pool.length)], intensity: 1 + rand(3), known: false, pledged: false, defected: false, heard: 0 };
+  });
+  return out;
+}
+
+// Satisfaction is what the platform does TO a bloc, plus whether you served the thing
+// they actually cared about most. A solidarity pledge softens the miss without buying
+// enthusiasm \u2014 you promised them next time, and they have heard that before.
+function blocSatisfaction(blocId, platform, priorities) {
+  const pr = priorities[blocId] || { intensity: 2, top: null, pledged: false };
+  let score = 50;
+  platform.forEach(id => {
+    const d = DEMAND_BY_ID[id];
+    if (d) score += (d.effect[blocId] || 0) * 6;
+  });
+  const served = pr.top && platform.includes(pr.top);
+  if (served) score += pr.intensity * 8;
+  else score -= pr.intensity * 6 * (pr.pledged ? 0.45 : 1);
+  if (pr.heard) score += Math.min(8, pr.heard * 5); // being listened to counts for something
+  return clamp(Math.round(score));
+}
+
+// How the platform lands at one specific shop, given who works there. A defected bloc
+// contributes nothing and drags: they aren't neutral, they're campaigning against you.
+function locBlocFactor(loc, platform, priorities) {
+  const comp = LOC_COMPOSITION[loc.id];
+  if (!comp || !platform.length) return 1;
+  let total = 0, weight = 0;
+  BLOCS.forEach(b => {
+    const share = comp[b.id] || 0;
+    if (share <= 0) return;
+    const pr = priorities[b.id];
+    const sat = pr?.defected ? 0 : blocSatisfaction(b.id, platform, priorities);
+    // 0 satisfaction -> 0.70x turnout, 50 -> 1.00x, 100 -> 1.30x. Deliberately gentle:
+    // the platform should tilt an election, not decide it on its own.
+    total += share * (0.7 + 0.6 * (sat / 100));
+    weight += share;
+  });
+  return clamp(weight ? total / weight : 1, 0.55, 1.3);
+}
+
 // Act Two's network map board. Act One's floor uses its own, larger board.
 const MAP_W = 160;
 const MAP_H = 100;
 
-const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
-const rand = (n) => Math.floor(Math.random() * n);
 const roll100 = () => rand(100) + 1;
 
 // Resolution narrative lines almost always lead with "Name: ..." or "Name did X" —
@@ -241,6 +354,11 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   const [allocations, setAllocations] = useState({ downtown: 0, suburban: 0, airport: 0, university: 0 });
   const [responses, setResponses] = useState({ downtown: {}, suburban: {}, airport: {}, university: {} });
   const [organizer, setOrganizer] = useState({ stamina: 100 + teamStaminaBonus, breaksTaken: 0, onBreak: 0 });
+  // The demand platform is set once, company-wide, the first time you file. Bloc
+  // priorities are rolled at the start and stay hidden until somebody listens.
+  const [platform, setPlatform] = useState([]);
+  const [blocPriorities, setBlocPriorities] = useState(() => rollBlocPriorities());
+  const [pendingFileLoc, setPendingFileLoc] = useState(null);
   const [moraleClimate, setMoraleClimate] = useState({ tone: "neutral", turnsLeft: 0 });
   const [legalClimate, setLegalClimate] = useState({ tone: "neutral", turnsLeft: 0 });
   const [employerSophistication, setEmployerSophistication] = useState(0); // 0-3, rises when firing fails to crush a location
@@ -255,6 +373,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   const pendingRef = useRef(null);
 
   const unionizedCount = locations.filter(l => l.status === "won").length;
+  const [deadReason, setDeadReason] = useState(null);
   const solidarityScore = computeSolidarityScore(locations);
 
   function responseCostFor(loc, r) {
@@ -265,6 +384,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     if (r.counter) cost += 1;
     if (r.reframe && loc.buyOff?.active) cost += 1;
     if (r.formCommittee) cost += COMMITTEE_COST;
+    if (r.bargain) cost += 2;
     return cost;
   }
 
@@ -726,19 +846,85 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       if (onBreak === 0) orgStamina = 80;
     }
 
+
+
+    let prioritiesNext = { ...blocPriorities };
+
+    // --- OPEN BARGAINING ---
+    // Two actions spent listening instead of pushing. Reveals a bloc's real priority
+    // and how hard they hold it, and lowers their odds of taking a side deal.
+    const bargainLines = [];
+    workingLocs.forEach(l => {
+      if (!responses[l.id]?.bargain) return;
+      const comp = LOC_COMPOSITION[l.id] || {};
+      const target = BLOCS.find(b => (comp[b.id] || 0) >= 0.5 && !prioritiesNext[b.id]?.known);
+      if (!target) return;
+      const pr = prioritiesNext[target.id];
+      prioritiesNext = { ...prioritiesNext, [target.id]: { ...pr, known: true, heard: (pr.heard || 0) + 1 } };
+      bargainLines.push(
+        `${target.label} HEARD \u2014 what they actually want is ${DEMAND_BY_ID[pr.top]?.label}, and they hold it ${"\u25CF".repeat(pr.intensity)} hard. ` +
+        `Two hours in a room at ${l.name} with nobody presenting anything. They are markedly harder to buy off now, whatever you end up putting in the platform.`
+      );
+    });
+    if (bargainLines.length) steps.push({ label: "OPEN BARGAINING", sub: "You cannot write a platform for people you have not asked.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: bargainLines });
+
+    // --- THE SIDE OFFER ---
+    // He reads your platform and goes straight to whoever you left out. Whether they
+    // take it depends on their hidden intensity, which you can only have learned by
+    // listening \u2014 and on whether that bloc has a shop committee anywhere it is thick,
+    // because a bloc with representation has somewhere to take the offer and argue.
+    const blocLines = [];
+    if (platform.length >= PLATFORM_SLOTS) {
+      const unserved = BLOCS
+        .map(b => ({ b, sat: blocSatisfaction(b.id, platform, prioritiesNext), pr: prioritiesNext[b.id] }))
+        .filter(x => !x.pr.defected && x.sat < 50)
+        .sort((x, y) => x.sat - y.sat);
+
+      if (unserved.length && Math.random() < 0.45) {
+        const { b, sat, pr } = unserved[0];
+        // Representation: is this bloc thick anywhere that has an active committee?
+        const represented = workingLocs.some(l =>
+          l.committee?.active && (LOC_COMPOSITION[l.id]?.[b.id] || 0) >= 0.5 && l.status !== "lost");
+        const takeChance = clamp(
+          (DEFECT_THRESHOLD + 25 - sat) / 100 + pr.intensity * 0.08 - (represented ? 0.35 : 0) - (pr.pledged ? 0.12 : 0),
+          0, 0.85) ;
+        if (Math.random() < takeChance) {
+          prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, defected: true } };
+          blocLines.push(
+            `${b.label} WALK \u2014 the company offers them ${DEMAND_BY_ID[pr.top]?.label || "a side deal"} directly, outside the union. ` +
+            `Satisfaction was ${sat}, below the ${DEFECT_THRESHOLD} line, and nobody had made them a better promise. ` +
+            `They stop counting toward any election and start arguing the other way in every shop they're thick in.` +
+            (represented ? "" : " Nobody on a shop committee spoke for them.")
+          );
+        } else {
+          blocLines.push(
+            `${b.label} TURN DOWN A SIDE DEAL \u2014 the company offers them ${DEMAND_BY_ID[pr.top]?.label || "a side deal"} outside the union and they bring it to the committee instead. ` +
+            (represented ? "Having somebody in the room who speaks for them is what made the difference. " : "") +
+            `Satisfaction ${sat} \u2192 ${clamp(sat + 8)}.`
+          );
+          prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, heard: (pr.heard || 0) + 1 } };
+        }
+      }
+    }
+    if (blocLines.length) steps.push({ label: "THE BLOCS", sub: "The company reads your platform too, and goes to whoever you left out.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: blocLines });
+
     // Election resolution check
     let electionLines = [];
     workingLocs = workingLocs.map(l => {
       if (l.status === "campaign" && turn >= l.electionTurn) {
-        const support = l.trueSupport ?? l.morale;
+        const raw = l.trueSupport ?? l.morale;
+        // The platform decides who actually turns out. A shop full of a bloc you
+        // ignored votes at a fraction of its paper strength.
+        const factor = locBlocFactor(l, platform, blocPriorities);
+        const support = clamp(Math.round(raw * factor));
         const winChance = (support / 100) * 0.6 + ((100 - l.fear) / 100) * 0.4;
         const roll = Math.random();
         const gapWarning = l.morale - support >= 15 ? " Turnout looked stronger on paper than it was in the room." : "";
         if (roll <= winChance) {
-          electionLines.push(`${l.name}: ELECTION WON. Workers vote to unionize. (True win probability was ${Math.round(winChance * 100)}%)${gapWarning}`);
+          electionLines.push(`${l.name}: ELECTION WON. Workers vote to unionize. (True win probability was ${Math.round(winChance * 100)}%; the platform moved turnout ${factor >= 1 ? "+" : ""}${Math.round((factor - 1) * 100)}%, ${raw} \u2192 ${support} effective support.)${gapWarning}`);
           return { ...l, status: "won", morale: 95, trueSupport: 95, legalRisk: 0 };
         } else {
-          electionLines.push(`${l.name}: ELECTION LOST. The vote came back NO. (True win probability was ${Math.round(winChance * 100)}%)${gapWarning}`);
+          electionLines.push(`${l.name}: ELECTION LOST. The vote came back NO. (True win probability was ${Math.round(winChance * 100)}%; the platform moved turnout ${factor >= 1 ? "+" : ""}${Math.round((factor - 1) * 100)}%, ${raw} \u2192 ${support} effective support.)${factor < 0.92 ? " The people you didn't write into the platform stayed home." : ""}${gapWarning}`);
           return { ...l, status: "lost", morale: 20, trueSupport: 20, fear: 90, abandonedTurns: 99 };
         }
       }
@@ -766,13 +952,14 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     setPhase("resolving");
 
     // stash final computed state to commit once animation finishes
-    pendingRef.current = { workingLocs, orgStamina, breaksTaken, onBreak, justBroke, moraleClimateNext, legalClimateNext };
+    pendingRef.current = { workingLocs, orgStamina, breaksTaken, onBreak, justBroke, moraleClimateNext, legalClimateNext, prioritiesNext };
   }
 
   function commitResolution() {
-    const { workingLocs, orgStamina, breaksTaken, onBreak, moraleClimateNext, legalClimateNext } = pendingRef.current;
+    const { workingLocs, orgStamina, breaksTaken, onBreak, moraleClimateNext, legalClimateNext, prioritiesNext } = pendingRef.current;
     setLocations(workingLocs);
     setOrganizer({ stamina: orgStamina, breaksTaken, onBreak });
+    setBlocPriorities(prioritiesNext);
     setMoraleClimate(moraleClimateNext);
     setLegalClimate(legalClimateNext);
     setAllocations({ downtown: 0, suburban: 0, airport: 0, university: 0 });
@@ -789,6 +976,13 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     }
     if (turn >= TOTAL_TURNS) {
       // wonCount >= 2 already returned above, so reaching the turn cap always means a loss.
+      setPhase("gameover-loss");
+      return;
+    }
+    // Don't make anyone play out a campaign that arithmetic has already decided.
+    const winnable = act2Winnability(workingLocs, turn);
+    if (!winnable.alive) {
+      setDeadReason(winnable.reason);
       setPhase("gameover-loss");
       return;
     }
@@ -812,6 +1006,17 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   }
 
   function fileForElection(locId) {
+    // First petition is the moment the campaign stops being about whether to have a
+    // union and starts being about what it will ask for. That is where shops fracture.
+    if (platform.length < PLATFORM_SLOTS) {
+      setPendingFileLoc(locId);
+      setEscalationTarget(null);
+      setPhase("platform");
+      return;
+    }
+    commitFiling(locId);
+  }
+  function commitFiling(locId) {
     setLocations(prev => prev.map(l => {
       if (l.id !== locId) return l;
       const recruitedPct = l.recruited / l.workers;
@@ -820,7 +1025,13 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       return { ...l, status: "campaign", electionTurn: turn + 5, fear: 35 + rand(15) };
     }));
     setEscalationTarget(null);
+    setPendingFileLoc(null);
     setPhase("allocate");
+  }
+  function adoptPlatform(chosen) {
+    setPlatform(chosen);
+    if (pendingFileLoc) commitFiling(pendingFileLoc);
+    else { setPendingFileLoc(null); setPhase("allocate"); }
   }
   function consolidate() {
     setEscalationTarget(null);
@@ -912,12 +1123,72 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
               <div className={`text-lg font-bold ${organizer.stamina < 30 ? "text-red-500" : organizer.stamina < 60 ? "text-amber-400" : "text-teal-400"}`}>{organizer.stamina}</div>
             </div>
             <div className="text-center">
-              <div className="text-stone-500 text-xs">UNIONIZED</div>
-              <div className="text-lg font-bold text-teal-400">{unionizedCount} / 2</div>
+              <div className="text-stone-500 text-xs">SHOPS WON</div>
+              <div className="flex items-center gap-1.5 justify-center mt-1">
+                <Pips filled={unionizedCount} total={ACT2_SITES_NEEDED} hex="#2dd4bf" size={11} gap={4} />
+              </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* THE OBJECTIVE, ALWAYS ON SCREEN */}
+      {phase !== "intro" && (() => {
+        const win = act2Winnability(locations, turn);
+        const atVote = locations.filter(l => l.status === "campaign");
+        return (
+          <div className={`px-4 sm:px-6 py-2 border-b text-xs flex items-center gap-x-5 gap-y-1 flex-wrap ${win.alive ? "border-stone-800 bg-stone-900/60" : "border-red-900 bg-red-950/40"}`}>
+            <span className="text-stone-400">
+              <span className="text-stone-500">OBJECTIVE</span>{" "}
+              Win union elections at <span className="text-teal-400 font-bold">{ACT2_SITES_NEEDED} of {locations.length}</span> shops within {TOTAL_TURNS} weeks.
+            </span>
+            <span className="text-stone-400">
+              <span className="text-stone-500">A SHOP VOTES YES ON</span>{" "}
+              true support — not morale. Above <span className="text-teal-400 font-bold">70</span> is comfortable; below <span className="text-amber-400 font-bold">50</span> is a coin flip that fear decides.
+            </span>
+            <span className={win.alive ? "text-stone-400" : "text-red-400 font-bold"}>
+              <span className="text-stone-500">WEEKS LEFT</span>{" "}
+              <span className="font-bold">{Math.max(0, TOTAL_TURNS - turn)}</span>
+              {atVote.length > 0 && <span className="text-amber-400"> — {atVote.length} shop{atVote.length === 1 ? "" : "s"} already at the vote</span>}
+            </span>
+            {!win.alive && <span className="text-red-400 font-bold">NO LONGER WINNABLE</span>}
+          </div>
+        );
+      })()}
+
+      {phase === "platform" && (
+        <PlatformModal
+          priorities={blocPriorities}
+          locations={locations}
+          onPledge={(blocId) => setBlocPriorities(pr => ({ ...pr, [blocId]: { ...pr[blocId], pledged: true } }))}
+          onAdopt={adoptPlatform}
+        />
+      )}
+
+      {/* THE BLOCS, ALWAYS ON SCREEN ONCE THERE IS A PLATFORM */}
+      {phase !== "intro" && platform.length > 0 && (
+        <div className="px-4 sm:px-6 py-2 border-b border-stone-800 bg-stone-900/40 flex items-center gap-x-4 gap-y-1 flex-wrap text-xs">
+          <span className="text-stone-500">PLATFORM</span>
+          {platform.map(id => (
+            <span key={id} className="text-amber-400 font-bold">{DEMAND_BY_ID[id]?.label}</span>
+          ))}
+          <span className="text-stone-700">|</span>
+          {BLOCS.map(b => {
+            const pr = blocPriorities[b.id] || {};
+            const v = pr.defected ? 0 : blocSatisfaction(b.id, platform, blocPriorities);
+            return (
+              <span key={b.id} className="flex items-center gap-1.5" title={pr.defected ? `${b.label} have walked` : b.blurb}>
+                <span className="w-2 h-2" style={{ backgroundColor: pr.defected ? "#44403c" : b.hex }} />
+                <span className={pr.defected ? "text-stone-600 line-through" : "text-stone-400"}>{b.label}</span>
+                <span className={`font-bold ${pr.defected ? "text-red-500" : v < DEFECT_THRESHOLD ? "text-red-400" : v >= 65 ? "text-teal-400" : "text-stone-300"}`}>
+                  {pr.defected ? "WALKED" : v}
+                </span>
+                {!pr.known && !pr.defected && <span className="text-stone-600" title="priority not yet heard">?</span>}
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       {/* INTRO */}
       {phase === "intro" && (
@@ -1004,7 +1275,18 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
           <div className="border-2 border-stone-800 bg-stone-900 p-4">
             <div className="flex items-center justify-between mb-1">
               <div className="font-stencil text-lg tracking-wide text-stone-200">ALLOCATE ORGANIZER TIME</div>
-              <div className={`text-base font-bold ${remaining < 0 ? "text-red-500" : remaining === 0 ? "text-teal-400" : "text-amber-400"}`}>{remaining} ACTION{Math.abs(remaining) === 1 ? "" : "S"} LEFT</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Pips
+                  filled={Math.max(0, Math.min(10, totalAllocated))}
+                  total={10}
+                  hex={remaining < 0 ? "#f87171" : remaining === 0 ? "#2dd4bf" : "#fbbf24"}
+                  size={10}
+                  gap={4}
+                />
+                <span className={`text-xs font-bold ${remaining < 0 ? "text-red-500" : remaining === 0 ? "text-teal-400" : "text-stone-500"}`}>
+                  {remaining < 0 ? `${Math.abs(remaining)} OVER` : remaining === 0 ? "ALL SPENT" : `${remaining} LEFT`}
+                </span>
+              </div>
             </div>
             <p className="text-xs text-stone-500 mb-3">Click a location above to choose what the organizer does there this week. Tap it again to change the plan. Unassigned actions count as rest — they help the organizer recover stamina but do nothing for the campaign.</p>
             <button
@@ -1071,8 +1353,16 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
               ? `Two or more studios voted to unionize. Workers have a contract to negotiate — and leverage they didn't have twelve weeks ago.`
               : organizer.breaksTaken >= 2
                 ? `The organizer burned out for a second time and left the campaign. There was no one left to carry it forward.`
-                : `Twelve weeks came and went without enough studios reaching a contract. The campaign didn't build the power it needed in time.`}
+                : deadReason
+                  ? deadReason
+                  : `Twelve weeks came and went without enough studios reaching a contract. The campaign didn't build the power it needed in time.`}
           </p>
+          {phase === "gameover-loss" && deadReason && turn < TOTAL_TURNS && (
+            <p className="text-red-400/80 text-sm mb-6 leading-relaxed border border-red-900/60 bg-red-950/20 px-4 py-3">
+              Called at week {turn} of {TOTAL_TURNS}. There were weeks left on the clock, but not enough shops left to reach {ACT2_SITES_NEEDED}
+              — so the rest of the calendar wouldn't have changed the ending. Nothing here resets.
+            </p>
+          )}
           <div className="grid grid-cols-4 gap-2 mb-8 text-sm">
             {locations.map(l => (
               <div key={l.id} className="border border-stone-800 p-2">
@@ -1108,27 +1398,90 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   );
 }
 
+// ---------- CAN THIS STILL BE WON? ----------
+// Permadeath means the game owes you the truth the moment it stops being winnable,
+// and it owes you the specific reason. No quietly playing out a dead campaign.
+const ACT2_SITES_NEEDED = 2;
+const ELECTION_LEAD_TURNS = 2; // filing, then the vote
+function act2Winnability(locations, turn) {
+  const won = locations.filter(l => l.status === "won").length;
+  const needed = ACT2_SITES_NEEDED - won;
+  if (needed <= 0) return { alive: true, won, needed: 0, salvageable: [], reason: null };
+  const turnsLeft = TOTAL_TURNS - turn;
+  // A site can still deliver if it's already at the vote, or has room to file and vote.
+  const salvageable = locations.filter(l => {
+    if (l.status === "won" || l.status === "lost") return false;
+    if (l.status === "campaign") return l.electionTurn <= TOTAL_TURNS;
+    return turnsLeft >= ELECTION_LEAD_TURNS;
+  });
+  if (salvageable.length < needed) {
+    const dead = locations.filter(l => l.status === "lost").length;
+    // Name the actual cause: shops you lost, or a clock that ran out on the ones left.
+    const blockedByClock = locations.filter(
+      l => l.status !== "won" && l.status !== "lost" && !salvageable.includes(l)
+    ).length;
+    return {
+      alive: false, won, needed, salvageable,
+      reason: blockedByClock > 0
+        ? `${blockedByClock} shop${blockedByClock === 1 ? " is" : "s are"} still organizing, but none can file and reach a vote before week ${TOTAL_TURNS}. You needed ${needed} more.`
+        : `${dead} election${dead === 1 ? " has" : "s have"} already come back NO. There aren't enough shops left standing to reach ${ACT2_SITES_NEEDED}.`,
+    };
+  }
+  return { alive: true, won, needed, salvageable, reason: null };
+}
+
 // ---------- SUBCOMPONENTS ----------
 
-function Meter({ label, value, icon, colorClass = "bg-amber-500", danger = false }) {
+// A bar with the cliff drawn on it. Knowing a number is 54 is useless without knowing
+// that 60 is where management starts firing people.
+function Meter({ label, value, icon, colorClass = "bg-amber-500", danger = false, thresholds = [], ghost = null, ghostLabel = null, delta = null }) {
   return (
     <div>
       <div className="flex items-center justify-between text-xs text-stone-500 mb-0.5">
         <span className="flex items-center gap-1">{icon}{label}</span>
-        <span className={`font-bold ${danger ? "text-red-400" : "text-stone-300"}`}>{value}</span>
+        <span className="flex items-center gap-2">
+          {delta != null && delta !== 0 && (
+            <span className={`font-bold ${delta > 0 ? "text-teal-400" : "text-red-400"}`}>{delta > 0 ? "+" : ""}{delta}</span>
+          )}
+          <span className={`font-bold ${danger ? "text-red-400" : "text-stone-300"}`}>{value}</span>
+        </span>
       </div>
-      <div className="h-1.5 w-full bg-stone-800">
-        <div className={`h-1.5 ${danger ? "bg-red-600" : colorClass} transition-all duration-500`} style={{ width: `${value}%` }} />
+      <div className="h-2 w-full bg-stone-800 relative">
+        <div className={`h-2 ${danger ? "bg-red-600" : colorClass} transition-all duration-500`} style={{ width: `${value}%` }} />
+        {ghost != null && (
+          <div
+            className="absolute top-0 h-2 border-r-2 border-dashed border-stone-300/70"
+            style={{ width: `${ghost}%` }}
+            title={ghostLabel || "true support"}
+          />
+        )}
+        {thresholds.map(t => (
+          <div
+            key={t.at}
+            className="absolute top-[-2px] h-3 w-px"
+            style={{ left: `${t.at}%`, backgroundColor: t.hex || "#78716c" }}
+            title={t.label}
+          />
+        ))}
       </div>
+      {thresholds.length > 0 && (
+        <div className="relative h-3 mt-0.5">
+          {thresholds.map(t => (
+            <span key={t.at} className="absolute text-[9px] whitespace-nowrap"
+              style={{ left: `${t.at}%`, transform: "translateX(-50%)", color: t.hex || "#78716c" }}>{t.tick || t.at}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function FeedbackControls({ loc, response, onToggle }) {
+function FeedbackControls({ loc, response, priorities = null, onToggle }) {
   const inCrackdownBand = loc.visibility >= 40 && loc.visibility < 60;
   const recruitedPct = loc.recruited / loc.workers;
   const committeeEligible = !loc.committee?.active && loc.morale >= COMMITTEE_MORALE_REQ && recruitedPct >= COMMITTEE_RECRUIT_PCT_REQ;
-  const hasAny = loc.grievance || inCrackdownBand || loc.antiUnion?.active || loc.buyOff?.active || committeeEligible;
+  const bargainable = priorities && BLOCS.some(b => (LOC_COMPOSITION[loc.id]?.[b.id] || 0) >= 0.5 && !priorities[b.id]?.known);
+  const hasAny = loc.grievance || inCrackdownBand || loc.antiUnion?.active || loc.buyOff?.active || committeeEligible || bargainable;
   if (!hasAny) return null;
 
   return (
@@ -1149,7 +1502,7 @@ function FeedbackControls({ loc, response, onToggle }) {
           <label className={`flex items-center gap-2 text-xs border px-2 py-1 cursor-pointer ${meta.tone} ${response.grievance ? "bg-stone-800" : ""}`}>
             <input type="checkbox" checked={!!response.grievance} onChange={() => onToggle("grievance")} className="accent-amber-500" />
             <Icon size={12} />
-            <span className="flex-1"><span className="font-bold">{meta.label}.</span> {meta.action} ({meta.cost} action{meta.cost > 1 ? "s" : ""})</span>
+            <span className="flex-1"><span className="font-bold">{meta.label}.</span> {meta.action}</span><CostPips hours={meta.cost} />
           </label>
         );
       })()}
@@ -1157,28 +1510,47 @@ function FeedbackControls({ loc, response, onToggle }) {
         <label className="flex items-center gap-2 text-xs border border-stone-600 text-stone-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.document} onChange={() => onToggle("document")} className="accent-amber-500" />
           <Radio size={12} />
-          <span className="flex-1"><span className="font-bold">Management is watching closer.</span> Document it (1 action)</span>
+          <span className="flex-1"><span className="font-bold">Management is watching closer.</span> Document it</span><CostPips hours={1} />
         </label>
       )}
       {loc.antiUnion?.active && (
         <label className="flex items-center gap-2 text-xs border border-red-800 text-red-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.counter} onChange={() => onToggle("counter")} className="accent-amber-500" />
           <Megaphone size={12} />
-          <span className="flex-1"><span className="font-bold">Anti-union talk is spreading.</span> Counter-message (1 action)</span>
+          <span className="flex-1"><span className="font-bold">Anti-union talk is spreading.</span> Counter-message</span><CostPips hours={1} />
         </label>
       )}
       {loc.buyOff?.active && (
         <label className="flex items-center gap-2 text-xs border border-teal-800 text-teal-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.reframe} onChange={() => onToggle("reframe")} className="accent-amber-500" />
           <HandCoins size={12} />
-          <span className="flex-1"><span className="font-bold">Management just announced a retention bonus.</span> Reframe it as a union win (1 action)</span>
+          <span className="flex-1"><span className="font-bold">Management just announced a retention bonus.</span> Reframe it as a union win</span><CostPips hours={1} />
         </label>
       )}
+      {(() => {
+        // Listening to a bloc is an action like any other. It reveals what they
+        // actually want and how hard, and buys goodwill just for having asked.
+        const comp = LOC_COMPOSITION[loc.id] || {};
+        const thick = BLOCS.filter(b => (comp[b.id] || 0) >= 0.5);
+        const target = thick.find(b => !(priorities?.[b.id]?.known)) || null;
+        if (!target || !priorities) return null;
+        return (
+          <label className="flex items-center gap-2 text-xs border border-sky-800 text-sky-300 px-2 py-1 cursor-pointer">
+            <input type="checkbox" checked={!!response.bargain} onChange={() => onToggle("bargain")} className="accent-amber-500" />
+            <UsersRound size={12} />
+            <span className="flex-1">
+              <span className="font-bold">{target.label} are {Math.round((comp[target.id] || 0) * 100)}% of this shop.</span>{" "}
+              Sit down and hear them out \u2014 reveals what they actually want and how hard
+            </span>
+            <CostPips hours={2} />
+          </label>
+        );
+      })()}
       {committeeEligible && (
         <label className="flex items-center gap-2 text-xs border border-amber-600 text-amber-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.formCommittee} onChange={() => onToggle("formCommittee")} className="accent-amber-500" />
           <UsersRound size={12} />
-          <span className="flex-1"><span className="font-bold">Ready for a shop committee.</span> Help workers form one ({COMMITTEE_COST} actions)</span>
+          <span className="flex-1"><span className="font-bold">Ready for a shop committee.</span> Help workers form one \u2014 unlocks the true-support read here</span><CostPips hours={COMMITTEE_COST} />
         </label>
       )}
     </div>
@@ -1209,6 +1581,10 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
             <span className="inline-block rounded-full bg-stone-500" style={{ width: 5, height: 5 }} />
             <span className="inline-block rounded-full bg-stone-500" style={{ width: 10, height: 10 }} />
             SIZE = WORKFORCE
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block rounded-full border border-stone-400" style={{ width: 7, height: 7 }} />
+            HOLLOW = TALK, NOT VOTES
           </span>
         </div>
       </div>
@@ -1287,9 +1663,23 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
                 />
               )}
               <circle r={r} fill="#1c1917" stroke={ACT2_STATUS_HEX[loc.status]} strokeWidth="0.9" />
-              {dots.map((d, i) => (
-                <circle key={i} cx={d.x} cy={d.y} r="1.1" fill={moraleHex(loc)} />
-              ))}
+              {/* Each dot is a worker. Filled = morale; the hollow ones past the true-support
+                  share are the people who talk warmer than they'd vote. */}
+              {(() => {
+                const known = loc.committee?.active;
+                const realShare = known ? (loc.trueSupport ?? loc.morale) / 100 : null;
+                const solidUpTo = realShare == null ? dots.length : Math.round(dots.length * realShare / Math.max(0.01, loc.morale / 100));
+                return dots.map((d, i) => {
+                  const solid = realShare == null || i < solidUpTo;
+                  return (
+                    <circle
+                      key={i} cx={d.x} cy={d.y} r="1.1"
+                      fill={solid ? moraleHex(loc) : "none"}
+                      stroke={moraleHex(loc)} strokeWidth={solid ? 0 : 0.4} strokeOpacity="0.7"
+                    />
+                  );
+                });
+              })()}
               {hl && hl.moraleDelta !== 0 && (
                 <text
                   key={`delta-${stepKey}-${loc.id}`}
@@ -1305,7 +1695,11 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
               <text textAnchor="middle" y={r + 5} fontSize="3.6" fill="#e7e5e4" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.1">{loc.name}</text>
               <text textAnchor="middle" y={r + 9} fontSize="2.6" fill={ACT2_STATUS_HEX[loc.status]} fontFamily="'Courier New', monospace">{statusMeta[loc.status].label}</text>
               {allocation > 0 && (
-                <text textAnchor="middle" y={r + 13} fontSize="2.4" fill="#fbbf24" fontFamily="'Courier New', monospace">PLANNED</text>
+                <g>
+                  {Array.from({ length: allocation }).map((_, i) => (
+                    <circle key={i} cx={(i - (allocation - 1) / 2) * 2.6} cy={r + 12} r="0.95" fill="#fbbf24" />
+                  ))}
+                </g>
               )}
               {needsResponse && !dim && (
                 <circle cx={r * 0.75} cy={-r * 0.75} r="1.6" fill="#f87171" />
@@ -1346,7 +1740,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
   );
 }
 
-function LocationActionModal({ loc, turn, allocation, response, onSetUnits, onToggleResponse, onClose }) {
+function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, onSetUnits, onToggleResponse, onClose }) {
   const meta = statusMeta[loc.status];
   const isCampaign = loc.status === "campaign";
   const isOrganizing = loc.status === "organizing";
@@ -1361,16 +1755,66 @@ function LocationActionModal({ loc, turn, allocation, response, onSetUnits, onTo
         </div>
         <div className={`text-sm font-bold mb-4 ${meta.color}`}>{meta.label}</div>
 
-        <div className="space-y-3 mb-4">
-          <Meter label="MORALE" value={loc.morale} icon={<CheckCircle2 size={11} />} colorClass="bg-teal-500" />
-          {loc.committee?.active && <Meter label="TRUE SUPPORT (committee reported)" value={loc.trueSupport} icon={<UsersRound size={11} />} colorClass="bg-amber-500" />}
-          <Meter label="VISIBILITY" value={loc.visibility} icon={<Eye size={11} />} danger={loc.visibility >= 60} />
-          <Meter label="LEGAL RISK" value={loc.legalRisk} icon={<Scale size={11} />} danger={loc.legalRisk >= 60} />
-          {isCampaign && <Meter label="WORKER FEAR" value={loc.fear} icon={<AlertTriangle size={11} />} danger={loc.fear >= 60} />}
+        <div className="space-y-4 mb-4">
+          <Meter
+            label="MORALE (what the floor says)"
+            value={loc.morale}
+            icon={<CheckCircle2 size={11} />}
+            colorClass="bg-teal-500"
+            ghost={loc.committee?.active ? loc.trueSupport : null}
+            ghostLabel="true support, as the committee reports it"
+            thresholds={[{ at: 70, hex: "#2dd4bf", tick: "70 file" }]}
+          />
+          {loc.committee?.active ? (
+            <div className="text-xs -mt-2.5">
+              <span className="text-stone-500">TRUE SUPPORT</span>{" "}
+              <span className="font-bold text-amber-400">{loc.trueSupport}</span>
+              <span className="text-stone-500"> — the dashed line. The vote rolls against this, not morale.</span>
+              {loc.morale - loc.trueSupport >= 12 && (
+                <span className="text-red-400 font-bold"> {loc.morale - loc.trueSupport} points of it is talk.</span>
+              )}
+            </div>
+          ) : (
+            <div className="text-xs -mt-2.5 text-stone-600 italic">
+              True support unknown — no shop committee here to report honestly. The vote rolls against a number you cannot see.
+            </div>
+          )}
+          <Meter
+            label="VISIBILITY"
+            value={loc.visibility}
+            icon={<Eye size={11} />}
+            danger={loc.visibility >= 60}
+            thresholds={[{ at: 40, hex: "#fbbf24", tick: "40 watched" }, { at: 60, hex: "#f87171", tick: "60 retaliation" }]}
+          />
+          <Meter
+            label="LEGAL RISK"
+            value={loc.legalRisk}
+            icon={<Scale size={11} />}
+            danger={loc.legalRisk >= 60}
+            thresholds={[{ at: 75, hex: "#f87171", tick: "75 cannot file" }]}
+          />
+          {isCampaign && (
+            <Meter
+              label="WORKER FEAR"
+              value={loc.fear}
+              icon={<AlertTriangle size={11} />}
+              danger={loc.fear >= 60}
+              thresholds={[{ at: 60, hex: "#f87171", tick: "60 turnout collapses" }]}
+            />
+          )}
         </div>
 
         <div className="text-xs text-stone-500 space-y-1 font-mono mb-4">
-          <div>Manager disposition: <span className="text-stone-200">{loc.manager}</span></div>
+          <div>
+            Manager: <span className="text-stone-200">{loc.manager}</span>{" "}
+            <span className={loc.manager === "hostile" ? "text-red-400" : loc.manager === "sympathetic" ? "text-teal-400" : "text-stone-600"}>
+              {loc.manager === "hostile"
+                ? "(+4 visibility every week you organize here, and they can retaliate below the usual threshold)"
+                : loc.manager === "sympathetic"
+                ? "(+3 morale per active week, \u22122 visibility)"
+                : "(no modifier)"}
+            </span>
+          </div>
           <div>Recruited: <span className="text-stone-200">{loc.recruited}/{loc.workers}</span> ({Math.round((loc.recruited / loc.workers) * 100)}%)</div>
           {isCampaign && <div>Election in <span className="text-stone-200">{Math.max(0, loc.electionTurn - turn)} week{Math.max(0, loc.electionTurn - turn) === 1 ? "" : "s"}</span> — actions here fight the employer's counter-campaign directly.</div>}
           {loc.antiUnion?.active && <div className="text-red-400">Anti-union talk is circulating ({loc.antiUnion.turnsLeft} week{loc.antiUnion.turnsLeft === 1 ? "" : "s"} left)</div>}
@@ -1388,13 +1832,29 @@ function LocationActionModal({ loc, turn, allocation, response, onSetUnits, onTo
                   onClick={() => onSetUnits(t.units)}
                   className={`w-full text-left border-2 px-3 py-2 text-sm transition-colors ${allocation === t.units ? "border-amber-500 bg-amber-950/30" : "border-stone-700 hover:bg-stone-800/60"}`}
                 >
-                  <div className="font-stencil text-base tracking-wide text-stone-100">{t.label} {t.cost > 0 ? `(${t.cost} action${t.cost > 1 ? "s" : ""})` : ""}</div>
+                  <div className="font-stencil text-base tracking-wide text-stone-100 flex items-center justify-between gap-2">
+                    <span>{t.label}</span>
+                    {t.cost > 0 ? <CostPips hours={t.cost} affordable={t.cost <= remaining + allocation} /> : <span className="text-xs text-stone-600">FREE</span>}
+                  </div>
                   <div className="text-xs text-stone-400">{t.desc}</div>
+                  <div className="text-xs mt-0.5 flex items-center gap-3 flex-wrap">
+                    <span className={baseGain(t.units) >= 0 ? "text-teal-400" : "text-red-400"}>
+                      {baseGain(t.units) >= 0 ? "+" : ""}{baseGain(t.units)} morale
+                    </span>
+                    <span className={baseVis(t.units) > 0 ? "text-amber-400" : "text-stone-500"}>
+                      {baseVis(t.units) >= 0 ? "+" : ""}{baseVis(t.units)} visibility
+                    </span>
+                    {t.units > 0 && (
+                      <span className="text-stone-500">
+                        {"\u2248+"}{Math.max(0, Math.round(baseGain(t.units) * 0.35))} true support
+                      </span>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
             {isOrganizing && (
-              <FeedbackControls loc={loc} response={response} onToggle={onToggleResponse} />
+              <FeedbackControls loc={loc} response={response} priorities={priorities} onToggle={onToggleResponse} />
             )}
           </>
         ) : (
@@ -1403,6 +1863,121 @@ function LocationActionModal({ loc, turn, allocation, response, onSetUnits, onTo
 
         <button onClick={onClose} className="mt-4 w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2 tracking-wide">
           DONE
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+// ---------- THE PLATFORM SCREEN ----------
+// Three slots, eight demands, and no combination that pleases everyone. The screen's
+// whole job is to make the trade visible while you are making it, not afterwards.
+function PlatformModal({ priorities, locations, onAdopt, onPledge }) {
+  const [chosen, setChosen] = useState([]);
+  const full = chosen.length >= PLATFORM_SLOTS;
+  const toggle = (id) => setChosen(c => c.includes(id) ? c.filter(x => x !== id) : (c.length < PLATFORM_SLOTS ? [...c, id] : c));
+
+  const sat = Object.fromEntries(BLOCS.map(b => [b.id, blocSatisfaction(b.id, chosen, priorities)]));
+  const anyDefecting = BLOCS.filter(b => chosen.length && sat[b.id] < DEFECT_THRESHOLD);
+
+  return (
+    <div className="fixed inset-0 bg-black/90 z-50 overflow-y-auto px-4 py-6">
+      <div className="bg-stone-900 border-2 border-amber-500 max-w-2xl w-full mx-auto p-5 anim-rise">
+        <div className="font-stencil text-2xl text-amber-400 tracking-wide mb-1">WHAT ARE WE ASKING FOR?</div>
+        <p className="text-sm text-stone-400 mb-4">
+          Everybody wanted a union. Nobody agreed what it was for. Pick <span className="text-amber-400 font-bold">{PLATFORM_SLOTS}</span> demands
+          {" "}— bargaining capital is finite, and every one you take is one you didn't.
+        </p>
+
+        {/* The blocs, live, as you choose. */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+          {BLOCS.map(b => {
+            const pr = priorities[b.id] || {};
+            const v = sat[b.id];
+            const dead = chosen.length > 0 && v < DEFECT_THRESHOLD;
+            return (
+              <div key={b.id} className={`border p-2 ${dead ? "border-red-600 bg-red-950/30" : "border-stone-800"}`} title={b.blurb}>
+                <div className="text-[11px] font-bold" style={{ color: b.hex }}>{b.label}</div>
+                <div className="h-1.5 w-full bg-stone-800 my-1 relative">
+                  <div className="h-1.5 transition-all duration-300" style={{ width: `${v}%`, backgroundColor: dead ? "#ef4444" : b.hex }} />
+                  <div className="absolute top-[-2px] h-2.5 w-px bg-red-500" style={{ left: `${DEFECT_THRESHOLD}%` }} title="below this they walk" />
+                </div>
+                <div className={`text-[11px] font-bold ${dead ? "text-red-400" : "text-stone-400"}`}>{v}{dead ? " WALKS" : ""}</div>
+                <div className="text-[10px] mt-1">
+                  {pr.known
+                    ? <span className="text-stone-400">wants <span className="font-bold" style={{ color: b.hex }}>{DEMAND_BY_ID[pr.top]?.label}</span>{" "}
+                        <span className="text-stone-500">({"\u25CF".repeat(pr.intensity)})</span></span>
+                    : <span className="text-stone-600 italic">priority unknown</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="space-y-1.5 mb-4">
+          {DEMANDS.map(d => {
+            const on = chosen.includes(d.id);
+            const blocked = !on && full;
+            const conflict = d.opposes && chosen.includes(d.opposes);
+            return (
+              <button
+                key={d.id}
+                disabled={blocked}
+                onClick={() => toggle(d.id)}
+                className={`w-full text-left border-2 px-3 py-2 transition-colors ${
+                  on ? "border-amber-500 bg-amber-950/30" : blocked ? "border-stone-800 opacity-35 cursor-not-allowed" : "border-stone-700 hover:bg-stone-800/60"}`}
+              >
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="font-stencil text-base tracking-wide text-stone-100">{d.label}</span>
+                  <span className="flex items-center gap-1.5">
+                    {BLOCS.map(b => {
+                      const e = d.effect[b.id] || 0;
+                      if (e === 0) return null;
+                      return (
+                        <span key={b.id} className="text-[10px] font-bold px-1 border"
+                          style={{ borderColor: b.hex, color: e > 0 ? b.hex : "#f87171" }}
+                          title={`${b.label} ${e > 0 ? "+" : ""}${e}`}>
+                          {b.label[0]}{e > 0 ? "+" : ""}{e}
+                        </span>
+                      );
+                    })}
+                  </span>
+                </div>
+                <div className="text-xs text-stone-400 leading-snug mt-0.5">{d.desc}</div>
+                {conflict && (
+                  <div className="text-xs text-amber-400 leading-snug mt-0.5">
+                    Directly against {DEMAND_BY_ID[d.opposes].label}. Taking both spends two slots to cancel yourself out.
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {anyDefecting.length > 0 && (
+          <div className="border border-red-800 bg-red-950/30 px-3 py-2 mb-3 text-xs text-red-300">
+            <span className="font-bold">{anyDefecting.map(b => b.label).join(" and ")} will walk.</span>{" "}
+            A bloc below {DEFECT_THRESHOLD} stops counting and starts campaigning against you. You can spend a slot's goodwill
+            instead: pledge them next.
+            <div className="flex gap-2 mt-2 flex-wrap">
+              {anyDefecting.map(b => (
+                <button key={b.id} onClick={() => onPledge(b.id)}
+                  className="border border-amber-700 text-amber-300 px-2 py-1 hover:bg-amber-950/40 transition-colors">
+                  Pledge {b.label} next
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button
+          disabled={!full}
+          onClick={() => onAdopt(chosen)}
+          className={`w-full font-stencil text-lg py-2.5 tracking-wide transition-colors ${
+            full ? "bg-amber-500 hover:bg-amber-400 text-stone-950" : "bg-stone-800 text-stone-600 cursor-not-allowed"}`}
+        >
+          {full ? "ADOPT THIS PLATFORM" : `PICK ${PLATFORM_SLOTS - chosen.length} MORE`}
         </button>
       </div>
     </div>
@@ -1422,18 +1997,35 @@ function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
         </div>
         <p className="text-sm text-stone-400 mb-4">Morale has crossed 70. Workers are ready to move — the question is whether you are.</p>
 
+        {/* Three gates. Each one passes or it doesn't \u2014 no interpreting a number. */}
         <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
-          <div className="border border-stone-800 p-2 text-center">
-            <div className="text-stone-500">MORALE</div>
-            <div className="text-teal-400 font-bold text-base">{loc.morale}</div>
-          </div>
-          <div className="border border-stone-800 p-2 text-center">
-            <div className="text-stone-500">RECRUITED</div>
-            <div className={`font-bold text-base ${recruitedPct >= 0.3 ? "text-teal-400" : "text-red-400"}`}>{Math.round(recruitedPct * 100)}%</div>
-          </div>
-          <div className="border border-stone-800 p-2 text-center">
-            <div className="text-stone-500">LEGAL RISK</div>
-            <div className={`font-bold text-base ${loc.legalRisk < 75 ? "text-teal-400" : "text-red-400"}`}>{loc.legalRisk}</div>
+          {[
+            { label: "MORALE", val: loc.morale, pass: loc.morale >= 70, req: "\u2265 70" },
+            { label: "RECRUITED", val: `${Math.round(recruitedPct * 100)}%`, pass: recruitedPct >= 0.3, req: "\u2265 30%" },
+            { label: "LEGAL RISK", val: loc.legalRisk, pass: loc.legalRisk < 75, req: "< 75" },
+          ].map(g => (
+            <div key={g.label} className={`border p-2 text-center ${g.pass ? "border-teal-800 bg-teal-950/20" : "border-red-900 bg-red-950/20"}`}>
+              <div className="text-stone-500">{g.label}</div>
+              <div className={`font-bold text-base ${g.pass ? "text-teal-400" : "text-red-400"}`}>
+                {g.pass ? "\u2713" : "\u2715"} {g.val}
+              </div>
+              <div className="text-[10px] text-stone-600">needs {g.req}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* What filing actually buys, in numbers. */}
+        <div className="mb-3 text-xs border border-stone-800 bg-stone-950/50 px-3 py-2">
+          <div className="text-stone-500 font-bold tracking-wide mb-1">IF YOU FILE TODAY</div>
+          <div className="text-stone-400 leading-relaxed">
+            Vote lands in <span className="text-stone-200 font-bold">5 weeks</span>. Win chance is
+            {" "}<span className="text-stone-200 font-bold">60% of true support + 40% of whatever fear isn't</span>.
+            {loc.committee?.active
+              ? <> At {loc.trueSupport} true support and {loc.fear} fear, that reads
+                  {" "}<span className={`font-bold ${((loc.trueSupport / 100) * 0.6 + ((100 - loc.fear) / 100) * 0.4) >= 0.6 ? "text-teal-400" : "text-amber-400"}`}>
+                    {Math.round(((loc.trueSupport / 100) * 0.6 + ((100 - loc.fear) / 100) * 0.4) * 100)}%
+                  </span> right now.</>
+              : <> You cannot compute it: true support here is unknown.</>}
           </div>
         </div>
 
@@ -1443,7 +2035,7 @@ function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
           </div>
         ) : gap >= 12 ? (
           <div className="mb-4 text-xs border border-amber-800 bg-amber-950/30 text-amber-300 px-3 py-2">
-            Without a shop committee, the organizer is going on feel alone — and this room may not be as solid as the morale number suggests.
+            No shop committee here, so true support is hidden and the election odds above cannot be calculated. Morale reads {loc.morale}; the number the vote uses could be {Math.max(0, loc.morale - 25)}.
           </div>
         ) : null}
 
@@ -1454,7 +2046,7 @@ function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
             className={`w-full text-left border-2 p-3 transition-colors ${eligible ? "border-teal-600 hover:bg-teal-950/40" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
           >
             <div className="font-stencil text-base text-teal-400">FILE FOR UNION ELECTION</div>
-            <div className="text-xs text-stone-400">Go for the win now. Triggers a 5-week NLRB and campaign period. {!eligible && "(Requirements not met — need 30%+ recruited and legal risk under 75.)"}</div>
+            <div className="text-xs text-stone-400">Go for the win now. Triggers a 5-week NLRB and campaign period, during which the employer campaigns against you every week. {!eligible && "Blocked: one of the three gates above is red."}</div>
           </button>
           <button onClick={onConsolidate} className="w-full text-left border-2 border-amber-700 hover:bg-amber-950/40 p-3 transition-colors">
             <div className="font-stencil text-base text-amber-400">CONSOLIDATE & KEEP ORGANIZING</div>
@@ -1477,8 +2069,38 @@ function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
 
 const ACT1_CARD_THRESHOLD = 0.30;
 const ACT1_HOURS_PER_ORGANIZER = 3;
-// There is no deadline. The level is scored on speed: beat it in this many weeks or fewer.
+// The level is scored on speed: beat it in this many weeks or fewer.
 const ACT1_STAR_WEEKS = { three: 16, two: 21 };
+
+// ---------- THE WINDOW CLOSES ----------
+// Two deadlines, neither of them a bare countdown.
+//
+// 1. Cards go stale. This is real NLRB practice \u2014 old authorization cards get
+//    challenged as unreliable evidence of CURRENT support \u2014 and it is the right shape
+//    here because it isn't a timer, it's decay. A stale card drops that worker back
+//    down the ladder and takes true support with it. It never touches a fast run: your
+//    first card lands around week 6, so a 3-star campaign never loses one. A grind
+//    watches its early signatures rot off faster than it can replace them.
+const CARD_LIFESPAN = 14;
+const CARD_STALE_WARNING = 3; // weeks of notice on the worker card
+
+// 2. The studio ships. The most honest death available in this setting: the window
+//    closes because the business cycle does not wait for the campaign. Visible from
+//    week one \u2014 a cap you discover is a cheap shot, a cap you plan against is strategy.
+const ACT1_SHIP_WEEK = 26;
+const ACT1_CRUNCH_WEEKS = 4; // flagged off by default; see ACT1_CRUNCH_ENABLED
+const ACT1_CRUNCH_ENABLED = false;
+
+function cardAge(w, week) {
+  return w.signedWeek == null ? 0 : week - w.signedWeek;
+}
+function cardExpiresOn(w) {
+  return w.signedWeek == null ? null : w.signedWeek + CARD_LIFESPAN;
+}
+function cardStaleSoon(w, week) {
+  const exp = cardExpiresOn(w);
+  return exp != null && exp - week <= CARD_STALE_WARNING && exp - week > 0;
+}
 const ACT1_RECRUIT_REQ = 85;
 function act1Stars(week) {
   if (week <= ACT1_STAR_WEEKS.three) return 3;
@@ -1506,8 +2128,10 @@ const FULFILL_HEX = "#7dd3fc";
 
 const STAT_INFO = {
   support: "How much this person backs the idea of a union. Support is not action: people who say they're behind it still hesitate when a card is actually in front of them. Ask someone who isn't ready and you lose ground with them.",
+  trueSupport: "What this person would actually do with a card in front of them. Always lower than what they say, and cheap actions widen the gap: watching a coworker wear a button makes people talk warmer without making them any more willing to sign. Only a real conversation moves it.",
   influence: "Influence is relationship-specific. There is no single number for how persuasive someone is — Camille might carry real weight with one coworker and none at all with the next. The map shows who moves whom, and by how much. Every conversation and every public action lands in proportion to the influence between those two people.",
-  fulfillment: "How fulfilled this person is by the work itself. Fulfilled and burned-out workers both sign union cards — fulfillment does not predict support. What it predicts is who they'll listen to: people are moved much harder by an organizer whose relationship to the job resembles their own.",
+  fulfillment: "How much this person likes the job — which is to say, how much they feel they would be risking. It says nothing about their politics. What it changes is the ask: a worker who loves it here hesitates longer over the card. This is the lever the company buys with offsites and new hardware, one department at a time.",
+  _legacyFulfillment: "How fulfilled this person is by the work itself. Fulfilled and burned-out workers both sign union cards — fulfillment does not predict support. What it predicts is who they'll listen to: people are moved much harder by an organizer whose relationship to the job resembles their own.",
 };
 
 const BURN_NARRATIVES = [
@@ -1853,6 +2477,11 @@ const ACT1_INTRO_BEATS = [
     title: "30% support for unionizing forces an election",
     lines: ["No guarantee of a win, just opens the door for a majority vote on whether the studio should be controlled by Play-Eye or the workers who actually love the game."],
   },
+  {
+    kicker: "The Brief",
+    title: `You have until the game ships in week ${ACT1_SHIP_WEEK}`,
+    text: `After launch the contractors roll off, the cuts land, and this shop stops existing in this shape. Cards also go stale after ${CARD_LIFESPAN} weeks \u2014 a signature is evidence of what somebody thought the day they signed it, not a permanent fact. Move fast, or watch your early wins rot off the count.`,
+  },
 ];
 
 // The two beats that get a picture instead of another sentence: the people you actually
@@ -1967,6 +2596,9 @@ const CONSULTANT_NAME_UC = CONSULTANT_NAME.toUpperCase();
 // How much backing a worker has from people who've already signed. Somebody surrounded by
 // organizers has been inoculated — they've heard all of this before, from someone they
 // trust more. Somebody isolated is who the consultant peels off.
+// STUBBORN workers do not move back once they are with you. Everything Kirkman does
+// to them washes off, which is the flip side of how hard they were to move at all.
+function holdsFast(w) { return !!infTrait(w).holdsFast; }
 function signedBacking(influence, workers, id) {
   return incomingTies(influence, id)
     .filter(t => {
@@ -1978,6 +2610,77 @@ function signedBacking(influence, workers, id) {
 
 const ACT1_TOTAL_WORKERS = ACT1_WORKERS_SEED.length;
 const ACT1_CARDS_NEEDED = Math.ceil(ACT1_TOTAL_WORKERS * ACT1_CARD_THRESHOLD);
+
+// ---------- ORG CHART VS SOCIAL NETWORK ----------
+// The central argument, as a mechanic instead of a tooltip. The company can only see
+// the org chart: teams, reporting lines, mandatory meetings. That is a real weapon and
+// it is a blunt one, because a department is not a set of relationships. Density of
+// signed coworkers a person actually trusts is what blunts it.
+//
+// The player works the opposite map. Kirkman only finds it when the campaign gets loud
+// enough to show him \u2014 which makes your own visibility the thing that teaches him.
+const KIRKMAN_SIGHT = 55; // heat above which he stops guessing from the org chart
+
+// An org-chart hit is absorbed in proportion to how much signed influence surrounds
+// someone. Fully covered workers take roughly a fifth of the blow.
+function orgChartResistance(backing) {
+  return Math.max(0.2, 1 - Math.min(1, backing / 110) * 0.8);
+}
+
+// ---------- THE OUTSIDER LADDER ----------
+// Kirkman is not the whole company. The better the campaign does, the further up the
+// chain it gets escalated, and each rung fights differently. Rungs never un-arrive.
+const OUTSIDERS = [
+  {
+    id: "consultant", name: "KIRKMAN", role: "union-avoidance consultant",
+    arrival: (c) => c.committee >= CONSULTANT_TRIGGER_COMMITTEE || c.signed >= ACT1_CARDS_NEEDED - 2,
+    intro: (n) => `A consultant from ${CONSULTANT_FIRM} is on site by Wednesday. ${n} has a badge, a corner office nobody was using, and a list of names.`,
+  },
+  {
+    id: "boss", name: "DANIELS", role: "studio head",
+    arrival: (c) => c.signed >= ACT1_CARDS_NEEDED || c.stage !== "drive",
+    intro: () => `The studio head starts walking the floor. Sleeves up, first names, remembering your kid's name. Everybody likes Daniels. That is the problem.`,
+  },
+  {
+    id: "corporate", name: "VANTAGE PARTNERS", role: "the owners",
+    arrival: (c) => c.stage !== "drive" && c.heat >= 55,
+    intro: () => `Someone from the ownership group flies in for a "portfolio review." No names on the calendar invite, no minutes taken.`,
+  },
+  {
+    id: "celebrity", name: "THE PODCAST", role: "an outside voice",
+    arrival: (c) => c.heat >= 72,
+    intro: () => `A podcaster with four million subscribers does eleven minutes on your campaign without ever having set foot in the building.`,
+  },
+];
+
+
+// ---------- CAN ACT ONE STILL BE WON? ----------
+// Same promise as Act Two: the game owes you the truth the moment the arithmetic dies,
+// and it owes you the specific reason. Burning people out of the campaign is the way
+// you kill a drive here — there are only twenty of them, and you need six signatures.
+function act1Winnability(workers, stage, week = 1) {
+  if (stage !== "drive") return { alive: true, reason: null };
+  if (week > ACT1_SHIP_WEEK) {
+    return {
+      alive: false, shipped: true, signed: workers.filter(w => w.signed).length, burned: 0,
+      reason: `The game ships. Contract workers roll off, post-launch cuts land, and the shop you spent ${ACT1_SHIP_WEEK} weeks organizing does not exist in that configuration anymore. The window didn't close because you ran out of time. It closed because the business cycle was never going to wait for you.`,
+    };
+  }
+  const signed = workers.filter(w => w.signed).length;
+  const live = workers.filter(w => !w.burned && !w.signed).length;
+  const burned = workers.filter(w => w.burned).length;
+  const organizers = workers.filter(w => w.organizer && !w.burned).length;
+  if (signed + live < ACT1_CARDS_NEEDED) {
+    return {
+      alive: false, signed, burned,
+      reason: `${burned} ${burned === 1 ? "person is" : "people are"} out of the campaign for good. With ${signed} card${signed === 1 ? "" : "s"} signed and only ${live} ${live === 1 ? "person" : "people"} left who could still sign, this shop cannot reach the ${ACT1_CARDS_NEEDED} the labor board requires.`,
+    };
+  }
+  if (organizers === 0) {
+    return { alive: false, signed, burned, reason: `There is nobody left on the committee. Without an organizer on the floor there is no campaign to run.` };
+  }
+  return { alive: true, signed, burned, reason: null };
+}
 
 // ---------- THE INFLUENCE MAP ----------
 // Directed and weighted: influence[a][b] is how much A moves B, which is not the same as
@@ -2024,12 +2727,52 @@ function generateInfluence(seed) {
   return inf;
 }
 
+// Authored per worker, not randomised — each one should be readable off their hook.
+const INFLUENCE_ASSIGN = {
+  1: "leader",    // Marisol — senior engineer, respected, newly burned by the review
+  2: "quiet",     // Dante — new, happy, invisible
+  3: "cautious",  // Priya — afraid of the stack ranking
+  4: "leader",    // Wendell — remembers the old contract, people listen
+  5: "hothead",   // Ashanti — posts about everything, first to call it out
+  6: "wellliked", // Miguel — everyone routes their hardest problems to him
+  7: "quiet",     // Brianna — transferred in, still learning the room
+  8: "cautious",  // Tyrell — score dropped, nobody to ask
+  9: "wellliked", // Sofia — unofficial team mom
+  10: "connector",// Jake — in every Slack channel until midnight
+  11: "leader",   // Camille — been in a union before, knows how it goes
+  12: "stubborn", // Roz — principal engineer, wrote half the codebase
+  13: "quiet",    // Omar — head down, numbers up
+  14: "connector",// Fen — concept artist, touches every team
+  15: "stubborn", // Gus — lived through a drive that fell apart
+  16: "connector",// Naledi — runs the whole QA pipeline
+  17: "cautious", // Theo — contract renewal in eleven weeks
+  18: "hothead",  // Iris — her tools team got replaced without warning
+  19: "wellliked",// Marcus — still mentors people on his own time
+  20: "stubborn", // Delphine — narrative lead, thinks this slows the ship
+};
 function makeAct1Workers() {
   return ACT1_WORKERS_SEED.map(w => ({
     ...w,
     organizer: !!w.organizer,
     signed: !!w.organizer,
+    influenceTrait: INFLUENCE_ASSIGN[w.id] || "quiet",
+    signedWeek: w.organizer ? 1 : null,
+    staleCount: 0,
+    experience: w.organizer ? 45 : 0, // your two starters have already done this before
+    weeksIdle: 0,
+    ...(() => {
+      // 3-5 affinities each. Your own two organizers start fully known — you already
+      // know what your people talk about.
+      const pool = [...AFFINITY_POOL].sort(() => Math.random() - 0.5);
+      const affinities = pool.slice(0, 3 + rand(3)).map(a => a.id);
+      return { affinities, knownAffinities: w.organizer ? [...affinities] : [] };
+    })(),
+    // Stated support is what they SAY. True support is what they'd actually do with a
+    // card in front of them, and it starts lower for everyone but your own people.
     support: clamp(w.support + rand(9) - 4),
+    trueSupport: w.organizer ? clamp(w.support) : clamp(w.support - 6 - rand(14)),
+    trueKnown: !!w.organizer,
+    guarded: 0,
     fulfillment: clamp(w.fulfillment + rand(9) - 4),
     burned: false,
     revealed: !!w.organizer, // you already know who your own two people reach
@@ -2065,18 +2808,125 @@ function knownInfluence(influence, workers, aId) {
 
 // Job fulfillment doesn't change whether someone signs — it changes who can move them.
 // Two people who feel the same way about the work land much harder on each other.
-function fulfillmentAffinity(a, b) {
-  return Math.max(0, 1 - Math.abs(a.fulfillment - b.fulfillment) / 100);
+// ---------- THE COMMITTEE DEVELOPS ----------
+// The fantasy is building a network that organizes itself. A committee whose members
+// are interchangeable hour-tokens cuts directly against that, so they aren't: people
+// get better at this by doing it, and they fall away if you stop coming back to them.
+const ORG_TIERS = [
+  { min: 75, label: "LEAD ORGANIZER", hex: "#fbbf24", send: 1.30, bonusHours: 1,
+    blurb: "Runs their own conversations without being told. +30% to everything they do, and an extra hour every week." },
+  { min: 40, label: "SEASONED",       hex: "#a3e635", send: 1.15, bonusHours: 0,
+    blurb: "Has had enough hard conversations to know how they go. +15% to everything they do." },
+  { min: 0,  label: "NEW TO THIS",    hex: "#a8a29e", send: 1.00, bonusHours: 0,
+    blurb: "Willing, but green. Gets better every week you actually use them." },
+];
+const orgTier = (w) => ORG_TIERS.find(t => (w.experience || 0) >= t.min) || ORG_TIERS[ORG_TIERS.length - 1];
+const orgMult = (w) => (w?.organizer ? orgTier(w).send : 1);
+
+// Experience comes from the work, not from being named to a list.
+const XP_PER_ACTION = 7;
+const XP_PER_CARD = 12;
+
+// Neglect. Two weeks of grace, then they start giving you less, then they walk.
+const IDLE_GRACE = 2;
+const IDLE_QUIT = 5;
+function idlePenalty(w) {
+  return Math.max(0, (w.weeksIdle || 0) - IDLE_GRACE);
 }
+function committeeHours(w) {
+  if (w.shaken > 0) return 1;
+  return Math.max(0, ACT1_HOURS_PER_ORGANIZER + orgTier(w).bonusHours - idlePenalty(w));
+}
+
+// ---------- INFLUENCE TRAITS ----------
+// Tier one. Unlike affinities these are VISIBLE from week one — you can tell who the
+// floor already follows without being told. McAlevey's organic leader is the whole
+// point: the person others actually take cues from, who almost never holds a title.
+// These change how a worker moves people and how easily they get moved. They are not
+// about connection — that is what affinities are for.
+const INFLUENCE_TRAITS = [
+  { id: "leader",   label: "ORGANIC LEADER", hex: "#fbbf24", send: 1.35, recv: 1.0,  signShift: 0,   burnMult: 1.0, passive: 1.0,
+    blurb: "The floor already follows them. Everything they say to anyone lands 35% harder. Worth three hours to recruit." },
+  { id: "wellliked",label: "WELL-LIKED",     hex: "#a3e635", send: 1.0,  recv: 1.1,  signShift: 0,   burnMult: 0.8, passive: 2.0,
+    blurb: "No agenda, everybody's friend. Once they sign, they move people passively at double rate without spending an hour." },
+  { id: "connector",label: "CONNECTOR",      hex: "#38bdf8", send: 1.15, recv: 1.0,  signShift: 0,   burnMult: 1.0, passive: 1.4, crossTeam: 1.6,
+    blurb: "Knows people outside their own team. Their reach across department lines is worth 60% more — which is where campaigns are won." },
+  { id: "stubborn", label: "STUBBORN",       hex: "#fb7185", send: 1.0,  recv: 0.6,  signShift: 0,   burnMult: 0.9, passive: 1.0, holdsFast: true,
+    blurb: "Takes far more work to move. But nothing management does moves them back — once they're with you, they stay." },
+  { id: "cautious", label: "CAUTIOUS",       hex: "#a8a29e", send: 0.95, recv: 1.0,  signShift: 12,  burnMult: 0.35, passive: 1.0,
+    blurb: "Wants to see it work before committing. Needs 12 more points of true support to sign, and rarely draws management's eye." },
+  { id: "hothead",  label: "HOTHEAD",        hex: "#f97316", send: 1.1,  recv: 1.15, signShift: -8,  burnMult: 1.9, passive: 1.0, publicGain: 1.4, publicHeat: 1.6,
+    blurb: "Goes first and goes loud. Public actions hit 40% harder and draw 60% more heat — and they are the likeliest person to get walked out." },
+  { id: "quiet",    label: "KEEPS THEIR HEAD DOWN", hex: "#78716c", send: 0.7, recv: 0.9, signShift: 6, burnMult: 0.1, passive: 0.6,
+    blurb: "Nobody takes cues from them and nobody watches them either. Safe, slow, and easy to write off — which is a mistake at the count." },
+];
+const INF_BY_ID = Object.fromEntries(INFLUENCE_TRAITS.map(t => [t.id, t]));
+const infTrait = (w) => INF_BY_ID[w?.influenceTrait] || INF_BY_ID.quiet;
+const senderMult = (a) => infTrait(a).send * orgMult(a);
+const recvMult = (b) => infTrait(b).recv;
+
+function InfluenceTraitChip({ worker, size = "text-[11px]" }) {
+  const t = infTrait(worker);
+  return (
+    <span title={t.blurb} className={`inline-flex items-center gap-1 px-1.5 py-0.5 border ${size}`}
+      style={{ borderColor: t.hex, color: t.hex, backgroundColor: "rgba(0,0,0,0.2)" }}>
+      {t.label}
+    </span>
+  );
+}
+
+// ---------- AFFINITY TRAITS ----------
+// Tier two of the trait system. These do not make anyone a better organizer — they
+// decide WHO can reach WHOM. Hidden until a conversation surfaces them, which is the
+// whole reason the quick chat exists as an action.
+const AFFINITY_POOL = [
+  { id: "dogs", label: "Dog person", glyph: "\u25CF" },
+  { id: "parent", label: "Has small kids", glyph: "\u25B2" },
+  { id: "commute", label: "Long commute", glyph: "\u25AC" },
+  { id: "ttrpg", label: "Runs a tabletop game", glyph: "\u25C6" },
+  { id: "veg", label: "Vegetarian", glyph: "\u25CB" },
+  { id: "gym", label: "Lifts before shift", glyph: "\u25A0" },
+  { id: "transplant", label: "Moved here for the job", glyph: "\u2726" },
+  { id: "debt", label: "Carrying student debt", glyph: "\u25BC" },
+  { id: "modder", label: "Came up through modding", glyph: "\u2756" },
+  { id: "secondjob", label: "Works a second job", glyph: "\u25AA" },
+  { id: "caretaker", label: "Cares for a parent", glyph: "\u2733" },
+  { id: "smoker", label: "Takes the loading-dock break", glyph: "\u25AD" },
+  { id: "church", label: "Church every Sunday", glyph: "\u2732" },
+  { id: "vet", label: "Served", glyph: "\u2691" },
+];
+const AFF_BY_ID = Object.fromEntries(AFFINITY_POOL.map(a => [a.id, a]));
+
+const affList = (w) => w?.affinities || [];
+const knownAff = (w) => w?.knownAffinities || [];
+// What actually exists between two people.
+function sharedAffinities(a, b) {
+  return affList(a).filter(t => affList(b).includes(t));
+}
+// What the PLAYER can see — a match only helps you plan if you've surfaced it on both.
+function visibleShared(a, b) {
+  return sharedAffinities(a, b).filter(t => knownAff(a).includes(t) && knownAff(b).includes(t));
+}
+// 0 shared -> 0.70, 1 -> 1.05, 2 -> 1.40, 3+ -> 1.75. A matched pairing is worth
+// roughly two and a half times a cold one, which is what makes scouting pay.
 function affinityMult(a, b) {
-  return 0.6 + 0.8 * fulfillmentAffinity(a, b);
+  return 0.7 + 0.35 * Math.min(3, sharedAffinities(a, b).length);
 }
 function affinityLabel(a, b) {
-  const gap = Math.abs(a.fulfillment - b.fulfillment);
-  if (gap <= 12) return "they see the job the same way";
-  if (gap <= 30) return "close enough on how the job feels";
-  if (gap <= 55) return "they feel differently about the work";
-  return "they might as well have different jobs";
+  const seen = visibleShared(a, b).length;
+  const unknownLeft = affList(a).some(t => !knownAff(a).includes(t)) || affList(b).some(t => !knownAff(b).includes(t));
+  if (seen >= 3) return "they have real common ground";
+  if (seen === 2) return "they've got things in common";
+  if (seen === 1) return "there's one thing they share";
+  return unknownLeft ? "you don't know what these two have in common yet" : "nothing in common you can work with";
+}
+
+// ---------- FULFILLMENT AS COMPLACENCY ----------
+// Fulfillment no longer decides who persuades whom. It decides how much a person
+// feels they'd be risking. Someone who loves this job hesitates longer over the card —
+// and that is exactly the lever the company buys with offsites and new hardware.
+function complacencyMult(target) {
+  return clamp(1 - 0.006 * (target.fulfillment - 45), 0.55, 1.25);
 }
 
 // You know the reach of your own people — they can tell you who'd take their call.
@@ -2091,11 +2941,40 @@ function shownInfluence(influence, actor, target) {
 }
 
 const CONVO_BASE = { quick: 5, deep: 12 };
-// Shared math — the resolution rolls against exactly the numbers the player was shown.
+// A quick chat moves what someone SAYS more than what they'd do — it's a pleasant
+// exchange, not an ask. A deep conversation is the only action that reliably moves the
+// number underneath, and only when the two of them actually have something in common.
+const TRUE_RATIO = { quick: 0.35, deep: 0.9 };
 function convoGain(actor, target, weight) {
-  const raw = CONVO_BASE.quick * (0.45 + 0.85 * (weight / 100)) * affinityMult(actor, target);
-  const deep = CONVO_BASE.deep * (0.45 + 0.85 * (weight / 100)) * affinityMult(actor, target);
-  return { quick: Math.max(1, Math.round(raw)), deep: Math.max(2, Math.round(deep)) };
+  const scale = (0.45 + 0.85 * (weight / 100)) * affinityMult(actor, target) * senderMult(actor) * recvMult(target);
+  const quick = Math.max(1, Math.round(CONVO_BASE.quick * scale));
+  const deep = Math.max(2, Math.round(CONVO_BASE.deep * scale));
+  return {
+    quick, deep,
+    quickTrue: Math.max(0, Math.round(quick * TRUE_RATIO.quick)),
+    deepTrue: Math.max(1, Math.round(deep * TRUE_RATIO.deep)),
+  };
+}
+
+// THE ANSWER TO "why not deep-talk everyone." It isn't the hour cost — it's that a
+// structured organizing conversation run on someone you haven't scouted lands as a
+// pitch. They get guarded, and a guarded worker is harder to move for weeks.
+function misfireChance(actor, target) {
+  if (visibleShared(actor, target).length > 0) return 0;
+  const blindness = affList(target).filter(t => !knownAff(target).includes(t)).length;
+  return Math.min(0.55, 0.16 + 0.09 * blindness);
+}
+// How many affinities a conversation surfaces. Rapport opens people up, so a sender who
+// already shares ground with them learns more.
+function revealCount(kind, actor, target) {
+  const rapport = sharedAffinities(actor, target).length > 0 ? 1 : 0;
+  return kind === "deep" ? 3 + rand(2) : 1 + rand(2) + rapport;
+}
+function revealAffinities(target, n) {
+  const hidden = affList(target).filter(t => !knownAff(target).includes(t));
+  const picked = hidden.sort(() => Math.random() - 0.5).slice(0, n);
+  target.knownAffinities = [...knownAff(target), ...picked];
+  return picked;
 }
 
 // Support is not action. Readiness gates everything, but who's asking still matters.
@@ -2103,10 +2982,16 @@ function signChance(actor, target, weight) {
   if (target.signed) return 0;
   // Deliberately concave: a worker at 70 support is nowhere near twice as likely to sign
   // as one at 55. Saying you're for it and putting your name on paper are different acts.
-  const readiness = Math.pow(Math.max(0, Math.min(1, (target.support - 45) / 50)), 1.3);
+  // Rolls against TRUE support, not the number the player has been watching. The gap
+  // between the two is the whole lesson: a floor that says yes can still not sign.
+  const real = target.trueSupport ?? target.support;
+  // CAUTIOUS needs to see it working first; HOTHEAD signs before they have thought it through.
+  const bar = 45 + (infTrait(target).signShift || 0);
+  const readiness = Math.pow(Math.max(0, Math.min(1, (real - bar) / 50)), 1.3);
   const trustPart = 0.55 + 0.45 * (weight / 100);
   const recent = target.askedRecently > 0 ? 0.6 : 1;
-  return Math.min(0.93, readiness * trustPart * affinityMult(actor, target) * recent);
+  const guard = target.guarded > 0 ? 0.65 : 1;
+  return Math.min(0.93, readiness * trustPart * affinityMult(actor, target) * recent * guard * complacencyMult(target) * senderMult(actor));
 }
 
 const PUBLIC_TIERS = {
@@ -2121,7 +3006,12 @@ function publicFatigue(uses) {
   return 1 / (1 + 0.6 * uses);
 }
 function publicGain(actor, target, weight, tier, uses = 0) {
-  return Math.round(PUBLIC_TIERS[tier].base * (weight / 100) * affinityMult(actor, target) * publicFatigue(uses));
+  const t = infTrait(actor);
+  const cross = infTrait(actor).crossTeam && actor.team !== target.team ? t.crossTeam : 1;
+  return Math.round(
+    PUBLIC_TIERS[tier].base * (weight / 100) * affinityMult(actor, target) * publicFatigue(uses)
+    * senderMult(actor) * recvMult(target) * (t.publicGain || 1) * cross
+  );
 }
 
 const ACT1_ACTION = {
@@ -2133,7 +3023,102 @@ const ACT1_ACTION = {
   medium: { label: "Medium public action", hours: 2, short: "medium action" },
   large: { label: "Big public action", hours: 3, short: "big action" },
   map: { label: "Map the floor", hours: 2, short: "mapping" },
+  checkin: { label: "Check in with them", hours: 1, short: "check-in" },
 };
+
+// ---------- SYMBOLS, NOT SENTENCES ----------
+// Everything the player has to compare at a glance is a shape. Text is for the things
+// that only get read once.
+
+// Cost and budget as filled/empty pips. One pip is one hour.
+function Pips({ filled = 0, total = 0, hex = "#fbbf24", size = 7, gap = 3, dim = false }) {
+  return (
+    <span className="inline-flex items-center" style={{ gap }}>
+      {Array.from({ length: total }).map((_, i) => (
+        <span
+          key={i}
+          style={{
+            width: size, height: size, borderRadius: "50%",
+            backgroundColor: i < filled ? hex : "transparent",
+            border: `1px solid ${i < filled ? hex : "#57534e"}`,
+            opacity: dim ? 0.35 : 1,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+// The price tag on every action button.
+function CostPips({ hours, affordable = true }) {
+  return (
+    <span className="inline-flex items-center gap-1.5" title={`${hours} hour${hours === 1 ? "" : "s"}`}>
+      <Pips filled={hours} total={hours} hex={affordable ? "#fbbf24" : "#57534e"} size={6} gap={2.5} />
+    </span>
+  );
+}
+
+// ---------- THE COMMITMENT LADDER ----------
+// The playtest note was right: someone who "supports" the union without doing anything
+// isn't a member of anything. So say so. Each rung is a costlier act, and the pip count
+// is the whole state of a person on the floor.
+const LADDER = [
+  { id: "committee", label: "COMMITTEE", pips: 4, hex: "#fbbf24", blurb: "Organizes other people. Their relationships are yours to direct." },
+  { id: "signed", label: "SIGNED", pips: 3, hex: "#2dd4bf", blurb: "Put their name on a card. This is the only number the labor board counts." },
+  { id: "supporter", label: "SUPPORTER", pips: 2, hex: "#a3e635", blurb: "Says they're for it. Has given the union nothing yet." },
+  { id: "contacted", label: "CONTACTED", pips: 1, hex: "#a8a29e", blurb: "You've had a conversation. That's all." },
+  { id: "cold", label: "UNTOUCHED", pips: 0, hex: "#57534e", blurb: "Nobody has talked to them." },
+];
+const LADDER_BY_ID = Object.fromEntries(LADDER.map(r => [r.id, r]));
+function ladderOf(w) {
+  if (w.organizer) return LADDER_BY_ID.committee;
+  if (w.signed) return LADDER_BY_ID.signed;
+  if (w.support >= 55) return LADDER_BY_ID.supporter;
+  if ((w.history && w.history.length > 0) || w.revealed) return LADDER_BY_ID.contacted;
+  return LADDER_BY_ID.cold;
+}
+function LadderBadge({ worker, showLabel = true }) {
+  const r = ladderOf(worker);
+  return (
+    <span className="inline-flex items-center gap-1.5" title={r.blurb}>
+      <Pips filled={r.pips} total={4} hex={r.hex} size={7} gap={2.5} dim={worker.burned} />
+      {showLabel && <span className="text-[11px] font-bold tracking-wide" style={{ color: r.hex }}>{r.label}</span>}
+    </span>
+  );
+}
+
+// Affinity as glyphs. A trait both people share lights up — that is the entire
+// "who do I send" decision, rendered without a sentence.
+function AffinityChips({ worker, actor = null, max = 6 }) {
+  const known = knownAff(worker);
+  const hiddenCount = affList(worker).length - known.length;
+  if (!known.length && !hiddenCount) return null;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {known.slice(0, max).map(id => {
+        const a = AFF_BY_ID[id];
+        const match = actor && affList(actor).includes(id) && knownAff(actor).includes(id);
+        return (
+          <span
+            key={id}
+            title={a.label + (match ? " — shared with " + actor.name : "")}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] border"
+            style={{
+              borderColor: match ? "#2dd4bf" : "#44403c",
+              color: match ? "#5eead4" : "#a8a29e",
+              backgroundColor: match ? "rgba(45,212,191,0.10)" : "transparent",
+            }}
+          >
+            <span style={{ fontSize: 9 }}>{a.glyph}</span>{a.label}
+          </span>
+        );
+      })}
+      {Array.from({ length: hiddenCount }).map((_, i) => (
+        <span key={"h" + i} title="Not surfaced yet — a conversation would reveal it"
+          className="inline-flex items-center px-1.5 py-0.5 text-[11px] border border-dashed border-stone-700 text-stone-600">?</span>
+      ))}
+    </span>
+  );
+}
 
 // ---------- SHARED BITS OF UI ----------
 function InfoDot({ children, align = "center" }) {
@@ -2244,7 +3229,7 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 // labels lets a second act reuse this board with its own vocabulary — the geometry,
 // influence arrows and card layout are identical, only the words change.
 const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD", organizerCard: "ON COMMITTEE", signedCard: "SIGNED" };
-function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [], onSelect, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
+function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOUT, planEntries = [], onSelect, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
   const anyRevealed = workers.some(w => w.revealed && !w.organizer);
   const active = hoverId != null ? hoverId : focusId;
@@ -2318,14 +3303,17 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
           <span className="inline-block" style={{ width: 12, height: 2, backgroundColor: EDGE_CROSS_TEAM }} />
           INFLUENCE ACROSS TEAMS
         </span>
-        <span className="flex items-center gap-1 ml-1">
-          <span className="inline-block w-2.5 h-2.5 border-2 border-amber-400" />
-          {labels.organizerLegend}
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2.5 h-2.5 border-2 border-teal-400" />
-          {labels.signedLegend}
-        </span>
+      </div>
+
+      {/* THE LADDER. Left to right is the whole campaign. */}
+      <div className="flex items-center gap-3 flex-wrap text-[10px] mb-2 px-0.5">
+        {[...LADDER].reverse().map((r, i) => (
+          <span key={r.id} className="flex items-center gap-1.5" title={r.blurb}>
+            {i > 0 && <span className="text-stone-700 mr-1">{"\u203a"}</span>}
+            <Pips filled={r.pips} total={4} hex={r.hex} size={5} gap={1.5} />
+            <span style={{ color: r.hex }}>{r.label}</span>
+          </span>
+        ))}
       </div>
 
       <svg viewBox={`0 0 ${layout.width} ${layout.height}`} className="w-full block select-none">
@@ -2469,9 +3457,37 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
               <text x={c.x + 3.6} y={c.y + 6.8} fontSize="4.3" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{w.name.toUpperCase()}</text>
               <text x={c.x + c.w - 2.6} y={c.y + 7.8} textAnchor="end" fontSize="6" fontWeight="bold" fill={w.burned ? "#57534e" : tier.hex} fontFamily="'Courier New', monospace">{w.burned ? "—" : w.support}</text>
 
-              <rect x={c.x + 3.6} y={c.y + 10.4} width="24" height="1.8" rx="0.5" fill="#292524" />
-              <rect x={c.x + 3.6} y={c.y + 10.4} width={24 * (w.fulfillment / 100)} height="1.8" rx="0.5" fill={FULFILL_HEX} fillOpacity={w.burned ? 0.3 : 0.85} />
-              <text x={c.x + 29.4} y={c.y + 12.3} fontSize="2.8" fill="#78716c" fontFamily="'Courier New', monospace">{w.fulfillment}</text>
+              {/* Influence trait, as a coloured corner tick. Visible from week one. */}
+              <rect x={c.x + c.w - 3.2} y={c.y + 0.9} width="2.3" height="2.3" rx="0.4"
+                fill={infTrait(w).hex} fillOpacity={w.burned ? 0.25 : 0.9} />
+
+              {/* Commitment ladder, four pips. The one thing you should be able to read
+                  across twenty cards without stopping to parse a word. */}
+              {(() => {
+                const rung = ladderOf(w);
+                return (
+                  <g opacity={w.burned ? 0.3 : 1}>
+                    {[0, 1, 2, 3].map(i => (
+                      <circle
+                        key={i}
+                        cx={c.x + 4.6 + i * 3.6}
+                        cy={c.y + 11.3}
+                        r="1.25"
+                        fill={i < rung.pips ? rung.hex : "none"}
+                        stroke={i < rung.pips ? rung.hex : "#57534e"}
+                        strokeWidth="0.35"
+                      />
+                    ))}
+                    <text x={c.x + 20.5} y={c.y + 12.3} fontSize="2.6" fill={rung.hex} fillOpacity="0.8" fontFamily="'Courier New', monospace">{rung.label}</text>
+                    {w.guarded > 0 && <text x={c.x + c.w - 3} y={c.y + 12.3} fontSize="2.8" fill="#f87171" textAnchor="end" fontFamily="'Courier New', monospace">!</text>}
+                    {staleWeek != null && cardStaleSoon(w, staleWeek) && (
+                      <text x={c.x + c.w - 3} y={c.y + 8.4} fontSize="2.2" fill="#fbbf24" textAnchor="end" fontFamily="'Courier New', monospace">
+                        EXP WK{cardExpiresOn(w)}
+                      </text>
+                    )}
+                  </g>
+                );
+              })()}
 
               {planLabels ? (
                 <text x={c.x + 3.6} y={c.y + 18} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), budget != null ? 17 : 21)}</text>
@@ -2484,13 +3500,22 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
               {/* The hours budget lives on the card so the player can see it without
                   leaving the board. On someone the company is working on it goes red,
                   which is also the week their budget is cut — one token, both facts. */}
-              {budget != null && (
-                <text
-                  x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.9" fontWeight="bold"
-                  fill={budget < 0 ? "#f87171" : w.underPressure > 0 ? "#f87171" : budget === 0 ? "#2dd4bf" : "#f59e0b"}
-                  fontFamily="'Courier New', monospace"
-                >{budget}h</text>
-              )}
+              {budget != null && (() => {
+                const total = Math.max(budget, committeeHours(w));
+                const hex = budget < 0 || w.underPressure > 0 ? "#f87171" : budget === 0 ? "#2dd4bf" : "#f59e0b";
+                return (
+                  <g>
+                    {Array.from({ length: Math.max(total, budget) }).map((_, i) => (
+                      <circle
+                        key={i}
+                        cx={c.x + c.w - 2.6 - i * 3.1} cy={c.y + 17.2} r="1.15"
+                        fill={i < budget ? hex : "none"} stroke={hex} strokeOpacity={i < budget ? 1 : 0.4} strokeWidth="0.35"
+                      />
+                    ))}
+                    {budget < 0 && <text x={c.x + c.w - 2.6} y={c.y + 18.2} textAnchor="end" fontSize="2.9" fontWeight="bold" fill="#f87171" fontFamily="'Courier New', monospace">OVER</text>}
+                  </g>
+                );
+              })()}
               {budget == null && !w.burned && !hl && w.underPressure > 0 && (
                 <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#f87171" fontFamily="'Courier New', monospace">WORKED ON</text>
               )}
@@ -2586,9 +3611,14 @@ function ActOneGame({ onGraduate, onPrototype }) {
   const [planEntries, setPlanEntries] = useState([]); // {key, actorId, type, targetId?}
   const [heat, setHeat] = useState(0);
   const [consultant, setConsultant] = useState({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0 });
+  // Which rungs of the outsider ladder have already arrived. They never leave.
+  const [outsiders, setOutsiders] = useState([]);
   const [resolutionSteps, setResolutionSteps] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedWorker, setSelectedWorker] = useState(null);
+  // Actor-first selection: pick who acts on the shelf, then pick who they go to.
+  // Target-first still works \u2014 both entry points reach the same panel.
+  const [focusActorId, setFocusActorId] = useState(null);
   const [confirmStartOver, setConfirmStartOver] = useState(false);
   const [wonOnWeek, setWonOnWeek] = useState(null);
   // "drive" = collecting cards toward the 30% petition threshold. "campaign" = petition
@@ -2609,7 +3639,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
   // carried — clawing the signature back on top of that made one bad roll unrecoverable.
   const signedCount = workers.filter(w => w.signed).length;
   const cardPct = Math.round((signedCount / ACT1_TOTAL_WORKERS) * 100);
-  const hoursFor = (w) => (w.shaken > 0 ? 1 : ACT1_HOURS_PER_ORGANIZER);
+  const hoursFor = (w) => committeeHours(w);
   const hoursUsedBy = (id) => planEntries.filter(e => e.actorId === id).reduce((s, e) => s + ACT1_ACTION[e.type].hours, 0);
   const hoursLeftFor = (w) => hoursFor(w) - hoursUsedBy(w.id);
   const totalHours = organizers.reduce((s, o) => s + hoursFor(o), 0);
@@ -2620,7 +3650,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
   const unlockPublic = week >= 2;
   const anyRevealedBeyondStart = workers.some(w => w.revealed && !w.organizer);
   const anyPublicDone = workers.some(w => w.history.some(h => h.includes("public")));
-  const anyRecruitable = workers.some(w => w.signed && !w.organizer && !w.burned && w.support >= ACT1_RECRUIT_REQ);
+  const anyRecruitable = workers.some(w => w.signed && !w.organizer && !w.burned && w.trueKnown && (w.trueSupport ?? 0) >= ACT1_RECRUIT_REQ);
 
   const resStep = phase === "resolving" && resolutionSteps.length > 0 ? resolutionSteps[stepIndex] : null;
   const resHighlights = {};
@@ -2660,6 +3690,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
     : { banner: [] };
 
   function addPlan(actorId, type, targetId = null) {
+    setFocusActorId(null);
     planKeyRef.current += 1;
     setPlanEntries(prev => [...prev, { key: planKeyRef.current, actorId, type, targetId }]);
   }
@@ -2674,8 +3705,15 @@ function ActOneGame({ onGraduate, onPrototype }) {
     const byId = (id) => w.find(x => x.id === id);
     let heatNext = heat;
     const touched = new Set();
-    const bump = (worker, amount) => {
+    // Stated support and true support are separate numbers. Anything that doesn't ask
+    // a person to DO something moves the first far more than the second — which is how
+    // a campaign talks itself into believing it has the votes.
+    // Every action an organizer runs makes them better at this. Successes count double.
+    const gainXp = (actor, n) => { if (actor?.organizer) actor.experience = clamp((actor.experience || 0) + n, 0, 100); };
+    const bump = (worker, amount, trueAmount = null) => {
       worker.support = clamp(worker.support + amount);
+      const real = trueAmount === null ? Math.round(amount * 0.3) : trueAmount;
+      worker.trueSupport = clamp((worker.trueSupport ?? worker.support) + real);
       touched.add(worker.id);
     };
 
@@ -2704,19 +3742,44 @@ function ActOneGame({ onGraduate, onPrototype }) {
       const target = byId(e.targetId);
       if (!actor || !target || actor.burned || target.burned) return;
       const weight = infOn(influence, actor.id, target.id);
-      const gain = convoGain(actor, target, weight)[e.type];
+      const g = convoGain(actor, target, weight);
       const before = target.support;
-      bump(target, gain);
       target.revealed = true; // you learn who they listen to by sitting down with them
+
+      // Surface what they have in common. This is the payload of the quick chat.
+      const found = revealAffinities(target, revealCount(e.type, actor, target));
+      const foundNames = found.map(t => AFF_BY_ID[t].label.toLowerCase());
+
+      if (e.type === "deep" && Math.random() < misfireChance(actor, target)) {
+        // Cold deep talk. They hear a pitch, not a conversation.
+        target.guarded = 3;
+        gainXp(actor, 3); // you learn something even from a conversation that goes badly
+        bump(target, -2, -4);
+        convoPulses.push({ from: actor.id, to: target.id, tone: "down" });
+        convoNotes[target.id] = `${actor.name} misreads them`;
+        convoLines.push(`${target.name}: ${actor.name} sat down for the long version without knowing the first thing about them. It landed like a sales pitch — ${target.name} is guarded now, and will be for a while.${foundNames.length ? ` You did at least learn something: ${foundNames.join(", ")}.` : ""}`);
+        target.history.push(`Week ${week}: a cold deep conversation with ${actor.name} backfired.`);
+        return;
+      }
+
+      // The sit-down is also the only thing that tells you the truth about them.
+      if (e.type === "deep") target.trueKnown = true;
+      gainXp(actor, e.type === "deep" ? XP_PER_ACTION : Math.round(XP_PER_ACTION * 0.6));
+      const trueGain = e.type === "deep" ? g.deepTrue : g.quickTrue;
+      bump(target, e.type === "deep" ? g.deep : g.quick, trueGain);
+      if (target.guarded > 0 && e.type === "deep" && visibleShared(actor, target).length) target.guarded = 0;
       convoPulses.push({ from: actor.id, to: target.id, tone: "up" });
-      const flavor = weight >= 55
-        ? `${actor.name} has real standing with them`
-        : weight >= 25
-          ? `${actor.name} gets a fair hearing`
-          : `${actor.name} isn't someone they take cues from`;
-      convoNotes[target.id] = weight >= 55 ? `${actor.name} lands hard` : weight >= 25 ? `${actor.name} gets heard` : `${actor.name} bounces off`;
-      convoLines.push(`${target.name}: ${e.type === "deep" ? "a long, honest conversation" : "a quick word"} with ${actor.name} — ${flavor}. Support ${before} → ${target.support}.`);
-      target.history.push(`Week ${week}: ${ACT1_ACTION[e.type].label.toLowerCase()} with ${actor.name} (+${target.support - before} support).`);
+      const shared = sharedAffinities(actor, target).length;
+      const flavor = shared >= 2
+        ? `they find real common ground fast`
+        : shared === 1
+          ? `${actor.name} finds a way in`
+          : weight >= 55
+            ? `${actor.name} has standing, but nothing to build on`
+            : `${actor.name} can't find a thread to pull`;
+      convoNotes[target.id] = shared >= 2 ? `${actor.name} connects` : shared === 1 ? `${actor.name} gets heard` : `${actor.name} bounces off`;
+      convoLines.push(`${target.name}: ${e.type === "deep" ? "a long, honest conversation" : "a quick word"} with ${actor.name} — ${flavor}. Stated support ${before} → ${target.support}.${foundNames.length ? ` You learn: ${foundNames.join(", ")}.` : ""}`);
+      target.history.push(`Week ${week}: ${ACT1_ACTION[e.type].label.toLowerCase()} with ${actor.name} (+${target.support - before} stated).`);
     });
     if (convoLines.length) steps.push({ label: "ONE-ON-ONES", sub: "Influence is relationship-specific — the same conversation lands differently depending on who has it.", workers: w.map(x => ({ ...x })), lines: convoLines, edgePulses: convoPulses, notes: convoNotes });
 
@@ -2731,7 +3794,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
       const uses = actor.publicUses?.[e.type] || 0;
       actor.publicUses = { ...actor.publicUses, [e.type]: uses + 1 };
       actor.support = clamp(actor.support + tier.selfSupport);
-      heatNext = clamp(heatNext + tier.heat);
+      heatNext = clamp(heatNext + Math.round(tier.heat * (infTrait(actor).publicHeat || 1)));
       const reached = outgoingTies(influence, actor.id).filter(t => {
         const target = byId(t.id);
         return target && !target.burned && t.weight >= EDGE_MIN_DRAW;
@@ -2741,17 +3804,21 @@ function ActOneGame({ onGraduate, onPrototype }) {
         const target = byId(t.id);
         const gain = publicGain(actor, target, t.weight, e.type, uses);
         if (gain <= 0) return;
-        bump(target, gain);
+        // Visibility is not commitment. Watching a coworker go public makes people say
+        // warmer things; it barely moves what they'd sign.
+        bump(target, gain, Math.round(gain * 0.15));
         moved++;
         publicPulses.push({ from: actor.id, to: t.id, tone: "up" });
       });
       publicNotes[actor.id] = e.type === "large" ? "goes public, loudly" : e.type === "medium" ? "puts their name on it" : "wears the button";
       publicLines.push(`${actor.name} ${tier.blurb} ${moved > 0 ? `${moved} coworker${moved === 1 ? "" : "s"} who take cues from ${actor.name} move${uses > 0 ? " — though this isn't news anymore" : ""}.` : "Nobody who takes cues from them notices."}`);
+      gainXp(actor, XP_PER_ACTION);
       actor.history.push(`Week ${week}: took a ${e.type} public action.`);
 
       if (tier.burn > 0) {
         const lastOne = w.filter(x => x.organizer && !x.burned).length <= 1;
-        const risk = tier.burn * (0.6 + heatNext / 100);
+        // HOTHEADs are the ones who get walked out. The CAUTIOUS almost never are.
+        const risk = tier.burn * (0.6 + heatNext / 100) * (infTrait(actor).burnMult ?? 1);
         if (Math.random() < risk) {
           if (lastOne) {
             heatNext = clamp(heatNext + 8);
@@ -2793,7 +3860,10 @@ function ActOneGame({ onGraduate, onPrototype }) {
       touched.add(target.id);
       if (Math.random() < chance) {
         target.signed = true;
+        target.signedWeek = week;
         target.support = Math.max(target.support, 78);
+        target.trueSupport = clamp(Math.max(target.trueSupport ?? 0, 72));
+        gainXp(actor, XP_PER_CARD);
         heatNext = clamp(heatNext + 4);
         askNotes[target.id] = "SIGNS THE CARD";
         askLines.push(`${target.name} signs. ${actor.name} asked, and the answer was yes.`);
@@ -2805,6 +3875,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
           askPulses.push({ from: target.id, to: t.id, tone: "up" });
         });
       } else {
+        gainXp(actor, 4); // a no still teaches you something about the room
         const before = target.support;
         target.support = clamp(target.support - 5);
         target.askedRecently = 2;
@@ -2822,17 +3893,64 @@ function ActOneGame({ onGraduate, onPrototype }) {
     // --- COMMITTEE GROWTH ---
     const recruitLines = [];
     const recruitNotes = {};
+    const recruitReveal = (newMember) => {
+      // A committee member reports honestly on the people they actually know. This is
+      // the Act One version of the shop committee's true-support read in Act Two.
+      newMember.trueKnown = true;
+      outgoingTies(influence, newMember.id).filter(t => t.weight >= 40).forEach(t => {
+        const target = byId(t.id);
+        if (target) target.trueKnown = true;
+      });
+    };
     planEntries.filter(e => e.type === "recruit").forEach(e => {
       const actor = byId(e.actorId);
       const target = byId(e.targetId);
-      if (!actor || !target || target.burned || target.organizer || !target.signed || target.support < ACT1_RECRUIT_REQ) return;
+      if (!actor || !target || target.burned || target.organizer || !target.signed) return;
+      // Gates on what they would actually do, not what they say. You cannot put someone
+      // on the committee off the back of a number that button-wearing inflated.
+      if (!target.trueKnown || (target.trueSupport ?? 0) < ACT1_RECRUIT_REQ) return;
       target.organizer = true;
       target.revealed = true;
+      target.weeksIdle = 0;
+      target.signedWeek = week; // joining the committee is itself a fresh commitment
+      gainXp(actor, XP_PER_ACTION);
+      target.knownAffinities = [...affList(target)]; // your own people hold nothing back
+      recruitReveal(target);
       recruitNotes[target.id] = "joins the committee";
-      recruitLines.push(`${target.name} joins the organizing committee. That's ${ACT1_HOURS_PER_ORGANIZER} more hours on the floor every week, and a whole set of relationships you couldn't reach before.`);
+      recruitLines.push(`${target.name} joins the organizing committee. That's ${ACT1_HOURS_PER_ORGANIZER} more hours on the floor every week, a whole set of relationships you couldn't reach before — and an honest read on where the people they know actually stand.`);
       target.history.push(`Week ${week}: joined the organizing committee.`);
     });
     if (recruitLines.length) steps.push({ label: "THE COMMITTEE GROWS", sub: "Every person you bring on is more time and more reach.", workers: w.map(x => ({ ...x })), lines: recruitLines, notes: recruitNotes });
+
+    // --- CHECK-INS: organizers looking after each other ---
+    // The answer to forgetting the people who already signed. One hour of somebody's
+    // week spent on a teammate instead of a target: resets their clock, builds them up,
+    // and pulls them out from under a manager's eye.
+    const checkinLines = [];
+    const checkinNotes = {};
+    const checkinPulses = [];
+    planEntries.filter(e => e.type === "checkin").forEach(e => {
+      const actor = byId(e.actorId);
+      const target = byId(e.targetId);
+      if (!actor || !target || actor.burned || target.burned || !target.organizer) return;
+      const wasIdle = target.weeksIdle || 0;
+      const wasShaken = target.shaken > 0;
+      target.weeksIdle = 0;
+      target.shaken = 0;
+      gainXp(target, 10);
+      gainXp(actor, 4);
+      target.trueSupport = clamp((target.trueSupport ?? target.support) + 3);
+      touched.add(target.id);
+      checkinPulses.push({ from: actor.id, to: target.id, tone: "up" });
+      checkinNotes[target.id] = `${actor.name} checks in`;
+      checkinLines.push(
+        `${actor.name} spends an hour on ${target.name} instead of a target — coffee, no agenda. ` +
+        (wasShaken ? `It gets ${target.name} out from under the manager's eye. ` : "") +
+        (wasIdle >= IDLE_GRACE ? `${target.name} had been drifting for ${wasIdle} weeks; they're back in it. ` : "") +
+        `+10 experience.`
+      );
+    });
+    if (checkinLines.length) steps.push({ label: "LOOKING AFTER EACH OTHER", sub: "An hour spent on your own people is not an hour wasted.", workers: w.map(x => ({ ...x })), lines: checkinLines, notes: checkinNotes, edgePulses: checkinPulses });
 
     // --- THE FLOOR TALKS: signed workers keep working on the people they move, for free ---
     const passiveLines = [];
@@ -2842,19 +3960,43 @@ function ActOneGame({ onGraduate, onPrototype }) {
         if (t.weight < 50) return;
         const target = byId(t.id);
         if (!target || target.burned || target.signed) return;
-        const gain = Math.max(1, Math.round((t.weight / 100) * 2 * affinityMult(signer, target)));
+        const gain = Math.max(1, Math.round((t.weight / 100) * 2 * affinityMult(signer, target) * (infTrait(signer).passive || 1) * recvMult(target)));
         bump(target, gain);
         passivePulses.push({ from: signer.id, to: t.id, tone: "up" });
       });
     });
+    // Committee neglect. Two weeks of grace, then their hours start shrinking, then
+    // they step back off entirely. Nothing here resets \u2014 re-recruiting costs the full
+    // three hours again, against a person whose commitment has already slipped.
+    const quitLines = [];
+    const quitNotes = {};
+    w.forEach(x => {
+      if (!x.organizer || x.burned) return;
+      const usedThisWeek = planEntries.some(e => e.actorId === x.id) || planEntries.some(e => e.type === "checkin" && e.targetId === x.id);
+      x.weeksIdle = usedThisWeek ? 0 : (x.weeksIdle || 0) + 1;
+      if (x.weeksIdle >= IDLE_QUIT) {
+        x.organizer = false;
+        x.weeksIdle = 0;
+        x.experience = Math.round((x.experience || 0) * 0.6);
+        x.trueSupport = clamp((x.trueSupport ?? x.support) - 12);
+        quitNotes[x.id] = "steps off the committee";
+        quitLines.push(`${x.name} stops showing up. Nobody has asked them to do anything in ${IDLE_QUIT} weeks, and they got the message that they weren't needed. Their hours are gone, and getting them back means starting the ask over.`);
+      } else if (x.weeksIdle === IDLE_GRACE + 1) {
+        quitLines.push(`${x.name} has been sitting idle. They're down to ${committeeHours(x)} hour${committeeHours(x) === 1 ? "" : "s"} a week \u2014 people disengage when the campaign stops needing them.`);
+      }
+    });
+    if (quitLines.length) steps.push({ label: "THE COMMITTEE", sub: "A committee is a set of relationships, not a list of names.", workers: w.map(x => ({ ...x })), lines: quitLines, notes: quitNotes });
+
     w.forEach(x => {
       if (x.askedRecently > 0) x.askedRecently -= 1;
+      if (x.guarded > 0) x.guarded -= 1;
       if (x.shaken > 0) x.shaken -= 1;
       if (x.underPressure > 0) x.underPressure -= 1;
       if (x.signed || x.burned) { x.quietWeeks = 0; return; }
       x.quietWeeks = touched.has(x.id) ? 0 : x.quietWeeks + 1;
       if (x.quietWeeks >= 3 && x.support > 25) {
         x.support = clamp(x.support - 2);
+        x.trueSupport = clamp((x.trueSupport ?? x.support) - 3);
         x.quietWeeks = 0;
         passiveLines.push(`${x.name} hasn't heard from anybody in weeks. Whatever was building quietly drains back out.`);
       }
@@ -2864,6 +4006,121 @@ function ActOneGame({ onGraduate, onPrototype }) {
     }
     if (passiveLines.length) steps.push({ label: "THE FLOOR TALKS", sub: "The campaign runs on its own between your hours — in both directions.", workers: w.map(x => ({ ...x })), lines: passiveLines, edgePulses: passivePulses });
 
+
+
+    // --- CARDS GO STALE ---
+    // Nothing resets. A signature that rots costs you the card, the true support behind
+    // it, and makes the re-ask harder than the first ask was.
+    const staleLines = [];
+    const staleNotes = {};
+    w.forEach(x => {
+      if (!x.signed || x.burned || x.signedWeek == null) return;
+      if (week - x.signedWeek < CARD_LIFESPAN) return;
+      x.signed = false;
+      x.signedWeek = null;
+      x.staleCount = (x.staleCount || 0) + 1;
+      x.askedRecently = 2;
+      x.support = clamp(x.support - 6);
+      x.trueSupport = clamp((x.trueSupport ?? x.support) - 10);
+      staleNotes[x.id] = "CARD GOES STALE";
+      if (x.organizer) {
+        // A committee member's card lapsing is worse: they've been carrying this for
+        // over three months with nothing to show anyone.
+        x.experience = Math.round((x.experience || 0) * 0.85);
+        staleLines.push(`${x.name} signed ${CARD_LIFESPAN} weeks ago and has been organizing on that card ever since. It's too old to count now. They re-sign without being asked \u2014 but something goes out of them. \u221210 true support.`);
+        x.signed = true;
+        x.signedWeek = week;
+      } else {
+        staleLines.push(`${x.name}'s card is ${CARD_LIFESPAN} weeks old. The board won't accept it as evidence of what they think today, and honestly, neither should you. \u22126 stated, \u221210 true, and the second ask is harder than the first was.`);
+      }
+      x.history.push(`Week ${week}: card went stale after ${CARD_LIFESPAN} weeks.`);
+    });
+    if (staleLines.length) steps.push({ label: "CARDS GO STALE", sub: "A signature is evidence of what somebody thought on the day they signed it.", workers: w.map(x => ({ ...x })), lines: staleLines, notes: staleNotes });
+
+    // --- THE OUTSIDER LADDER ---
+    // Every rung is a response to the campaign working. None of them un-arrive.
+    let outsidersNext = [...outsiders];
+    const ladderLines = [];
+    const ladderNotes = {};
+    {
+      const ctx = {
+        committee: w.filter(x => x.organizer && !x.burned).length,
+        signed: w.filter(x => x.signed).length,
+        heat: heatNext,
+        stage,
+      };
+      OUTSIDERS.forEach(o => {
+        if (outsidersNext.includes(o.id)) return;
+        if (o.id === "consultant") return; // handled by the consultant block itself
+        if (!o.arrival(ctx)) return;
+        outsidersNext.push(o.id);
+        ladderLines.push(`${o.name} ARRIVES \u2014 ${o.role}. ${o.intro(o.name)}`);
+      });
+
+      // DANIELS, the studio head. He is genuinely liked, and that is the weapon: he
+      // moves what people SAY by a lot and what they'd DO by almost nothing. Playing
+      // him well means the morale number lies to you worse than it already did.
+      if (outsidersNext.includes("boss") && Math.random() < 0.5) {
+        let moved = 0, stated = 0;
+        w.forEach(x => {
+          if (x.burned || x.organizer) return;
+          const up = 4 + rand(4);
+          x.support = clamp(x.support + up);
+          x.trueSupport = clamp((x.trueSupport ?? x.support) - 2);
+          stated += up; moved += 1;
+        });
+        ladderLines.push(
+          `DANIELS WORKS THE FLOOR \u2014 ${moved} people: +${moved ? Math.round(stated / moved) : 0} STATED support each, \u22122 TRUE. ` +
+          `He is warm, he is specific, and he means it. Nobody changes their mind about the union. Everybody sounds friendlier about the company, which is worse: the morale number is now further from the vote than it has ever been.`
+        );
+      }
+
+      // VANTAGE PARTNERS. Ownership does not persuade. It threatens the whole studio,
+      // which raises fulfillment-as-risk across the board \u2014 everyone has more to lose.
+      if (outsidersNext.includes("corporate") && Math.random() < 0.45) {
+        const teams = ["engineering", "qa", "production"];
+        const t = teams[rand(teams.length)];
+        let n = 0;
+        w.forEach(x => {
+          if (x.burned || x.team !== t) return;
+          x.fulfillment = clamp(x.fulfillment + 6);
+          x.trueSupport = clamp((x.trueSupport ?? x.support) - 4);
+          n += 1;
+        });
+        heatNext = clamp(heatNext + 5);
+        ladderLines.push(
+          `VANTAGE PARTNERS REVIEWS ${TEAM_LABEL[t]} \u2014 ${n} people: +6 what-they'd-be-risking, \u22124 true support. ` +
+          `A slide deck nobody was supposed to see puts a question mark next to the department. No threat is made. None needs to be.`
+        );
+      }
+
+      // THE PODCAST. Fires at everyone, ignores the social map entirely, and lands
+      // backwards on the people who resent being told what to think.
+      if (outsidersNext.includes("celebrity") && Math.random() < 0.4) {
+        let hit = 0, backfired = 0;
+        w.forEach(x => {
+          if (x.burned) return;
+          const t = infTrait(x);
+          if (t.holdsFast || t.id === "hothead") {
+            x.support = clamp(x.support + 6);
+            x.trueSupport = clamp((x.trueSupport ?? x.support) + 5);
+            backfired += 1;
+          } else {
+            x.support = clamp(x.support - 3);
+            x.trueSupport = clamp((x.trueSupport ?? x.support) - 2);
+            hit += 1;
+          }
+        });
+        heatNext = clamp(heatNext + 9);
+        ladderLines.push(
+          `THE PODCAST WEIGHS IN \u2014 ${hit} people: \u22123 stated. ${backfired} people: +6 stated, +5 TRUE. +9 heat. ` +
+          `Eleven minutes on your campaign from four million subscribers and a man who has never been in the building. ` +
+          `The stubborn and the hotheaded hear an outsider telling them what to think about their own workplace, and sign up harder.`
+        );
+      }
+    }
+    if (ladderLines.length) steps.push({ label: "FROM OUTSIDE THE BUILDING", sub: "The better this goes, the further up the company it gets escalated.", workers: w.map(x => ({ ...x })), lines: ladderLines, notes: ladderNotes });
+
     // --- MANAGEMENT ---
     // The hotter it has been, the more of it cools off over a quiet week — otherwise one
     // aggressive stretch pins heat at 100 and the shop never gets back off the radar.
@@ -2872,20 +4129,38 @@ function ActOneGame({ onGraduate, onPrototype }) {
     if (heatNext >= 45 && Math.random() < 0.55) {
       const roll = rand(100);
       if (roll < 45) {
-        mgmtLines.push("A mandatory all-hands appears on everyone's calendar: 'Why we work better talking directly.' Attendance is not optional.");
+        // ORG-CHART MOVE. He books a department, not a set of relationships, so the
+        // blow is absorbed in proportion to how many trusted signed coworkers each
+        // person already has around them.
+        const teams = ["engineering", "qa", "production"];
+        const meetTeam = teams[rand(teams.length)];
+        let held = 0, hitTotal = 0, hitCount = 0, shrugged = 0;
         w.forEach(x => {
-          if (x.burned || x.signed) return;
-          const hit = Math.max(2, Math.round(7 - x.support / 20));
+          if (x.burned || x.signed || x.team !== meetTeam) return;
+          if (holdsFast(x)) { held += 1; return; }
+          const raw = Math.max(2, Math.round(7 - x.support / 20));
+          const resist = orgChartResistance(signedBacking(influence, w, x.id));
+          const hit = Math.max(1, Math.round(raw * resist));
+          if (resist <= 0.45) shrugged += 1;
           x.support = clamp(x.support - hit);
+          x.trueSupport = clamp((x.trueSupport ?? x.support) - Math.round(hit * 0.4));
+          hitTotal += hit; hitCount += 1;
         });
+        mgmtLines.push(
+          `CAPTIVE-AUDIENCE MEETING \u2014 ${TEAM_LABEL[meetTeam]} \u2014 ${hitCount} hit, average \u2212${hitCount ? Math.round(hitTotal / hitCount) : 0} stated support.` +
+          (shrugged ? ` ${shrugged} of them barely moved: they already have people they trust more who've signed.` : "") +
+          (held ? ` ${held} stubborn holdout${held === 1 ? "" : "s"} sat through it unmoved.` : "") +
+          ` Attendance was mandatory for the department. It is not a mandatory meeting for a friendship.`
+        );
         heatNext = clamp(heatNext - 8);
       } else if (roll < 78) {
-        const lucky = [...w].filter(x => !x.burned).sort(() => Math.random() - 0.5).slice(0, 7);
-        lucky.forEach(x => {
-          x.fulfillment = clamp(x.fulfillment + 10);
-          if (!x.signed) x.support = clamp(x.support - 3);
-        });
-        mgmtLines.push(`Corporate announces a surprise studio offsite, new hardware, and a hiring freeze lift. It works — ${lucky.length} people feel noticeably better about the job this week, and the ones you were counting on may not be who you thought.`);
+        // The one org-chart move that DOES work, because it operates on material
+        // interest rather than persuasion. A department really can be bought.
+        const buyTeams = ["engineering", "qa", "production"];
+        const pickTeam = buyTeams[rand(buyTeams.length)];
+        const lucky = w.filter(x => !x.burned && x.team === pickTeam);
+        lucky.forEach(x => { x.fulfillment = clamp(x.fulfillment + 12); });
+        mgmtLines.push(`${CONSULTANT_NAME_UC} BUYS A DEPARTMENT \u2014 ${TEAM_LABEL[pickTeam]}: fulfillment +12 (${lucky.length} people). Higher fulfillment means more to lose: every card ask in ${TEAM_LABEL[pickTeam]} is now harder. New hardware, a hiring-freeze lift, and an offsite, announced to one team and no one else.`);
         heatNext = clamp(heatNext - 6);
       } else {
         const candidates = w.filter(x => x.organizer && !x.burned);
@@ -2921,25 +4196,41 @@ function ActOneGame({ onGraduate, onPrototype }) {
       // Once a petition is filed he stops being a side project and works the floor full
       // time — this is the stretch where campaigns are actually lost.
       const inCampaign = stage === "campaign";
+      // Below the sight threshold he is picking names off an org chart: whoever looks
+      // wobbly on paper, by department. Above it, the campaign has been loud enough
+      // that he can see who is actually isolated \u2014 and that is when he gets dangerous.
+      const seesNetwork = heat >= KIRKMAN_SIGHT || inCampaign;
       const marks = w
         .filter(x => !x.burned && x.support >= 30 && (inCampaign || !x.signed))
         .map(x => {
-          const backing = signedBacking(influence, w, x.id);
+          const backing = seesNetwork ? signedBacking(influence, w, x.id) : 0;
           return { t: x, backing, score: x.support - backing * 0.35 - (x.signed ? 25 : 0) };
         })
         .sort((a, b) => b.score - a.score)
         .slice(0, inCampaign ? 4 : 2);
 
       marks.forEach(({ t, backing }) => {
-        const resist = Math.min(5, Math.round(backing / 30));
-        const hit = Math.max(2, 8 - resist);
+        if (holdsFast(t)) {
+          t.pressuredCount = (t.pressuredCount || 0) + 1;
+          consultantNotes[t.id] = `${CONSULTANT_NAME_UC} gets nowhere`;
+          consultantLines.push(`${CONSULTANT_NAME} pulls ${t.name} into a room and gets exactly nothing. Stubborn cuts both ways \u2014 they were hard to bring over, and now they're impossible to take back. 0 support lost.`);
+          return;
+        }
+        const realBacking = signedBacking(influence, w, t.id);
+        const resist = Math.min(5, Math.round(realBacking / 30));
+        const blind = seesNetwork ? 1 : 0.55; // guessing from the reporting line costs him
+        const hit = Math.max(1, Math.round((8 - resist) * blind));
         const before = t.support;
         t.support = clamp(t.support - hit);
+        t.trueSupport = clamp((t.trueSupport ?? t.support) - Math.round(hit * 0.6));
         t.underPressure = 2;
         t.pressuredCount = (t.pressuredCount || 0) + 1;
         consultantNotes[t.id] = `${CONSULTANT_NAME_UC} works on them`;
         consultantLines.push(
-          `${CONSULTANT_ONE_ON_ONES[rand(CONSULTANT_ONE_ON_ONES.length)](t.name)} Support ${before} → ${t.support}.${resist >= 3 ? ` It lands softer than he expected — ${t.name} has heard all of it already, from people they trust more.` : ""}`
+          `${seesNetwork ? "TARGETED 1:1" : "ORG-CHART 1:1"} \u2014 ${t.name}: \u2212${before - t.support} stated, \u2212${Math.round((before - t.support) * 0.6)} true. ` +
+          `${CONSULTANT_ONE_ON_ONES[rand(CONSULTANT_ONE_ON_ONES.length)](t.name)}` +
+          (!seesNetwork ? ` He picked them off a reporting line, not a friendship \u2014 it lands at just over half strength.` : "") +
+          (resist >= 3 ? ` It lands softer than he expected: ${t.name} has heard all of it already, from people they trust more.` : "")
         );
         t.history.push(`Week ${week}: ${CONSULTANT_NAME} worked on them (-${before - t.support} support).`);
       });
@@ -2976,7 +4267,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
             mark.support = clamp(mark.support - 25);
             mark.underPressure = 2;
             consultantNotes[mark.id] = "STEPS BACK";
-            consultantLines.push(`${mark.name} is walked into a room with ${CONSULTANT_NAME} and their manager and asked, carefully, whether they've thought about how this looks on a performance file. Nothing actionable is said. ${mark.name} steps off the committee.`);
+            consultantLines.push(`JOB THREAT LANDS \u2014 ${mark.name} steps off the committee: \u221225 support, and everyone they carry loses ground. ${mark.name} is walked into a room with ${CONSULTANT_NAME} and their manager and asked, carefully, whether they've thought about how this looks on a performance file. Nothing actionable is said. He picked the most isolated person on your committee, which is the only kind this works on.`);
             mark.history.push(`Week ${week}: pressured off the committee.`);
             outgoingTies(influence, mark.id).forEach(t => {
               const other = byId(t.id);
@@ -2988,7 +4279,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
             mark.support = clamp(mark.support + 5);
             heatNext = clamp(heatNext + 8);
             consultantNotes[mark.id] = "DOESN'T BLINK";
-            consultantLines.push(`${CONSULTANT_NAME} asks ${mark.name} how this will look on their performance file. ${mark.name} writes down the date, the time, and who was in the room — and tells everyone. Threatening someone's job over a union is illegal, and now it's documented.`);
+            consultantLines.push(`JOB THREAT BACKFIRES \u2014 ${mark.name} holds: +5 support to them, +8 heat, and everyone they carry moves toward you. ${CONSULTANT_NAME} asks how this will look on their performance file. ${mark.name} writes down the date, the time, and who was in the room, and tells everyone. Threatening someone's job over a union is illegal, and now it's documented.`);
             mark.history.push(`Week ${week}: threatened, didn't budge, and put it on the record.`);
             outgoingTies(influence, mark.id).forEach(t => {
               const other = byId(t.id);
@@ -3008,13 +4299,13 @@ function ActOneGame({ onGraduate, onPrototype }) {
             mark.underPressure = 2;
             heatNext = clamp(heatNext - 5);
             consultantNotes[mark.id] = wasSigned ? "PULLS THEIR CARD" : "TAKES THE OFFER";
-            consultantLines.push(`${mark.name} is offered a title bump and a number that solves a real problem at home. They take it.${wasSigned ? " Their card comes off the table." : ""} Nobody in the room blames them, which is the worst part.`);
+            consultantLines.push(`BUY-OFF LANDS \u2014 ${mark.name}: \u221235 support${wasSigned ? ", card withdrawn" : ""}, and \u22125 heat because a quiet raise draws no attention. They're offered a title bump and a number that solves a real problem at home. They take it.${wasSigned ? " Their card comes off the table." : ""} Nobody in the room blames them, which is the worst part.`);
             mark.history.push(`Week ${week}: took the raise${wasSigned ? " and withdrew their card" : ""}.`);
           } else {
             mark.support = clamp(mark.support + 8);
             heatNext = clamp(heatNext + 6);
             consultantNotes[mark.id] = "TURNS IT DOWN";
-            consultantLines.push(`${mark.name} is offered a title bump and a raise, quietly, a week after signing on. They turn it down and repeat the offer out loud in the kitchen. Buying one person is cheap; getting caught at it is not.`);
+            consultantLines.push(`BUY-OFF REFUSED \u2014 ${mark.name}: +8 support, +6 heat, and everyone they carry moves toward you. They're offered a title bump and a raise, quietly, a week after signing on. They turn it down and repeat the offer out loud in the kitchen. Buying one person is cheap; getting caught at it is not.`);
             mark.history.push(`Week ${week}: refused a raise meant to buy them off, and said so publicly.`);
             outgoingTies(influence, mark.id).forEach(t => {
               const other = byId(t.id);
@@ -3081,16 +4372,18 @@ function ActOneGame({ onGraduate, onPrototype }) {
       heat: heatNext,
       consultant: consultantNext,
       ballot,
+      outsidersNext,
       // Reaching 30% no longer ends the game — it unlocks the choice to file.
       reachedThreshold: stage === "drive" && signedNow >= ACT1_CARDS_NEEDED,
     };
   }
 
   function commitWeek() {
-    const { workers: w, heat: h, consultant: c, ballot, reachedThreshold } = pendingRef.current;
+    const { workers: w, heat: h, consultant: c, ballot, outsidersNext, reachedThreshold } = pendingRef.current;
     setWorkers(w);
     setHeat(h);
     setConsultant(c);
+    setOutsiders(outsidersNext);
     setPlanEntries([]);
     if (ballot) {
       setVoteResult(ballot);
@@ -3157,6 +4450,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
     }
   }
 
+  const act1Win = act1Winnability(workers, stage, week);
   const organizerHours = Object.fromEntries(organizers.map(o => [o.id, hoursLeftFor(o)]));
   const canResolve = planEntries.length > 0 && organizers.every(o => hoursLeftFor(o) >= 0);
   const overBudget = organizers.some(o => hoursLeftFor(o) < 0);
@@ -3172,8 +4466,25 @@ function ActOneGame({ onGraduate, onPrototype }) {
         {phase !== "intro" && (
           <div className="flex items-center gap-4 sm:gap-6 text-sm sm:text-base">
             <div className="text-center">
-              <div className="text-stone-500 text-xs">WEEK</div>
-              <div className="text-lg font-bold text-stone-100">{week}</div>
+              <div className="text-stone-500 text-xs">WEEK / SHIP</div>
+              <div className={`text-lg font-bold ${ACT1_SHIP_WEEK - week <= 4 ? "text-red-500" : ACT1_SHIP_WEEK - week <= 8 ? "text-amber-400" : "text-stone-100"}`}>
+                {week} <span className="text-stone-600">/</span> {ACT1_SHIP_WEEK}
+              </div>
+              {(() => {
+                const soon = workers.filter(x => x.signed && cardStaleSoon(x, week)).length;
+                return soon > 0
+                  ? <div className="text-[10px] text-amber-400 font-bold">{soon} card{soon === 1 ? "" : "s"} going stale</div>
+                  : <div className="text-[10px] text-stone-600">{ACT1_SHIP_WEEK - week} weeks to launch</div>;
+              })()}
+            </div>
+            <div className="text-center">
+              <div className="text-stone-500 text-xs">MARGIN LEFT</div>
+              <div className={`text-lg font-bold ${(() => {
+                const spare = workers.filter(w => !w.burned && !w.signed).length + workers.filter(w => w.signed).length - ACT1_CARDS_NEEDED;
+                return spare <= 1 ? "text-red-500" : spare <= 3 ? "text-amber-400" : "text-stone-100";
+              })()}`}>
+                +{Math.max(0, workers.filter(w => !w.burned).length - ACT1_CARDS_NEEDED)}
+              </div>
             </div>
             <div className="text-center">
               <div className="text-stone-500 text-xs">CARDS SIGNED</div>
@@ -3195,12 +4506,35 @@ function ActOneGame({ onGraduate, onPrototype }) {
             <div className="text-center">
               <div className="text-stone-500 text-xs flex items-center gap-1"><Eye size={11} /> HEAT</div>
               <div className={`text-lg font-bold ${heat >= 60 ? "text-red-500" : heat >= 35 ? "text-amber-400" : "text-teal-400"}`}>{heat}</div>
+              {consultant.active && (
+                <div className={`text-[10px] ${heat >= KIRKMAN_SIGHT ? "text-red-400 font-bold" : "text-stone-600"}`}>
+                  {heat >= KIRKMAN_SIGHT ? "HE SEES THE NETWORK" : `${KIRKMAN_SIGHT - heat} from being seen`}
+                </div>
+              )}
             </div>
-            {consultant.active && (
+            {(consultant.active || outsiders.length > 0) && (
               <div className="text-center">
-                <div className="text-stone-500 text-xs flex items-center gap-1"><AlertTriangle size={11} /> ON SITE</div>
-                <div className="text-lg font-bold text-red-500">{CONSULTANT_NAME.toUpperCase()}</div>
-                <div className="text-[11px] text-stone-600">since week {consultant.arrivedWeek}</div>
+                <div className="text-stone-500 text-xs flex items-center gap-1"><AlertTriangle size={11} /> AGAINST YOU</div>
+                <div className="flex items-center gap-1.5 justify-center mt-1">
+                  {OUTSIDERS.map(o => {
+                    const here = o.id === "consultant" ? consultant.active : outsiders.includes(o.id);
+                    return (
+                      <span
+                        key={o.id}
+                        title={here ? `${o.name} — ${o.role}` : "not here yet"}
+                        className="text-[10px] font-bold px-1 py-0.5 border"
+                        style={{
+                          borderColor: here ? "#f87171" : "#44403c",
+                          color: here ? "#f87171" : "#44403c",
+                          backgroundColor: here ? "rgba(248,113,113,0.12)" : "transparent",
+                        }}
+                      >{o.name[0]}</span>
+                    );
+                  })}
+                </div>
+                <div className="text-[10px] text-stone-600 mt-0.5">
+                  {(outsiders.length + (consultant.active ? 1 : 0))} of {OUTSIDERS.length} escalations
+                </div>
               </div>
             )}
           </div>
@@ -3304,6 +4638,8 @@ function ActOneGame({ onGraduate, onPrototype }) {
             planEntries={planEntries}
             hoursLeft={organizerHours}
             onSelect={(w) => setSelectedWorker(w)}
+            focusId={focusActorId}
+            staleWeek={week}
           />
 
           <div className="border-2 border-stone-800 bg-stone-900 p-4">
@@ -3314,29 +4650,71 @@ function ActOneGame({ onGraduate, onPrototype }) {
               </div>
             </div>
             <p className="text-xs text-stone-500 mb-3">
-              Each person on the committee has {ACT1_HOURS_PER_ORGANIZER} hours a week. Click anyone on the floor to assign one of them a conversation, an ask, or a public action.
+              {focusActorId
+                ? "Now click anyone on the floor \u2014 they'll do it. Click the row again to clear the selection."
+                : "Click a committee member's row below to pick who acts, then choose a target on the floor. Or click straight to someone on the floor and choose who goes to them."}
             </p>
             <div className="space-y-2 mb-3">
               {organizers.map(o => {
                 const mine = planEntries.filter(e => e.actorId === o.id);
                 const left = hoursLeftFor(o);
                 return (
-                  <div key={o.id} className={`border px-3 py-2 ${left < 0 ? "border-red-700 bg-red-950/20" : "border-stone-700"}`}>
-                    <div className="flex items-center justify-between">
-                      <button onClick={() => setSelectedWorker(o)} className="text-sm font-bold text-amber-400 hover:text-amber-300 transition-colors">
-                        {o.name} <span className="text-stone-500 font-normal">({TEAM_LABEL[o.team]})</span>
-                      </button>
-                      <span className={`text-xs font-bold ${left < 0 ? "text-red-400" : left === 0 ? "text-teal-400" : "text-stone-400"}`}>
-                        {left} of {hoursFor(o)} hrs left{o.shaken > 0 ? " — under watch this week" : ""}
+                  <div
+                    key={o.id}
+                    className={`border px-3 py-2 transition-colors cursor-pointer ${
+                      focusActorId === o.id ? "border-amber-400 bg-amber-950/25"
+                      : left < 0 ? "border-red-700 bg-red-950/20"
+                      : (o.weeksIdle || 0) > IDLE_GRACE ? "border-amber-900/70 bg-amber-950/10"
+                      : "border-stone-700 hover:border-stone-500"}`}
+                    onClick={() => setFocusActorId(focusActorId === o.id ? null : o.id)}
+                  >
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="flex items-center gap-2">
+                        <button
+                          onClick={(ev) => { ev.stopPropagation(); setSelectedWorker(o); }}
+                          className="text-sm font-bold text-amber-400 hover:text-amber-300 transition-colors underline decoration-dotted underline-offset-2"
+                        >
+                          {o.name}
+                        </button>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 border"
+                          style={{ borderColor: orgTier(o).hex, color: orgTier(o).hex }}
+                          title={orgTier(o).blurb}>
+                          {orgTier(o).label}
+                        </span>
+                        {focusActorId === o.id && <span className="text-[10px] text-amber-300 font-bold">{"\u25B8"} PICK A TARGET</span>}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <Pips filled={Math.max(0, left)} total={Math.max(hoursFor(o), left)} hex={left < 0 ? "#f87171" : left === 0 ? "#2dd4bf" : "#fbbf24"} size={7} gap={2.5} />
+                        {o.shaken > 0 && <span className="text-[10px] text-red-400 font-bold">UNDER WATCH</span>}
                       </span>
                     </div>
+
+                    {/* Experience toward the next tier \u2014 growth you can watch. */}
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <div className="h-1 flex-1 bg-stone-800">
+                        <div className="h-1 transition-all duration-500" style={{ width: `${o.experience || 0}%`, backgroundColor: orgTier(o).hex }} />
+                      </div>
+                      <span className="text-[10px] text-stone-600 whitespace-nowrap">
+                        {(o.experience || 0) >= 75 ? "MAXED" : `${(o.experience || 0) >= 40 ? 75 - (o.experience || 0) : 40 - (o.experience || 0)} xp to next`}
+                      </span>
+                    </div>
+
+                    {(o.weeksIdle || 0) > 0 && (
+                      <div className={`text-[11px] mt-1 ${(o.weeksIdle || 0) > IDLE_GRACE ? "text-amber-400 font-bold" : "text-stone-600"}`}>
+                        {(o.weeksIdle || 0) >= IDLE_QUIT - 1
+                          ? `${o.name} walks next week if nobody uses them or checks in.`
+                          : (o.weeksIdle || 0) > IDLE_GRACE
+                            ? `Idle ${o.weeksIdle} weeks \u2014 down an hour. Leaves at ${IDLE_QUIT}.`
+                            : `Idle ${o.weeksIdle} week${o.weeksIdle === 1 ? "" : "s"}.`}
+                      </div>
+                    )}
                     {mine.length === 0 ? (
                       <div className="text-xs text-stone-600 italic mt-1">Idle this week.</div>
                     ) : (
                       <div className="mt-1 space-y-0.5">
                         {mine.map(e => (
                           <div key={e.key} className="flex items-center justify-between text-xs text-stone-300">
-                            <span>▸ {ACT1_ACTION[e.type].label}{e.targetId ? ` — ${workers.find(x => x.id === e.targetId)?.name}` : ""} <span className="text-stone-600">({ACT1_ACTION[e.type].hours}h)</span></span>
+                            <span>▸ {ACT1_ACTION[e.type].label}{e.targetId ? ` — ${workers.find(x => x.id === e.targetId)?.name}` : ""} <CostPips hours={ACT1_ACTION[e.type].hours} /></span>
                             <button onClick={() => removePlan(e.key)} className="text-stone-600 hover:text-red-400 transition-colors">✕</button>
                           </div>
                         ))}
@@ -3541,6 +4919,8 @@ function ActOneGame({ onGraduate, onPrototype }) {
           organizers={organizers}
           hoursLeftFor={hoursLeftFor}
           hoursFor={hoursFor}
+          week={week}
+          preferActorId={focusActorId}
           unlockPublic={unlockPublic}
           unlockMapping={unlockMapping}
           consultantActive={consultant.active}
@@ -3568,6 +4948,26 @@ function ActOneGame({ onGraduate, onPrototype }) {
         </div>
       )}
 
+      {phase !== "intro" && !act1Win.alive && (
+        <div className="fixed inset-0 bg-stone-950/95 z-50 flex items-center justify-center px-6">
+          <div className="max-w-lg text-center anim-rise">
+            <div className="font-stencil text-5xl mb-4 text-red-500">{act1Win.shipped ? "THE GAME SHIPPED" : "DRIVE DEAD"}</div>
+            <p className="text-stone-400 mb-4 leading-relaxed">{act1Win.reason}</p>
+            <p className="text-red-400/80 text-sm mb-6 leading-relaxed border border-red-900/60 bg-red-950/20 px-4 py-3">
+              {act1Win.shipped
+                ? `You had ${ACT1_SHIP_WEEK} weeks and ${workers.filter(x => x.signed).length} of the ${ACT1_CARDS_NEEDED} cards you needed. There is no next build to organize.`
+                : "Called at week " + week + ". There is no clock left to run down \u2014 the count stopped being reachable, so the remaining weeks would not have changed the ending. The people who were walked out are not coming back."}
+            </p>
+            <button
+              onClick={() => { try { localStorage.removeItem(ACT1_SAVE_KEY); } catch (err) { /* private mode */ } window.location.reload(); }}
+              className="border-2 border-stone-600 px-6 py-2 text-sm text-stone-200 hover:bg-stone-800 transition-colors"
+            >
+              START OVER
+            </button>
+          </div>
+        </div>
+      )}
+
       {phase !== "intro" && (
         <div className="fixed bottom-2 right-2 z-40">
           <button
@@ -3592,10 +4992,12 @@ function ActOneGame({ onGraduate, onPrototype }) {
   );
 }
 
-function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftFor, hoursFor, unlockPublic, unlockMapping, consultantActive = false, onPlan, onClose }) {
+function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, unlockPublic, unlockMapping, consultantActive = false, onPlan, onClose }) {
   const others = organizers.filter(o => o.id !== worker.id);
   const [actorId, setActorId] = useState(() => {
     if (worker.organizer) return worker.id;
+    // If the player picked the actor off the shelf first, honour that choice.
+    if (preferActorId && preferActorId !== worker.id && others.some(o => o.id === preferActorId)) return preferActorId;
     // Default to whoever carries the most weight with this person — but skip anyone
     // whose week is already spent, so the panel doesn't open fully greyed out.
     const ranked = [...others].sort((a, b) => infOn(influence, b.id, worker.id) - infOn(influence, a.id, worker.id));
@@ -3637,33 +5039,67 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
           <div className="font-stencil text-2xl text-amber-400">{worker.name}</div>
           <button onClick={onClose}><X size={18} className="text-stone-500 hover:text-stone-200" /></button>
         </div>
-        <div className="flex items-center gap-2 mb-2 flex-wrap">
-          <span className={`text-sm font-bold ${supportTier(worker.support).text}`}>{supportTier(worker.support).label}</span>
+        <div className="flex items-center gap-3 mb-2 flex-wrap">
+          <LadderBadge worker={worker} />
+          <InfluenceTraitChip worker={worker} />
           <span className="flex items-center gap-1 text-xs text-stone-500">
             <span className="inline-block w-2 h-2" style={{ backgroundColor: TEAM_HEX[worker.team] }} />
             {TEAM_LABEL[worker.team]}
           </span>
-          {worker.signed && <span className="text-xs font-bold text-teal-400 border border-teal-800 px-1.5">CARD SIGNED</span>}
-          {worker.organizer && <span className="text-xs font-bold text-amber-400 border border-amber-800 px-1.5">ON THE COMMITTEE</span>}
+          {worker.guarded > 0 && <span className="text-[11px] font-bold text-red-400 border border-red-900 px-1.5">GUARDED · {worker.guarded}w</span>}
         </div>
-        <p className="text-sm text-stone-400 mb-4">{worker.hook}</p>
+
+        {/* COMMON GROUND — promoted to the top, because it is the decision */}
+        <div className="border border-stone-800 bg-stone-950/50 px-3 py-2 mb-3">
+          <div className="text-[11px] text-stone-500 font-bold tracking-wide mb-1.5">
+            HOW THEY MOVE PEOPLE
+          </div>
+          <div className="text-xs text-stone-400 leading-snug mb-2">{infTrait(worker).blurb}</div>
+          <div className="text-[11px] text-stone-500 font-bold tracking-wide mb-1.5">COMMON GROUND</div>
+          <AffinityChips worker={worker} actor={isSelfPanel ? null : actor} />
+          {!knownAff(worker).length && (
+            <div className="text-xs text-stone-600 italic mt-1">Nothing surfaced yet. A quick chat is the cheapest way to find out.</div>
+          )}
+        </div>
 
         <div className="border border-stone-800 bg-stone-950/50 p-3 mb-4">
           <StatRow
-            label="SUPPORT FOR UNIONIZING"
+            label="STATED SUPPORT (what they say)"
             value={worker.support}
             hex={supportTier(worker.support).hex}
             info={STAT_INFO.support}
             align="left"
-            sub={worker.signed ? "Already signed a card." : worker.support >= 80 ? "Ready to be asked." : worker.support >= 55 ? "With you in principle. Not yet a signature." : "Not close to putting their name on anything."}
+            sub={worker.signed ? "Already signed a card." : worker.support >= 80 ? "Sounds ready." : worker.support >= 55 ? "With you in principle. Not yet a signature." : "Not close to putting their name on anything."}
           />
+          {worker.trueKnown ? (
+            <StatRow
+              label="TRUE SUPPORT (what they'd do)"
+              value={worker.trueSupport}
+              hex={supportTier(worker.trueSupport).hex}
+              info={STAT_INFO.trueSupport}
+              align="left"
+              sub={worker.trueSupport < worker.support - 12
+                ? `They talk warmer than they are. The card ask rolls against ${worker.trueSupport}, not ${worker.support}.`
+                : "Their words and their commitment line up."}
+            />
+          ) : (
+            <div className="mb-2">
+              <div className="flex items-center justify-between text-xs text-stone-500 tracking-wide">
+                <span className="flex items-center">TRUE SUPPORT (what they'd do)<InfoDot align="left">{STAT_INFO.trueSupport}</InfoDot></span>
+                <span className="font-bold text-stone-600">UNKNOWN</span>
+              </div>
+              <div className="text-xs text-stone-600 italic mt-1 leading-snug">
+                Only visible once somebody on the committee actually knows them. The card ask rolls against this number, not the one above.
+              </div>
+            </div>
+          )}
           <StatRow
-            label="JOB FULFILLMENT"
+            label="WHAT THEY'D BE RISKING"
             value={worker.fulfillment}
             hex={FULFILL_HEX}
             info={STAT_INFO.fulfillment}
             align="left"
-            sub={`${fulfillmentLabel(worker.fulfillment)} — this says nothing about whether they'll sign, only about who can move them.`}
+            sub={`${fulfillmentLabel(worker.fulfillment)} — card ask lands at ${Math.round(complacencyMult(worker) * 100)}% strength. The better the job feels, the more there is to lose.`}
           />
           <div className="mb-1">
             <div className="flex items-center justify-between text-xs text-stone-500 tracking-wide">
@@ -3698,6 +5134,11 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
           </div>
         </div>
 
+        <div className="mb-3 border-t border-stone-800 pt-3">
+          <div className="text-[11px] text-stone-600 font-bold mb-1 tracking-wide">WHO THEY ARE</div>
+          <p className="text-sm text-stone-400">{worker.hook}</p>
+        </div>
+
         {worker.history.length > 0 && (
           <div className="mb-4">
             <div className="text-xs text-stone-500 font-bold mb-1 tracking-wide">HISTORY</div>
@@ -3711,9 +5152,25 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
           <div className="text-sm text-red-400">This person is out of play for the rest of the campaign.</div>
         ) : isSelfPanel ? (
           <div className="space-y-2">
-            <div className="text-xs text-stone-500 tracking-wide">
-              {worker.name} HAS <span className="text-amber-400 font-bold">{hoursLeftFor(worker)}</span> OF {hoursFor(worker)} HOURS LEFT
+            <div className="text-xs text-stone-500 tracking-wide flex items-center gap-2 flex-wrap">
+              <span>{worker.name}</span>
+              <Pips filled={Math.max(0, hoursLeftFor(worker))} total={hoursFor(worker)} hex="#fbbf24" size={8} gap={3} />
               {worker.shaken > 0 && <span className="text-red-400"> — under a manager's eye this week</span>}
+            </div>
+            <div className="border border-stone-800 bg-stone-950/50 px-3 py-2 text-xs">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-bold" style={{ color: orgTier(worker).hex }}>{orgTier(worker).label}</span>
+                <span className="text-stone-500">{worker.experience || 0} xp</span>
+              </div>
+              <div className="h-1 w-full bg-stone-800 mb-1.5">
+                <div className="h-1" style={{ width: `${worker.experience || 0}%`, backgroundColor: orgTier(worker).hex }} />
+              </div>
+              <div className="text-stone-400 leading-snug">{orgTier(worker).blurb}</div>
+              {(worker.weeksIdle || 0) > IDLE_GRACE && (
+                <div className="text-amber-400 mt-1 font-bold">
+                  Idle {worker.weeksIdle} weeks — down to {committeeHours(worker)} hour{committeeHours(worker) === 1 ? "" : "s"}. They leave at {IDLE_QUIT}.
+                </div>
+              )}
             </div>
             {!unlockPublic && (
               <div className="text-xs text-stone-600 italic border border-stone-800 px-3 py-2">
@@ -3733,7 +5190,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                 >
                   <div className="text-sm text-stone-100 flex justify-between">
                     <span>{ACT1_ACTION[tier].label}</span>
-                    <span className="text-stone-500">{ACT1_ACTION[tier].hours}h</span>
+                    <CostPips hours={ACT1_ACTION[tier].hours} affordable={affordable} />
                   </div>
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">{t.blurb}</div>
                   <div className="text-xs text-teal-400 leading-snug mt-0.5">
@@ -3758,7 +5215,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                 onClick={() => onPlan(worker.id, "map")}
                 className={`w-full text-left border-2 px-3 py-2 transition-colors ${hoursLeftFor(worker) >= ACT1_ACTION.map.hours ? "border-stone-700 hover:bg-stone-800/60" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
               >
-                <div className="text-sm text-stone-100 flex justify-between"><span>{ACT1_ACTION.map.label}</span><span className="text-stone-500">{ACT1_ACTION.map.hours}h</span></div>
+                <div className="text-sm text-stone-100 flex justify-between"><span>{ACT1_ACTION.map.label}</span><CostPips hours={ACT1_ACTION.map.hours} affordable={hoursLeftFor(worker) >= ACT1_ACTION.map.hours} /></div>
                 <div className="text-xs text-stone-400 leading-snug mt-0.5">Spend the week listening instead of talking. Reveals who moves three more people — and by how much.</div>
               </button>
             )}
@@ -3779,9 +5236,13 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                     onClick={() => setActorId(o.id)}
                     className={`border px-2 py-1 text-left transition-colors ${selected ? "border-amber-500 bg-amber-950/30" : "border-stone-700 hover:bg-stone-800/60"}`}
                   >
-                    <div className="text-[13px] text-stone-100">{o.name}</div>
-                    <div className={`text-[11px] ${hoursLeftFor(o) <= 0 ? "text-red-400" : "text-stone-500"}`}>
-                      {hoursLeftFor(o)}h left · influence {wgtKnown ? wgt : "?"}
+                    <div className="text-[13px] text-stone-100 flex items-center gap-1.5">
+                      {o.name}
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: infTrait(o).hex }} title={infTrait(o).label} />
+                    </div>
+                    <div className="text-[11px] flex items-center gap-1.5">
+                      <Pips filled={Math.max(0, hoursLeftFor(o))} total={hoursFor(o)} hex={hoursLeftFor(o) <= 0 ? "#f87171" : "#fbbf24"} size={5} gap={2} />
+                      <span className="text-stone-500">inf {wgtKnown ? wgt : "?"}</span>
                     </div>
                   </button>
                 );
@@ -3798,7 +5259,14 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                   <><span className="text-stone-300 font-bold">Influence unmapped.</span> Numbers below assume an average relationship — map {worker.name} to see the real ones.</>
                 )}
                 <br />
-                On fulfillment, {affinityLabel(actor, worker)} ({actor.fulfillment} vs {worker.fulfillment}) — everything {actor.name} does lands at <span className="text-stone-300 font-bold">{Math.round(affinityMult(actor, worker) * 100)}%</span> strength with {worker.name}.
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  <span className="text-stone-500">COMMON GROUND</span>
+                  <Pips filled={visibleShared(actor, worker).length} total={3} hex="#2dd4bf" size={7} gap={2.5} />
+                  <span className="font-bold" style={{ color: visibleShared(actor, worker).length ? "#5eead4" : "#a8a29e" }}>
+                    {Math.round(affinityMult(actor, worker) * 100)}% strength
+                  </span>
+                </div>
+                <span className="text-stone-500">{affinityLabel(actor, worker)}.</span>
                 {hoursLeftFor(actor) <= 0 && (
                   <><br /><span className="text-red-400">{actor.name} has no hours left this week — pick someone else, or free up an hour in the plan below.</span></>
                 )}
@@ -3806,6 +5274,27 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
             )}
 
             <div className="space-y-2">
+              {worker.organizer && (
+                <button
+                  disabled={!canAfford("checkin")}
+                  onClick={() => onPlan(actor.id, "checkin", worker.id)}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("checkin") ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                >
+                  <div className="text-sm text-amber-300 flex justify-between items-center">
+                    <span>{ACT1_ACTION.checkin.label}</span>
+                    <CostPips hours={ACT1_ACTION.checkin.hours} affordable={canAfford("checkin")} />
+                  </div>
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">
+                    An hour of {actor.name}'s week spent on {worker.name} instead of a target. +10 experience, resets their idle clock
+                    {worker.shaken > 0 ? ", and gets them out from under the manager's eye this week" : ""}.
+                  </div>
+                  {(worker.weeksIdle || 0) >= IDLE_QUIT - 1 && (
+                    <div className="text-xs text-amber-400 leading-snug mt-0.5 font-bold">
+                      {worker.name} walks off the committee next week without this.
+                    </div>
+                  )}
+                </button>
+              )}
               {["quick", "deep"].map(type => (
                 <button
                   key={type}
@@ -3815,12 +5304,19 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                 >
                   <div className="text-sm text-stone-100 flex justify-between">
                     <span>{ACT1_ACTION[type].label}</span>
-                    <span className="text-stone-500">{ACT1_ACTION[type].hours}h</span>
+                    <CostPips hours={ACT1_ACTION[type].hours} affordable={canAfford(type)} />
                   </div>
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">
-                    {weightKnown ? "+" : "≈+"}{gains[type]} support for {worker.name}.
-                    {type === "deep" ? " A real sit-down — the kind of conversation that only works if they'd take the call." : " Cheap, fast, shallow."}
+                    {weightKnown ? "+" : "\u2248+"}{gains[type]} stated / <span className="text-teal-400">+{type === "deep" ? gains.deepTrue : gains.quickTrue} true</span> support.
+                    {type === "deep"
+                      ? " Moves what they'd actually do. Surfaces 3-4 things about them."
+                      : " Cheap. Mostly moves what they say. Surfaces 1-3 things about them."}
                   </div>
+                  {type === "deep" && misfireChance(actor, worker) > 0 && (
+                    <div className="text-xs text-red-400 leading-snug mt-0.5">
+                      {Math.round(misfireChance(actor, worker) * 100)}% it misfires — you don't know a single thing {actor.name} and {worker.name} share, so the sit-down lands as a pitch. Quick chat first.
+                    </div>
+                  )}
                 </button>
               ))}
 
@@ -3832,11 +5328,13 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                 >
                   <div className="text-sm text-teal-300 flex justify-between">
                     <span>{ACT1_ACTION.ask.label}</span>
-                    <span className="text-stone-500">{ACT1_ACTION.ask.hours}h</span>
+                    <CostPips hours={ACT1_ACTION.ask.hours} affordable={canAfford("ask")} />
                   </div>
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">
-                    {worker.support < 46
-                      ? "They are nowhere near ready. Asking now would be worse than not asking."
+                    {(worker.trueKnown ? worker.trueSupport : worker.support) < 46
+                      ? (worker.trueKnown
+                          ? "Nowhere near ready underneath. Asking now would be worse than not asking."
+                          : "They don't sound ready — and you can't see the number that actually decides it.")
                       : `${weightKnown ? "~" : "≈"}${pctOf(chance)}% they sign, from ${actor.name}.`}
                     {worker.askedRecently > 0 && " They were asked recently — it's a harder sell right now."}
                   </div>
@@ -3849,18 +5347,20 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
 
               {worker.signed && !worker.organizer && (
                 <button
-                  disabled={!canAfford("recruit") || worker.support < ACT1_RECRUIT_REQ}
+                  disabled={!canAfford("recruit") || !worker.trueKnown || (worker.trueSupport ?? 0) < ACT1_RECRUIT_REQ}
                   onClick={() => onPlan(actor.id, "recruit", worker.id)}
-                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("recruit") && worker.support >= ACT1_RECRUIT_REQ ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("recruit") && worker.trueKnown && (worker.trueSupport ?? 0) >= ACT1_RECRUIT_REQ ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
                 >
                   <div className="text-sm text-amber-300 flex justify-between">
                     <span>{ACT1_ACTION.recruit.label}</span>
-                    <span className="text-stone-500">{ACT1_ACTION.recruit.hours}h</span>
+                    <CostPips hours={ACT1_ACTION.recruit.hours} affordable={canAfford("recruit")} />
                   </div>
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">
-                    {worker.support < ACT1_RECRUIT_REQ
-                      ? `Needs ${ACT1_RECRUIT_REQ} support to take this on — they're at ${worker.support}.`
-                      : `${worker.name} starts organizing too: +${ACT1_HOURS_PER_ORGANIZER} hours every week, and their relationships become yours to direct.`}
+                    {!worker.trueKnown
+                      ? `You don't actually know where ${worker.name} stands — only what they say. Sit down with them properly before handing them other people's campaigns.`
+                      : (worker.trueSupport ?? 0) < ACT1_RECRUIT_REQ
+                      ? `Needs ${ACT1_RECRUIT_REQ} TRUE support to take this on — they're at ${worker.trueSupport}, whatever the ${worker.support} says.`
+                      : `${worker.name} starts organizing too: +${ACT1_HOURS_PER_ORGANIZER} hours every week, their relationships become yours to direct, and they get better at it the more you use them. Leave them idle ${IDLE_QUIT} weeks and they walk.`}
                   </div>
                 </button>
               )}
