@@ -3528,7 +3528,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                 />
               )}
 
-              <text x={c.x + 3.6} y={c.y + 6.8} fontSize="4.3" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{w.name.toUpperCase()}</text>
+              <text x={c.x + 3.6} y={c.y + 8.2} fontSize="4.3" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{w.name.toUpperCase()}</text>
               {onArm && w.organizer && !w.burned && (() => {
                 // The card body arms them. Their name still opens their own panel —
                 // public actions and check-ins are chosen there, not on a target.
@@ -3536,20 +3536,16 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                 return (
                   <g onClick={(ev) => { ev.stopPropagation(); onSelect(w); }} style={{ cursor: "pointer" }}>
                     <title>Open {w.name}&apos;s panel</title>
-                    <rect x={c.x + 2.6} y={c.y + 2.2} width={nameW + 2} height="6.4" fill="transparent" />
-                    <line x1={c.x + 3.6} y1={c.y + 8.1} x2={c.x + 3.6 + nameW} y2={c.y + 8.1}
+                    <rect x={c.x + 2.6} y={c.y + 3.6} width={nameW + 2} height="6.4" fill="transparent" />
+                    <line x1={c.x + 3.6} y1={c.y + 9.5} x2={c.x + 3.6 + nameW} y2={c.y + 9.5}
                       stroke="#f59e0b" strokeWidth="0.28" strokeDasharray="0.7 0.7" strokeOpacity="0.85" />
                   </g>
                 );
               })()}
-              <text x={c.x + c.w - 2.6} y={c.y + 7.8} textAnchor="end" fontSize="6" fontWeight="bold" fill={w.burned ? "#57534e" : tier.hex} fontFamily="'Courier New', monospace">{w.burned ? "—" : w.support}</text>
+              <text x={c.x + c.w - 2.6} y={c.y + 9.2} textAnchor="end" fontSize="6" fontWeight="bold" fill={w.burned ? "#57534e" : tier.hex} fontFamily="'Courier New', monospace">{w.burned ? "—" : w.support}</text>
 
-              {/* Influence trait, as a coloured corner tick. Visible from week one. */}
-              <rect x={c.x + c.w - 3.2} y={c.y + 0.9} width="2.3" height="2.3" rx="0.4"
-                fill={infTrait(w).hex} fillOpacity={w.burned ? 0.25 : 0.9} />
-
-              {/* Commitment ladder, four pips. The one thing you should be able to read
-                  across twenty cards without stopping to parse a word. */}
+              {/* Commitment ladder in the top-right corner, where the trait tick used to
+                  sit. Small, because it is a state you glance at rather than read. */}
               {(() => {
                 const rung = ladderOf(w);
                 return (
@@ -3557,43 +3553,44 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                     {[0, 1, 2, 3].map(i => (
                       <circle
                         key={i}
-                        cx={c.x + 4.6 + i * 3.6}
-                        cy={c.y + 11.3}
-                        r="1.25"
+                        cx={c.x + c.w - 11.1 + i * 2.9}
+                        cy={c.y + 2.5}
+                        r="1.05"
                         fill={i < rung.pips ? rung.hex : "none"}
                         stroke={i < rung.pips ? rung.hex : "#57534e"}
-                        strokeWidth="0.35"
+                        strokeWidth="0.3"
                       />
                     ))}
-                    {/* Common ground, on the board. A glyph you have surfaced is drawn;
-                        one you haven't is a hollow tick, so the card shows how much of
-                        this person you still don't know. The player doesn't need to
-                        decode a glyph to use it — matching two cards is the whole read,
-                        and hovering spells the names out underneath. */}
-                    {affList(w).slice(0, 5).map((t, i) => {
-                      const seen = knownAff(w).includes(t);
-                      const bought = isPoisoned(w, t);
-                      return (
-                        <text
-                          key={t}
-                          x={c.x + 19.4 + i * 3.1}
-                          y={c.y + 12.4}
-                          fontSize={seen ? "3" : "2.8"}
-                          fill={seen ? (bought ? "#f87171" : "#a8a29e") : "#57534e"}
-                          fillOpacity={seen && bought ? 0.75 : 1}
-                          fontFamily="'Courier New', monospace"
-                        >{seen ? AFF_BY_ID[t]?.glyph ?? "\u25CF" : "\u00b7"}</text>
-                      );
-                    })}
-                    {w.guarded > 0 && <text x={c.x + c.w - 3} y={c.y + 12.3} fontSize="2.8" fill="#f87171" textAnchor="end" fontFamily="'Courier New', monospace">!</text>}
-                    {staleWeek != null && cardStaleSoon(w, staleWeek) && (
-                      <text x={c.x + c.w - 3} y={c.y + 8.4} fontSize="2.2" fill="#fbbf24" textAnchor="end" fontFamily="'Courier New', monospace">
-                        EXP WK{cardExpiresOn(w)}
-                      </text>
-                    )}
                   </g>
                 );
               })()}
+
+              {/* Common ground, with the whole of its own row now that the pips have moved
+                  off it. A glyph you have surfaced is drawn; one you haven't is a hollow
+                  tick, so the card shows how much of this person you still don't know. */}
+              <g opacity={w.burned ? 0.3 : 1}>
+                {affList(w).slice(0, 5).map((t, i) => {
+                  const seen = knownAff(w).includes(t);
+                  const bought = isPoisoned(w, t);
+                  return (
+                    <text
+                      key={t}
+                      x={c.x + 3.9 + i * 5.8}
+                      y={c.y + 15.2}
+                      fontSize={seen ? "4.6" : "4"}
+                      fill={seen ? (bought ? "#f87171" : "#a8a29e") : "#57534e"}
+                      fillOpacity={seen && bought ? 0.75 : 1}
+                      fontFamily="'Courier New', monospace"
+                    >{seen ? AFF_BY_ID[t]?.glyph ?? "\u25CF" : "\u00b7"}</text>
+                  );
+                })}
+                {w.guarded > 0 && <text x={c.x + c.w - 3} y={c.y + 15.2} fontSize="3.2" fill="#f87171" textAnchor="end" fontFamily="'Courier New', monospace">!</text>}
+                {staleWeek != null && cardStaleSoon(w, staleWeek) && (
+                  <text x={c.x + c.w - (w.guarded > 0 ? 6 : 3)} y={c.y + 15.2} fontSize="2.4" fill="#fbbf24" textAnchor="end" fontFamily="'Courier New', monospace">
+                    EXP WK{cardExpiresOn(w)}
+                  </text>
+                )}
+              </g>
 
               {planLabels ? (
                 <text x={c.x + 3.6} y={c.y + 17.5} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), budget != null ? 13 : 17)}</text>
@@ -3715,6 +3712,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
           <div className="text-xs text-stone-400 leading-snug">
             <span className={`font-bold ${supportTier(hovered.support).text}`}>{hovered.name}{hovered.burned ? " (OUT OF PLAY)" : ""}</span>
             <span className="text-stone-500"> ({TEAM_LABEL[hovered.team]}) — support <span className="text-stone-300 font-bold">{hovered.support}</span> · {fulfillmentLabel(hovered.fulfillment).toLowerCase()} ({hovered.fulfillment}){hovered.signed ? " · SIGNED" : ""}</span>
+            <span style={{ color: infTrait(hovered).hex }} className="font-bold"> · {infTrait(hovered).label}</span>
             <span className="text-stone-500"> — {hovered.hook}</span>
             <div className="mt-0.5">
               <span className="text-stone-500">Common ground: </span>
