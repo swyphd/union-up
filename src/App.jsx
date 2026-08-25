@@ -2766,7 +2766,7 @@ function makeAct1Workers() {
       // know what your people talk about.
       const pool = [...AFFINITY_POOL].sort(() => Math.random() - 0.5);
       const affinities = pool.slice(0, 3 + rand(3)).map(a => a.id);
-      return { affinities, knownAffinities: w.organizer ? [...affinities] : [] };
+      return { affinities, knownAffinities: w.organizer ? [...affinities] : [], poisoned: [] };
     })(),
     // Stated support is what they SAY. True support is what they'd actually do with a
     // card in front of them, and it starts lower for everyone but your own people.
@@ -2880,29 +2880,55 @@ function InfluenceTraitChip({ worker, size = "text-[11px]" }) {
 // Tier two of the trait system. These do not make anyone a better organizer — they
 // decide WHO can reach WHOM. Hidden until a conversation surfaces them, which is the
 // whole reason the quick chat exists as an action.
+// Each one also names the perk the company can buy it with. A perk is not a bribe
+// aimed at a person — it is aimed at a THING PEOPLE HAVE IN COMMON, which is the
+// thing the campaign was using to reach them.
 const AFFINITY_POOL = [
-  { id: "dogs", label: "Dog person", glyph: "\u25CF" },
-  { id: "parent", label: "Has small kids", glyph: "\u25B2" },
-  { id: "commute", label: "Long commute", glyph: "\u25AC" },
-  { id: "ttrpg", label: "Runs a tabletop game", glyph: "\u25C6" },
-  { id: "veg", label: "Vegetarian", glyph: "\u25CB" },
-  { id: "gym", label: "Lifts before shift", glyph: "\u25A0" },
-  { id: "transplant", label: "Moved here for the job", glyph: "\u2726" },
-  { id: "debt", label: "Carrying student debt", glyph: "\u25BC" },
-  { id: "modder", label: "Came up through modding", glyph: "\u2756" },
-  { id: "secondjob", label: "Works a second job", glyph: "\u25AA" },
-  { id: "caretaker", label: "Cares for a parent", glyph: "\u2733" },
-  { id: "smoker", label: "Takes the loading-dock break", glyph: "\u25AD" },
-  { id: "church", label: "Church every Sunday", glyph: "\u2732" },
-  { id: "vet", label: "Served", glyph: "\u2691" },
+  { id: "dogs", label: "Dog person", glyph: "\u25CF",
+    perk: "Dog-Friendly Fridays", barb: "A photo wall goes up by reception within a week." },
+  { id: "parent", label: "Has small kids", glyph: "\u25B2",
+    perk: "backup childcare stipend", barb: "Capped, reimbursed quarterly, and worth less than the raise it replaced." },
+  { id: "commute", label: "Long commute", glyph: "\u25AC",
+    perk: "transit subsidy", barb: "Ninety dollars a month, and a reminder of who pays it, every month." },
+  { id: "ttrpg", label: "Runs a tabletop game", glyph: "\u25C6",
+    perk: "games room, bookable after hours", barb: "The company now hosts the thing they did to get away from the company." },
+  { id: "veg", label: "Vegetarian", glyph: "\u25CB",
+    perk: "catered lunch with a real plant-based menu", barb: "Thursdays. Attendance is noted, warmly." },
+  { id: "gym", label: "Lifts before shift", glyph: "\u25A0",
+    perk: "gym reimbursement", barb: "Submitted through the same portal as the performance review." },
+  { id: "transplant", label: "Moved here for the job", glyph: "\u2726",
+    perk: "relocation top-up, paid late", barb: "Money they were owed, arriving now, framed as generosity." },
+  { id: "debt", label: "Carrying student debt", glyph: "\u25BC",
+    perk: "student loan matching", barb: "Vests over four years. Nobody says the word \u2018vests\u2019 out loud." },
+  { id: "modder", label: "Came up through modding", glyph: "\u2756",
+    perk: "company game jam, on the clock", barb: "The one weekend a year the work feels like it used to." },
+  { id: "secondjob", label: "Works a second job", glyph: "\u25AA",
+    perk: "shift-flexibility pilot", barb: "A pilot. Reviewed in six months, by the people running it." },
+  { id: "caretaker", label: "Cares for a parent", glyph: "\u2733",
+    perk: "eldercare leave", barb: "Unpaid, but approved quickly, and everyone hears whose was approved." },
+  { id: "smoker", label: "Takes the loading-dock break", glyph: "\u25AD",
+    perk: "covered patio with heaters", barb: "The dock was where people talked without a manager in earshot." },
+  { id: "church", label: "Church every Sunday", glyph: "\u2732",
+    perk: "Sunday shifts made voluntary", barb: "Voluntary, and the schedule still gets written by someone." },
+  { id: "vet", label: "Served", glyph: "\u2691",
+    perk: "veterans\u2019 resource group, company-sponsored", barb: "A group for them, chaired by HR, meeting on company time." },
 ];
+
+// How long a perk keeps an affinity from working as common ground. It wears off —
+// people notice the dog day was a one-off — but six weeks is most of a card drive.
+const PERK_WEEKS = 6;
 const AFF_BY_ID = Object.fromEntries(AFFINITY_POOL.map(a => [a.id, a]));
 
 const affList = (w) => w?.affinities || [];
 const knownAff = (w) => w?.knownAffinities || [];
-// What actually exists between two people.
+const poisonedAff = (w) => w?.poisoned || [];
+const isPoisoned = (w, t) => poisonedAff(w).includes(t);
+// What actually exists between two people — minus anything the company has bought.
+// A poisoned affinity is still true about both of them. It just stops being yours:
+// once the company sponsors the thing they have in common, bringing it up in a
+// conversation is bringing up the company.
 function sharedAffinities(a, b) {
-  return affList(a).filter(t => affList(b).includes(t));
+  return affList(a).filter(t => affList(b).includes(t) && !isPoisoned(a, t) && !isPoisoned(b, t));
 }
 // What the PLAYER can see — a match only helps you plan if you've surfaced it on both.
 function visibleShared(a, b) {
@@ -3473,13 +3499,15 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                         and hovering spells the names out underneath. */}
                     {affList(w).slice(0, 5).map((t, i) => {
                       const seen = knownAff(w).includes(t);
+                      const bought = isPoisoned(w, t);
                       return (
                         <text
                           key={t}
                           x={c.x + 19.4 + i * 3.1}
                           y={c.y + 12.4}
                           fontSize={seen ? "3" : "2.8"}
-                          fill={seen ? "#a8a29e" : "#57534e"}
+                          fill={seen ? (bought ? "#f87171" : "#a8a29e") : "#57534e"}
+                          fillOpacity={seen && bought ? 0.75 : 1}
                           fontFamily="'Courier New', monospace"
                         >{seen ? AFF_BY_ID[t]?.glyph ?? "\u25CF" : "\u00b7"}</text>
                       );
@@ -3576,8 +3604,13 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
             <div className="mt-0.5">
               <span className="text-stone-500">Common ground: </span>
               {knownAff(hovered).length ? (
-                <span className="text-stone-300">
-                  {knownAff(hovered).map(t => `${AFF_BY_ID[t]?.glyph ?? ""} ${AFF_BY_ID[t]?.label ?? t}`).join("  ·  ")}
+                <span>
+                  {knownAff(hovered).map((t, i) => (
+                    <span key={t} className={isPoisoned(hovered, t) ? "text-red-400" : "text-stone-300"}>
+                      {i > 0 ? "  ·  " : ""}{AFF_BY_ID[t]?.glyph ?? ""} {AFF_BY_ID[t]?.label ?? t}
+                      {isPoisoned(hovered, t) ? " (bought)" : ""}
+                    </span>
+                  ))}
                 </span>
               ) : (
                 <span className="text-stone-600 italic">nothing surfaced yet</span>
@@ -3628,7 +3661,8 @@ function ActOneGame({ onGraduate, onPrototype }) {
   const [workers, setWorkers] = useState(makeAct1Workers);
   const [planEntries, setPlanEntries] = useState([]); // {key, actorId, type, targetId?}
   const [heat, setHeat] = useState(0);
-  const [consultant, setConsultant] = useState({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0 });
+  const [consultant, setConsultant] = useState({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0, perks: 0 });
+  const [perks, setPerks] = useState([]); // { id, until } — company perks currently poisoning an affinity
   // Which rungs of the outsider ladder have already arrived. They never leave.
   const [outsiders, setOutsiders] = useState([]);
   const [resolutionSteps, setResolutionSteps] = useState([]);
@@ -4204,6 +4238,19 @@ function ActOneGame({ onGraduate, onPrototype }) {
     const consultantLines = [];
     const consultantNotes = {};
     const consultantPulses = [];
+    const consultantPerks = [];
+
+    // A perk wears off. People work out that the dog day was a one-off, and the thing
+    // they have in common goes back to being theirs.
+    let perksNext = perks.filter(pk => pk.until > week);
+    perks.filter(pk => pk.until <= week).forEach(pk => {
+      const aff = AFF_BY_ID[pk.id];
+      w.forEach(x => { x.poisoned = poisonedAff(x).filter(t => t !== pk.id); });
+      consultantLines.push(
+        `PERK WEARS OFF \u2014 ${aff?.perk ?? pk.id}. \u201C${aff?.label ?? pk.id}\u201D counts as common ground again. ` +
+        `The budget line was quietly not renewed. Nobody announces that part.`
+      );
+    });
     const committeeNow = w.filter(x => x.organizer && !x.burned).length;
     const signedForTrigger = w.filter(x => x.signed).length;
 
@@ -4287,9 +4334,72 @@ function ActOneGame({ onGraduate, onPrototype }) {
         const canThreat = consultantNext.threats < CONSULTANT_MAX_EACH;
         const threatPool = w.filter(x => x.organizer && !x.burned);
         const raisePool = w.filter(x => !x.burned && !x.organizer && (x.signed || x.support >= 55));
-        const doThreat = canThreat && threatPool.length > 1 && (!canRaise || !raisePool.length || Math.random() < 0.5);
 
-        if (doThreat) {
+        // The third set piece: buy a thing people have in common. Not aimed at a person
+        // at all — aimed at the common ground the campaign was travelling along.
+        const alreadyPoisoned = new Set(w.flatMap(x => poisonedAff(x)));
+        const perkCandidates = AFFINITY_POOL.filter(a => !alreadyPoisoned.has(a.id))
+          .map(a => {
+            const holders = w.filter(x => !x.burned && affList(x).includes(a.id));
+            // Blind, he reads a headcount off an HR field: whatever the most people have.
+            // Sighted, he can see which shared thing your committee is actually
+            // travelling along, and buys that one instead.
+            const reach = seesNetwork
+              ? w.filter(x => x.organizer && !x.burned).reduce((n, org) => n + (affList(org).includes(a.id)
+                  ? w.filter(x => !x.burned && !x.signed && x.id !== org.id && affList(x).includes(a.id)).length
+                  : 0), 0)
+              : holders.filter(x => !x.signed).length;
+            return { a, holders, reach };
+          })
+          .filter(c => c.holders.length >= 2 && c.reach > 0)
+          .sort((x, y) => y.reach - x.reach);
+        const canPerk = consultantNext.perks < CONSULTANT_MAX_EACH && perkCandidates.length > 0;
+
+        const options = [];
+        if (canThreat && threatPool.length > 1) options.push("threat");
+        if (canRaise && raisePool.length) options.push("raise");
+        if (canPerk) options.push("perk");
+        const chosen = options.length ? options[rand(options.length)] : null;
+        const doThreat = chosen === "threat";
+
+        if (chosen === "perk") {
+          const { a: aff, holders } = perkCandidates[0];
+          consultantNext = { ...consultantNext, perks: (consultantNext.perks || 0) + 1, lastSetPiece: week };
+          let trueTotal = 0, fullTotal = 0, held = 0;
+          holders.forEach(x => {
+            // Poison the tie for everyone who holds it, including people you haven't
+            // surfaced yet — you find out it's gone when the conversation lands flat.
+            x.poisoned = [...poisonedAff(x), aff.id];
+            if (holdsFast(x)) { held += 1; return; }
+            const backing = signedBacking(influence, w, x.id);
+            const shield = Math.min(6, Math.round(backing / 25));
+            const trueHit = Math.max(1, 9 - shield);
+            const fullGain = Math.max(2, 12 - shield);
+            const beforeTrue = x.trueSupport ?? x.support;
+            x.trueSupport = clamp(beforeTrue - trueHit);
+            x.support = clamp(x.support - Math.max(1, Math.round(trueHit * 0.4)));
+            x.fulfillment = clamp(x.fulfillment + fullGain);
+            trueTotal += trueHit; fullTotal += fullGain;
+            consultantNotes[x.id] = `${aff.glyph} BOUGHT`;
+            x.history.push(`Week ${week}: the company bought ${aff.label.toLowerCase()} (-${trueHit} true support).`);
+          });
+          heatNext = clamp(heatNext - 4);
+          consultantPerks.push({ id: aff.id, until: week + PERK_WEEKS });
+          consultantLines.push(
+            `PERK LANDS \u2014 ${aff.perk.toUpperCase()}. Everyone on the floor who shares \u201C${aff.label}\u201D ` +
+            `(${holders.length} ${holders.length === 1 ? "worker" : "workers"}, whether or not you had found them): ` +
+            `\u2212${trueTotal} true support between them, +${fullTotal} fulfilment, \u22124 heat. ` +
+            `${aff.barb}`
+          );
+          consultantLines.push(
+            `AND \u201C${aff.label}\u201D STOPS BEING YOURS for ${PERK_WEEKS} weeks. It no longer counts as common ground in any ` +
+            `conversation between two people who share it \u2014 raising it now raises the company. ` +
+            `${seesNetwork
+              ? `He picked it because it was the thing your committee was actually travelling along.`
+              : `He picked it off a headcount in an HR field, not off your map \u2014 he doesn't know yet what it was doing for you.`}` +
+            `${held ? ` ${held} STUBBORN ${held === 1 ? "worker takes" : "workers take"} nothing from it, but the tie is poisoned for them too.` : ""}`
+          );
+        } else if (doThreat) {
           // He goes after the most isolated committee member, not the least convinced —
           // conviction is high on the committee by definition. What decides whether
           // somebody folds under a job threat is whether they're standing alone.
@@ -4409,17 +4519,19 @@ function ActOneGame({ onGraduate, onPrototype }) {
       consultant: consultantNext,
       ballot,
       outsidersNext,
+      perksNext: [...perksNext, ...consultantPerks],
       // Reaching 30% no longer ends the game — it unlocks the choice to file.
       reachedThreshold: stage === "drive" && signedNow >= ACT1_CARDS_NEEDED,
     };
   }
 
   function commitWeek() {
-    const { workers: w, heat: h, consultant: c, ballot, outsidersNext, reachedThreshold } = pendingRef.current;
+    const { workers: w, heat: h, consultant: c, ballot, outsidersNext, perksNext, reachedThreshold } = pendingRef.current;
     setWorkers(w);
     setHeat(h);
     setConsultant(c);
     setOutsiders(outsidersNext);
+    setPerks(perksNext);
     setPlanEntries([]);
     if (ballot) {
       setVoteResult(ballot);
@@ -4441,7 +4553,8 @@ function ActOneGame({ onGraduate, onPrototype }) {
     setWorkers(makeAct1Workers());
     setPlanEntries([]);
     setHeat(0);
-    setConsultant({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0 });
+    setConsultant({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0, perks: 0 });
+    setPerks([]);
     setStage("drive");
     setFiledWeek(null);
     setElectionWeek(null);
@@ -4670,10 +4783,14 @@ function ActOneGame({ onGraduate, onPrototype }) {
                     ? " Plus a mandatory all-hands every week: −1 to −4 stated on every worker on the floor."
                     : ""}
                   {" "}{(() => {
-                    const raisesLeft = CONSULTANT_MAX_EACH - (consultant.raises || 0);
-                    const threatsLeft = CONSULTANT_MAX_EACH - (consultant.threats || 0);
-                    if (raisesLeft + threatsLeft === 0) return "Both set pieces are spent — he has no raise and no job threat left to run.";
-                    return `A set piece every ${CONSULTANT_SETPIECE_GAP} week${CONSULTANT_SETPIECE_GAP === 1 ? "" : "s"}: ${raisesLeft} raise${raisesLeft === 1 ? "" : "s"} and ${threatsLeft} job threat${threatsLeft === 1 ? "" : "s"} left.`;
+                    const left = [
+                      [CONSULTANT_MAX_EACH - (consultant.raises || 0), "raise", "raises"],
+                      [CONSULTANT_MAX_EACH - (consultant.threats || 0), "job threat", "job threats"],
+                      [CONSULTANT_MAX_EACH - (consultant.perks || 0), "company perk", "company perks"],
+                    ].filter(([n]) => n > 0);
+                    if (!left.length) return "Every set piece is spent — no raise, no job threat, no perk left to run.";
+                    return `A set piece every ${CONSULTANT_SETPIECE_GAP} week${CONSULTANT_SETPIECE_GAP === 1 ? "" : "s"}: ${
+                      left.map(([n, one, many]) => `${n} ${n === 1 ? one : many}`).join(", ")} left.`;
                   })()}
                 </span>{" "}
                 <span className={heat >= KIRKMAN_SIGHT || stage === "campaign" ? "text-red-400 font-bold" : "text-teal-400"}>
@@ -4684,6 +4801,16 @@ function ActOneGame({ onGraduate, onPrototype }) {
                 <span className="text-stone-400">
                   Signed coworkers who carry weight with a target take 1 off every blow per 30 points of backing. Density is the defence.
                 </span>
+                {perks.length > 0 && (
+                  <span className="block mt-1 text-red-400">
+                    THE COMPANY OWNS: {perks.map(pk => {
+                      const left = pk.until - week;
+                      const when = left <= 0 ? "lapses after this week" : `${left} more week${left === 1 ? "" : "s"}`;
+                      return `${AFF_BY_ID[pk.id]?.glyph ?? ""} ${AFF_BY_ID[pk.id]?.label ?? pk.id} (${when})`;
+                    }).join(" · ")}
+                    <span className="text-stone-400"> — these stop counting as common ground in any conversation until the perk lapses.</span>
+                  </span>
+                )}
               </span>
             </div>
           )}
