@@ -899,20 +899,20 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       <div className="border-b-2 border-stone-800 bg-stone-900 px-4 py-3 sm:px-6 flex items-center justify-between flex-wrap gap-2">
         <div>
           <div className="font-stencil text-2xl sm:text-3xl tracking-wide text-amber-400">UNION UP</div>
-          <div className="text-[10px] sm:text-xs tracking-[0.2em] text-stone-500">ORGANIZING SIMULATION — GAME STUDIO CAMPAIGN</div>
+          <div className="text-xs sm:text-sm tracking-[0.2em] text-stone-500">ORGANIZING SIMULATION — GAME STUDIO CAMPAIGN</div>
         </div>
         {phase !== "intro" && (
-          <div className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm">
+          <div className="flex items-center gap-4 sm:gap-6 text-sm sm:text-base">
             <div className="text-center">
-              <div className="text-stone-500 text-[10px]">WEEK</div>
+              <div className="text-stone-500 text-xs">WEEK</div>
               <div className="text-lg font-bold text-stone-100">{Math.min(turn, TOTAL_TURNS)} / {TOTAL_TURNS}</div>
             </div>
             <div className="text-center">
-              <div className="text-stone-500 text-[10px] flex items-center gap-1"><Zap size={11}/> STAMINA</div>
+              <div className="text-stone-500 text-xs flex items-center gap-1"><Zap size={11}/> STAMINA</div>
               <div className={`text-lg font-bold ${organizer.stamina < 30 ? "text-red-500" : organizer.stamina < 60 ? "text-amber-400" : "text-teal-400"}`}>{organizer.stamina}</div>
             </div>
             <div className="text-center">
-              <div className="text-stone-500 text-[10px]">UNIONIZED</div>
+              <div className="text-stone-500 text-xs">UNIONIZED</div>
               <div className="text-lg font-bold text-teal-400">{unionizedCount} / 2</div>
             </div>
           </div>
@@ -931,47 +931,47 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
 
       {/* ALLOCATE PHASE */}
       {phase === "allocate" && (
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           {employerEmboldened && (
-            <div className="mb-4 flex items-center gap-2 text-red-400 text-xs border border-red-900 bg-red-950/40 px-3 py-2">
+            <div className="mb-4 flex items-center gap-2 text-red-400 text-sm border border-red-900 bg-red-950/40 px-3 py-2">
               <AlertTriangle size={14} /> Management across the company is on high alert after a lost election elsewhere. Retaliation is more likely everywhere.
             </div>
           )}
           {locations.some(l => l.status === "campaign") && unionizedCount < 2 && (
-            <div className="mb-4 flex items-center gap-2 text-teal-400 text-xs border border-teal-900 bg-teal-950/20 px-3 py-2">
+            <div className="mb-4 flex items-center gap-2 text-teal-400 text-sm border border-teal-900 bg-teal-950/20 px-3 py-2">
               <Vote size={14} /> You need 2 locations won, not 1 — keep organizing your other sites while this election plays out.
             </div>
           )}
           {moraleClimate.turnsLeft > 0 && (
-            <div className={`mb-4 flex items-center gap-2 text-xs border px-3 py-2 ${moraleClimate.tone === "positive" ? "text-teal-400 border-teal-900 bg-teal-950/30" : moraleClimate.tone === "negative" ? "text-red-400 border-red-900 bg-red-950/40" : "text-amber-400 border-amber-900 bg-amber-950/30"}`}>
+            <div className={`mb-4 flex items-center gap-2 text-sm border px-3 py-2 ${moraleClimate.tone === "positive" ? "text-teal-400 border-teal-900 bg-teal-950/30" : moraleClimate.tone === "negative" ? "text-red-400 border-red-900 bg-red-950/40" : "text-amber-400 border-amber-900 bg-amber-950/30"}`}>
               <Radio size={14} /> National mood {moraleClimate.tone === "positive" ? "is energizing organizing everywhere" : moraleClimate.tone === "negative" ? "has knocked morale down everywhere" : "has workers both angrier and more anxious"} ({moraleClimate.turnsLeft} week{moraleClimate.turnsLeft === 1 ? "" : "s"} left).
             </div>
           )}
           {legalClimate.turnsLeft > 0 && (
-            <div className={`mb-4 flex items-center gap-2 text-xs border px-3 py-2 ${legalClimate.tone === "favorable" ? "text-teal-400 border-teal-900 bg-teal-950/30" : "text-red-400 border-red-900 bg-red-950/40"}`}>
+            <div className={`mb-4 flex items-center gap-2 text-sm border px-3 py-2 ${legalClimate.tone === "favorable" ? "text-teal-400 border-teal-900 bg-teal-950/30" : "text-red-400 border-red-900 bg-red-950/40"}`}>
               <Scale size={14} /> Legal climate is currently {legalClimate.tone} — {legalClimate.tone === "favorable" ? "unfair labor practices are easier to prove and retaliation is less likely" : "employers are emboldened and retaliation is more likely"} ({legalClimate.turnsLeft} week{legalClimate.turnsLeft === 1 ? "" : "s"} left).
             </div>
           )}
           {employerSophistication > 0 && (
-            <div className="mb-4 flex items-center gap-2 text-xs border border-purple-900 bg-purple-950/30 text-purple-300 px-3 py-2">
+            <div className="mb-4 flex items-center gap-2 text-sm border border-purple-900 bg-purple-950/30 text-purple-300 px-3 py-2">
               <Brain size={14} /> Corporate has learned from past firings (level {employerSophistication}/3) — expect quiet buy-offs alongside the usual crackdowns.
             </div>
           )}
           {solidarityScore > 0 && (
-            <div className="mb-4 flex items-center gap-2 text-xs border border-teal-900 bg-teal-950/30 text-teal-300 px-3 py-2">
+            <div className="mb-4 flex items-center gap-2 text-sm border border-teal-900 bg-teal-950/30 text-teal-300 px-3 py-2">
               <UsersRound size={14} /> Solidarity network strength: {solidarityScore} — active sites get a steady morale lift and anti-union talk has a harder time catching or spreading.
             </div>
           )}
 
           {recruitedLeaders.length > 0 && (
             <div className="mb-4 border border-stone-800 bg-stone-900 p-3">
-              <div className="text-[10px] text-stone-400 font-bold mb-2 tracking-wide">YOUR TEAM — click a leader, then click a site to station them there</div>
+              <div className="text-xs text-stone-400 font-bold mb-2 tracking-wide">YOUR TEAM — click a leader, then click a site to station them there</div>
               <div className="flex flex-wrap gap-2">
                 {recruitedLeaders.map((l, i) => {
                   const at = leaderDeployment[i] ? START_LOCATIONS.find(s => s.id === leaderDeployment[i])?.name : null;
                   const armed = armedLeader === i;
                   return (
-                    <div key={i} className={`flex items-center gap-1.5 text-xs border px-2 py-1 ${armed ? "border-amber-500 bg-amber-950/30" : "border-stone-700"}`}>
+                    <div key={i} className={`flex items-center gap-1.5 text-sm border px-2 py-1 ${armed ? "border-amber-500 bg-amber-950/30" : "border-stone-700"}`}>
                       <button onClick={() => armLeader(i)} className={`font-bold ${armed ? "text-amber-400" : "text-stone-200 hover:text-amber-300"}`}>
                         {l.name}
                       </button>
@@ -989,7 +989,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
                 })}
               </div>
               {armedLeader != null && (
-                <div className="mt-2 text-[10px] text-amber-400">Click a site on the map below to station {recruitedLeaders[armedLeader].name} there. Click their name again to cancel.</div>
+                <div className="mt-2 text-xs text-amber-400">Click a site on the map below to station {recruitedLeaders[armedLeader].name} there. Click their name again to cancel.</div>
               )}
             </div>
           )}
@@ -1004,9 +1004,9 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
           <div className="border-2 border-stone-800 bg-stone-900 p-4">
             <div className="flex items-center justify-between mb-1">
               <div className="font-stencil text-lg tracking-wide text-stone-200">ALLOCATE ORGANIZER TIME</div>
-              <div className={`text-sm font-bold ${remaining < 0 ? "text-red-500" : remaining === 0 ? "text-teal-400" : "text-amber-400"}`}>{remaining} ACTION{Math.abs(remaining) === 1 ? "" : "S"} LEFT</div>
+              <div className={`text-base font-bold ${remaining < 0 ? "text-red-500" : remaining === 0 ? "text-teal-400" : "text-amber-400"}`}>{remaining} ACTION{Math.abs(remaining) === 1 ? "" : "S"} LEFT</div>
             </div>
-            <p className="text-[10px] text-stone-500 mb-3">Click a location above to choose what the organizer does there this week. Tap it again to change the plan. Unassigned actions count as rest — they help the organizer recover stamina but do nothing for the campaign.</p>
+            <p className="text-xs text-stone-500 mb-3">Click a location above to choose what the organizer does there this week. Tap it again to change the plan. Unassigned actions count as rest — they help the organizer recover stamina but do nothing for the campaign.</p>
             <button
               onClick={resolveTurn}
               disabled={totalAllocated > 10}
@@ -1020,7 +1020,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
 
       {/* RESOLUTION — plays automatically on the network map, no click-through */}
       {resStep && (
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           <Act2NetworkMap
             locations={resStep.locs}
             deployedLeaders={deployedLeadersByLoc}
@@ -1031,18 +1031,18 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
             notes={resNotes}
           />
           <div className="flex items-center justify-between gap-3 mb-2">
-            <div className="flex-1 min-h-[1.5rem] text-xs text-stone-400 font-mono">
+            <div className="flex-1 min-h-[1.5rem] text-sm text-stone-400 font-mono">
               {resBanner.map((line, i) => <div key={`${stepIndex}-${i}`}>▸ {line}</div>)}
             </div>
-            <button onClick={commitResolution} className="shrink-0 text-[10px] text-stone-500 hover:text-amber-400 underline transition-colors">
+            <button onClick={commitResolution} className="shrink-0 text-xs text-stone-500 hover:text-amber-400 underline transition-colors">
               SKIP ▸▸
             </button>
           </div>
           {resolutionSteps.slice(0, stepIndex + 1).some(s => s.lines.length > 0) && (
-            <div ref={resLogRef} className="bg-stone-950/60 border border-stone-800 p-2 space-y-0.5 max-h-20 overflow-y-auto">
+            <div ref={resLogRef} className="bg-stone-950/60 border border-stone-800 p-2 space-y-0.5 max-h-24 overflow-y-auto">
               {resolutionSteps.slice(0, stepIndex + 1).map((s, si) =>
                 s.lines.map((line, li) => (
-                  <div key={`${si}-${li}`} className={`text-[10px] font-mono ${si === stepIndex ? "text-stone-400" : "text-stone-600"}`}>▸ {line}</div>
+                  <div key={`${si}-${li}`} className={`text-xs font-mono ${si === stepIndex ? "text-stone-400" : "text-stone-600"}`}>▸ {line}</div>
                 ))
               )}
             </div>
@@ -1073,7 +1073,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
                 ? `The organizer burned out for a second time and left the campaign. There was no one left to carry it forward.`
                 : `Twelve weeks came and went without enough studios reaching a contract. The campaign didn't build the power it needed in time.`}
           </p>
-          <div className="grid grid-cols-4 gap-2 mb-8 text-xs">
+          <div className="grid grid-cols-4 gap-2 mb-8 text-sm">
             {locations.map(l => (
               <div key={l.id} className="border border-stone-800 p-2">
                 <div className="text-stone-500 mb-1">{l.name}</div>
@@ -1085,7 +1085,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
             RUN IT BACK
           </button>
           {onFullRestart && (
-            <button onClick={onFullRestart} className="block mx-auto mt-3 text-xs text-stone-500 hover:text-stone-300 underline">
+            <button onClick={onFullRestart} className="block mx-auto mt-3 text-sm text-stone-500 hover:text-stone-300 underline">
               Start over from the shop floor
             </button>
           )}
@@ -1113,7 +1113,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
 function Meter({ label, value, icon, colorClass = "bg-amber-500", danger = false }) {
   return (
     <div>
-      <div className="flex items-center justify-between text-[10px] text-stone-500 mb-0.5">
+      <div className="flex items-center justify-between text-xs text-stone-500 mb-0.5">
         <span className="flex items-center gap-1">{icon}{label}</span>
         <span className={`font-bold ${danger ? "text-red-400" : "text-stone-300"}`}>{value}</span>
       </div>
@@ -1139,14 +1139,14 @@ function FeedbackControls({ loc, response, onToggle }) {
         const autoHandled = loc.committee?.active && loc.grievance.type !== "legal";
         if (autoHandled) {
           return (
-            <div className={`flex items-center gap-2 text-[10px] border px-2 py-1 ${meta.tone} opacity-70`}>
+            <div className={`flex items-center gap-2 text-xs border px-2 py-1 ${meta.tone} opacity-70`}>
               <Icon size={12} />
               <span className="flex-1"><span className="font-bold">{meta.label}.</span> The shop committee is handling this one — no organizer time needed.</span>
             </div>
           );
         }
         return (
-          <label className={`flex items-center gap-2 text-[10px] border px-2 py-1 cursor-pointer ${meta.tone} ${response.grievance ? "bg-stone-800" : ""}`}>
+          <label className={`flex items-center gap-2 text-xs border px-2 py-1 cursor-pointer ${meta.tone} ${response.grievance ? "bg-stone-800" : ""}`}>
             <input type="checkbox" checked={!!response.grievance} onChange={() => onToggle("grievance")} className="accent-amber-500" />
             <Icon size={12} />
             <span className="flex-1"><span className="font-bold">{meta.label}.</span> {meta.action} ({meta.cost} action{meta.cost > 1 ? "s" : ""})</span>
@@ -1154,28 +1154,28 @@ function FeedbackControls({ loc, response, onToggle }) {
         );
       })()}
       {inCrackdownBand && (
-        <label className="flex items-center gap-2 text-[10px] border border-stone-600 text-stone-300 px-2 py-1 cursor-pointer">
+        <label className="flex items-center gap-2 text-xs border border-stone-600 text-stone-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.document} onChange={() => onToggle("document")} className="accent-amber-500" />
           <Radio size={12} />
           <span className="flex-1"><span className="font-bold">Management is watching closer.</span> Document it (1 action)</span>
         </label>
       )}
       {loc.antiUnion?.active && (
-        <label className="flex items-center gap-2 text-[10px] border border-red-800 text-red-300 px-2 py-1 cursor-pointer">
+        <label className="flex items-center gap-2 text-xs border border-red-800 text-red-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.counter} onChange={() => onToggle("counter")} className="accent-amber-500" />
           <Megaphone size={12} />
           <span className="flex-1"><span className="font-bold">Anti-union talk is spreading.</span> Counter-message (1 action)</span>
         </label>
       )}
       {loc.buyOff?.active && (
-        <label className="flex items-center gap-2 text-[10px] border border-teal-800 text-teal-300 px-2 py-1 cursor-pointer">
+        <label className="flex items-center gap-2 text-xs border border-teal-800 text-teal-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.reframe} onChange={() => onToggle("reframe")} className="accent-amber-500" />
           <HandCoins size={12} />
           <span className="flex-1"><span className="font-bold">Management just announced a retention bonus.</span> Reframe it as a union win (1 action)</span>
         </label>
       )}
       {committeeEligible && (
-        <label className="flex items-center gap-2 text-[10px] border border-amber-600 text-amber-300 px-2 py-1 cursor-pointer">
+        <label className="flex items-center gap-2 text-xs border border-amber-600 text-amber-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.formCommittee} onChange={() => onToggle("formCommittee")} className="accent-amber-500" />
           <UsersRound size={12} />
           <span className="flex-1"><span className="font-bold">Ready for a shop committee.</span> Help workers form one ({COMMITTEE_COST} actions)</span>
@@ -1201,7 +1201,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
     <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
       <div className="flex items-center justify-between px-3 pt-2">
         <div className="font-stencil text-lg tracking-wide text-stone-200">THE COMPANY</div>
-        <div className="flex items-center gap-3 text-[9px] text-stone-500">
+        <div className="flex items-center gap-3 text-[11px] text-stone-500">
           <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-teal-400" /> MORALE 70+</span>
           <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-stone-400" /> MID</span>
           <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-red-400" /> LOW</span>
@@ -1329,7 +1329,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
       </svg>
       <div className="border-t border-stone-800 px-3 py-2 min-h-[3.25rem]">
         {hovered ? (
-          <div className="text-[10px] text-stone-400 leading-snug">
+          <div className="text-xs text-stone-400 leading-snug">
             <span className={`font-bold ${statusMeta[hovered.status].color}`}>{hovered.name}</span>
             <span className="text-stone-500"> — {statusMeta[hovered.status].label}. Morale {hovered.morale}, visibility {hovered.visibility}, {hovered.recruited}/{hovered.workers} recruited.</span>
             {hovered.committee?.active && <span className="text-teal-400"> Shop committee active — organizing here no longer depends entirely on you.</span>}
@@ -1337,7 +1337,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
             {deployedLeaders[hovered.id] && <span className="text-amber-400"> {deployedLeaders[hovered.id].name} is stationed here — strong on {TRAIT_LABEL[deployedLeaders[hovered.id].trait]}.</span>}
           </div>
         ) : (
-          <div className="text-[10px] text-stone-600 italic">
+          <div className="text-xs text-stone-600 italic">
             Every site shares the same company — anti-union talk and organizing momentum both travel along these lines. Hover a site for details, click to plan.
           </div>
         )}
@@ -1359,7 +1359,7 @@ function LocationActionModal({ loc, turn, allocation, response, onSetUnits, onTo
           <div className="font-stencil text-2xl text-amber-400">{loc.name}</div>
           <button onClick={onClose}><X size={18} className="text-stone-500 hover:text-stone-200" /></button>
         </div>
-        <div className={`text-xs font-bold mb-4 ${meta.color}`}>{meta.label}</div>
+        <div className={`text-sm font-bold mb-4 ${meta.color}`}>{meta.label}</div>
 
         <div className="space-y-3 mb-4">
           <Meter label="MORALE" value={loc.morale} icon={<CheckCircle2 size={11} />} colorClass="bg-teal-500" />
@@ -1369,7 +1369,7 @@ function LocationActionModal({ loc, turn, allocation, response, onSetUnits, onTo
           {isCampaign && <Meter label="WORKER FEAR" value={loc.fear} icon={<AlertTriangle size={11} />} danger={loc.fear >= 60} />}
         </div>
 
-        <div className="text-[10px] text-stone-500 space-y-1 font-mono mb-4">
+        <div className="text-xs text-stone-500 space-y-1 font-mono mb-4">
           <div>Manager disposition: <span className="text-stone-200">{loc.manager}</span></div>
           <div>Recruited: <span className="text-stone-200">{loc.recruited}/{loc.workers}</span> ({Math.round((loc.recruited / loc.workers) * 100)}%)</div>
           {isCampaign && <div>Election in <span className="text-stone-200">{Math.max(0, loc.electionTurn - turn)} week{Math.max(0, loc.electionTurn - turn) === 1 ? "" : "s"}</span> — actions here fight the employer's counter-campaign directly.</div>}
@@ -1380,16 +1380,16 @@ function LocationActionModal({ loc, turn, allocation, response, onSetUnits, onTo
 
         {canAct ? (
           <>
-            <div className="text-[10px] text-stone-500 font-bold mb-1 tracking-wide">WHAT SHOULD THE ORGANIZER DO HERE THIS WEEK?</div>
+            <div className="text-xs text-stone-500 font-bold mb-1 tracking-wide">WHAT SHOULD THE ORGANIZER DO HERE THIS WEEK?</div>
             <div className="space-y-2 mb-2">
               {tiers.map(t => (
                 <button
                   key={t.units}
                   onClick={() => onSetUnits(t.units)}
-                  className={`w-full text-left border-2 px-3 py-2 text-xs transition-colors ${allocation === t.units ? "border-amber-500 bg-amber-950/30" : "border-stone-700 hover:bg-stone-800/60"}`}
+                  className={`w-full text-left border-2 px-3 py-2 text-sm transition-colors ${allocation === t.units ? "border-amber-500 bg-amber-950/30" : "border-stone-700 hover:bg-stone-800/60"}`}
                 >
-                  <div className="font-stencil text-sm tracking-wide text-stone-100">{t.label} {t.cost > 0 ? `(${t.cost} action${t.cost > 1 ? "s" : ""})` : ""}</div>
-                  <div className="text-[10px] text-stone-400">{t.desc}</div>
+                  <div className="font-stencil text-base tracking-wide text-stone-100">{t.label} {t.cost > 0 ? `(${t.cost} action${t.cost > 1 ? "s" : ""})` : ""}</div>
+                  <div className="text-xs text-stone-400">{t.desc}</div>
                 </button>
               ))}
             </div>
@@ -1398,7 +1398,7 @@ function LocationActionModal({ loc, turn, allocation, response, onSetUnits, onTo
             )}
           </>
         ) : (
-          <div className="text-xs text-stone-500 italic">This site is no longer active — nothing left to organize here.</div>
+          <div className="text-sm text-stone-500 italic">This site is no longer active — nothing left to organize here.</div>
         )}
 
         <button onClick={onClose} className="mt-4 w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2 tracking-wide">
@@ -1420,29 +1420,29 @@ function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
           <Vote size={18} className="text-amber-400" />
           <div className="font-stencil text-xl text-amber-400 tracking-wide">ESCALATION DECISION: {loc.name}</div>
         </div>
-        <p className="text-xs text-stone-400 mb-4">Morale has crossed 70. Workers are ready to move — the question is whether you are.</p>
+        <p className="text-sm text-stone-400 mb-4">Morale has crossed 70. Workers are ready to move — the question is whether you are.</p>
 
-        <div className="grid grid-cols-3 gap-2 mb-3 text-[10px]">
+        <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
           <div className="border border-stone-800 p-2 text-center">
             <div className="text-stone-500">MORALE</div>
-            <div className="text-teal-400 font-bold text-sm">{loc.morale}</div>
+            <div className="text-teal-400 font-bold text-base">{loc.morale}</div>
           </div>
           <div className="border border-stone-800 p-2 text-center">
             <div className="text-stone-500">RECRUITED</div>
-            <div className={`font-bold text-sm ${recruitedPct >= 0.3 ? "text-teal-400" : "text-red-400"}`}>{Math.round(recruitedPct * 100)}%</div>
+            <div className={`font-bold text-base ${recruitedPct >= 0.3 ? "text-teal-400" : "text-red-400"}`}>{Math.round(recruitedPct * 100)}%</div>
           </div>
           <div className="border border-stone-800 p-2 text-center">
             <div className="text-stone-500">LEGAL RISK</div>
-            <div className={`font-bold text-sm ${loc.legalRisk < 75 ? "text-teal-400" : "text-red-400"}`}>{loc.legalRisk}</div>
+            <div className={`font-bold text-base ${loc.legalRisk < 75 ? "text-teal-400" : "text-red-400"}`}>{loc.legalRisk}</div>
           </div>
         </div>
 
         {loc.committee?.active ? (
-          <div className="mb-4 text-[10px] border border-teal-800 bg-teal-950/30 text-teal-300 px-3 py-2">
+          <div className="mb-4 text-xs border border-teal-800 bg-teal-950/30 text-teal-300 px-3 py-2">
             The shop committee gives you an honest read: true support sits at <span className="font-bold">{loc.trueSupport}</span>, not the {loc.morale} morale number.
           </div>
         ) : gap >= 12 ? (
-          <div className="mb-4 text-[10px] border border-amber-800 bg-amber-950/30 text-amber-300 px-3 py-2">
+          <div className="mb-4 text-xs border border-amber-800 bg-amber-950/30 text-amber-300 px-3 py-2">
             Without a shop committee, the organizer is going on feel alone — and this room may not be as solid as the morale number suggests.
           </div>
         ) : null}
@@ -1454,15 +1454,15 @@ function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
             className={`w-full text-left border-2 p-3 transition-colors ${eligible ? "border-teal-600 hover:bg-teal-950/40" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
           >
             <div className="font-stencil text-base text-teal-400">FILE FOR UNION ELECTION</div>
-            <div className="text-[10px] text-stone-400">Go for the win now. Triggers a 5-week NLRB and campaign period. {!eligible && "(Requirements not met — need 30%+ recruited and legal risk under 75.)"}</div>
+            <div className="text-xs text-stone-400">Go for the win now. Triggers a 5-week NLRB and campaign period. {!eligible && "(Requirements not met — need 30%+ recruited and legal risk under 75.)"}</div>
           </button>
           <button onClick={onConsolidate} className="w-full text-left border-2 border-amber-700 hover:bg-amber-950/40 p-3 transition-colors">
             <div className="font-stencil text-base text-amber-400">CONSOLIDATE & KEEP ORGANIZING</div>
-            <div className="text-[10px] text-stone-400">Hold here, build strength at other sites, escalate multiple locations together. Morale here will decay slowly if neglected.</div>
+            <div className="text-xs text-stone-400">Hold here, build strength at other sites, escalate multiple locations together. Morale here will decay slowly if neglected.</div>
           </button>
           <button onClick={onPivot} className="w-full text-left border-2 border-stone-700 hover:bg-stone-800/60 p-3 transition-colors">
             <div className="font-stencil text-base text-stone-300">PIVOT AWAY</div>
-            <div className="text-[10px] text-stone-400">Deprioritize this site for now and refocus the organizer elsewhere.</div>
+            <div className="text-xs text-stone-400">Deprioritize this site for now and refocus the organizer elsewhere.</div>
           </button>
         </div>
       </div>
@@ -1567,16 +1567,16 @@ function IntroSequence({ beats, visuals = {}, doneLabel, onDone }) {
   const beat = beats[step];
   const accent = beat.tone === "red" ? "text-red-400" : "text-amber-400";
   return (
-    <div className="max-w-2xl mx-auto px-6 py-16 min-h-[70vh] flex flex-col">
+    <div className="max-w-3xl mx-auto px-6 py-16 min-h-[70vh] flex flex-col">
       <div key={step} className="flex-1 flex flex-col justify-center anim-rise">
-        <div className={`text-[10px] tracking-[0.3em] mb-3 ${beat.tone === "red" ? "text-red-500" : "text-stone-500"}`}>{beat.kicker}</div>
+        <div className={`text-base tracking-[0.22em] mb-4 ${beat.tone === "red" ? "text-red-500" : "text-stone-500"}`}>{beat.kicker}</div>
         {beat.title && <div className={`font-stencil text-3xl sm:text-4xl leading-tight mb-4 ${accent}`}>{beat.title}</div>}
         {beat.lines.map((line, i) => (
           // A beat with no headline leads on its first line instead, so it still has a
           // visual anchor rather than opening on body copy.
           <p key={i} className={!beat.title && i === 0
-            ? `text-xl sm:text-2xl leading-snug mb-3 ${accent}`
-            : "text-stone-300 text-base leading-relaxed mb-2"}>{line}</p>
+            ? `text-2xl sm:text-3xl leading-snug mb-4 ${accent}`
+            : "text-stone-300 text-lg leading-relaxed mb-3"}>{line}</p>
         ))}
         {beat.visual && visuals[beat.visual] && <div className="mt-6">{visuals[beat.visual]}</div>}
       </div>
@@ -1596,7 +1596,7 @@ function IntroSequence({ beats, visuals = {}, doneLabel, onDone }) {
           <button
             onClick={() => setStep(i => Math.max(0, i - 1))}
             disabled={step === 0}
-            className={`text-xs tracking-wide transition-colors ${step === 0 ? "text-stone-800 cursor-not-allowed" : "text-stone-500 hover:text-stone-300"}`}
+            className={`text-sm tracking-wide transition-colors ${step === 0 ? "text-stone-800 cursor-not-allowed" : "text-stone-500 hover:text-stone-300"}`}
           >
             ◂ BACK
           </button>
@@ -1606,7 +1606,7 @@ function IntroSequence({ beats, visuals = {}, doneLabel, onDone }) {
           >
             {last ? doneLabel : "NEXT ▸"}
           </button>
-          <button onClick={onDone} className="text-xs tracking-wide text-stone-600 hover:text-stone-400 transition-colors">
+          <button onClick={onDone} className="text-sm tracking-wide text-stone-600 hover:text-stone-400 transition-colors">
             SKIP
           </button>
         </div>
@@ -1622,10 +1622,10 @@ function IntroSequence({ beats, visuals = {}, doneLabel, onDone }) {
 function OutcomeTally({ tally }) {
   return (
     <div className="flex items-center justify-center gap-7 font-mono">
-      <div><div className="text-[10px] text-stone-500 tracking-wide">YES</div><div className="text-3xl font-bold text-teal-400">{tally.yes}</div></div>
-      <div><div className="text-[10px] text-stone-500 tracking-wide">NO</div><div className="text-3xl font-bold text-red-400">{tally.no}</div></div>
+      <div><div className="text-xs text-stone-500 tracking-wide">YES</div><div className="text-3xl font-bold text-teal-400">{tally.yes}</div></div>
+      <div><div className="text-xs text-stone-500 tracking-wide">NO</div><div className="text-3xl font-bold text-red-400">{tally.no}</div></div>
       {tally.out != null && (
-        <div><div className="text-[10px] text-stone-500 tracking-wide">DIDN'T VOTE</div><div className="text-3xl font-bold text-stone-500">{tally.out}</div></div>
+        <div><div className="text-xs text-stone-500 tracking-wide">DIDN'T VOTE</div><div className="text-3xl font-bold text-stone-500">{tally.out}</div></div>
       )}
     </div>
   );
@@ -1637,7 +1637,7 @@ function StarThresholdLine({ week }) {
     <span className={n === earned ? "text-amber-400 font-bold" : "text-stone-600"}>{"★".repeat(n)} {label}</span>
   );
   return (
-    <div className="flex items-center justify-center gap-4 text-[10px] tracking-wide mt-2 flex-wrap">
+    <div className="flex items-center justify-center gap-4 text-xs tracking-wide mt-2 flex-wrap">
       {cell(3, `≤${ACT1_STAR_WEEKS.three} wks`)}
       {cell(2, `≤${ACT1_STAR_WEEKS.two} wks`)}
       {cell(1, "finished")}
@@ -1665,7 +1665,7 @@ function OutcomeScreen({ tone = "win", title, stars, tally, meta, beats, visuals
 
   const beat = beats[step];
   return (
-    <div className="max-w-xl mx-auto px-6 py-14 anim-rise">
+    <div className="max-w-2xl mx-auto px-6 py-14 anim-rise">
       <div className="text-center">
         <div className={`font-stencil text-4xl sm:text-5xl leading-tight mb-2 ${tone === "loss" ? "text-red-500" : "text-teal-400"}`}>{title}</div>
         {stars != null && (
@@ -1675,13 +1675,13 @@ function OutcomeScreen({ tone = "win", title, stars, tally, meta, beats, visuals
           </>
         )}
         {tally && <div className="mt-4"><OutcomeTally tally={tally} /></div>}
-        {meta?.line && <p className="text-amber-400 text-sm mt-4">{meta.line}</p>}
+        {meta?.line && <p className="text-amber-400 text-lg mt-4">{meta.line}</p>}
       </div>
 
       <div className="border-t border-stone-800 mt-6 pt-5 min-h-[8.5rem]">
         <div key={step} className="anim-rise">
           {beat.lines.map((line, i) => (
-            <p key={i} className={`leading-relaxed mb-2 ${beat.quiet ? "text-stone-500 text-xs italic" : "text-stone-300 text-sm"}`}>{line}</p>
+            <p key={i} className={`leading-relaxed mb-3 ${beat.quiet ? "text-stone-500 text-base italic" : "text-stone-300 text-lg"}`}>{line}</p>
           ))}
           {beat.visual && visuals[beat.visual] && <div className="mt-4">{visuals[beat.visual]}</div>}
         </div>
@@ -1705,7 +1705,7 @@ function OutcomeScreen({ tone = "win", title, stars, tally, meta, beats, visuals
             <button
               onClick={() => setStep(i => Math.max(0, i - 1))}
               disabled={step === 0}
-              className={`text-xs tracking-wide transition-colors ${step === 0 ? "text-stone-800 cursor-not-allowed" : "text-stone-500 hover:text-stone-300"}`}
+              className={`text-sm tracking-wide transition-colors ${step === 0 ? "text-stone-800 cursor-not-allowed" : "text-stone-500 hover:text-stone-300"}`}
             >
               ◂ BACK
             </button>
@@ -1715,7 +1715,7 @@ function OutcomeScreen({ tone = "win", title, stars, tally, meta, beats, visuals
             >
               NEXT ▸
             </button>
-            <button onClick={() => setStep(beats.length - 1)} className="text-xs tracking-wide text-stone-600 hover:text-stone-400 transition-colors">
+            <button onClick={() => setStep(beats.length - 1)} className="text-sm tracking-wide text-stone-600 hover:text-stone-400 transition-colors">
               SKIP
             </button>
           </div>
@@ -1728,9 +1728,9 @@ function OutcomeScreen({ tone = "win", title, stars, tally, meta, beats, visuals
 function OutcomeRoster({ workers }) {
   return (
     <div className="border border-teal-900 bg-teal-950/20 p-3 text-left">
-      <div className="text-[10px] text-teal-400 font-bold mb-2 tracking-wide">THE COMMITTEE THAT GOT IT THERE:</div>
+      <div className="text-xs text-teal-400 font-bold mb-2 tracking-wide">THE COMMITTEE THAT GOT IT THERE:</div>
       {workers.map(w => (
-        <div key={w.id} className="text-xs text-stone-300 mb-1">
+        <div key={w.id} className="text-sm text-stone-300 mb-1">
           <span className="font-bold text-stone-100">{w.name}</span> — {w.hook}
         </div>
       ))}
@@ -1790,7 +1790,7 @@ function IntroRosterVisual({ leaders }) {
   return (
     <div className="flex flex-col items-start gap-1.5">
       {leaders.map((l, i) => (
-        <div key={i} className="border border-teal-800 bg-teal-950/20 px-3 py-1.5 text-xs">
+        <div key={i} className="border border-teal-800 bg-teal-950/20 px-3 py-1.5 text-sm">
           <span className="font-bold text-stone-100">{l.name}</span>
           <span className="text-stone-500"> — strong on {TRAIT_LABEL[l.trait]}</span>
         </div>
@@ -1874,7 +1874,7 @@ function IntroCommitteeVisual() {
           <div className="h-1.5 bg-stone-800 mt-1.5 ml-1.5">
             <div className="h-full" style={{ width: `${p.fulfillment}%`, backgroundColor: FULFILL_HEX }} />
           </div>
-          <div className="text-[9px] text-amber-500 font-mono mt-1.5 ml-1.5 tracking-wide">ON COMMITTEE</div>
+          <div className="text-[11px] text-amber-500 font-mono mt-1.5 ml-1.5 tracking-wide">ON COMMITTEE</div>
         </div>
       ))}
     </div>
@@ -2140,8 +2140,8 @@ function InfoDot({ children, align = "center" }) {
   const pos = align === "left" ? "left-0" : align === "right" ? "right-0" : "left-1/2 -translate-x-1/2";
   return (
     <span className="relative group inline-flex items-center align-middle ml-1">
-      <span className="w-3 h-3 rounded-full border border-stone-600 text-stone-500 text-[8px] leading-[10px] text-center cursor-help transition-colors group-hover:border-amber-500 group-hover:text-amber-400 font-mono">i</span>
-      <span className={`pointer-events-none absolute ${pos} bottom-full mb-1.5 z-50 hidden group-hover:block w-64 sm:w-72 border border-stone-600 bg-stone-950 px-2.5 py-2 text-[10px] leading-relaxed text-stone-300 normal-case tracking-normal text-left shadow-xl`}>
+      <span className="w-3 h-3 rounded-full border border-stone-600 text-stone-500 text-[10px] leading-[10px] text-center cursor-help transition-colors group-hover:border-amber-500 group-hover:text-amber-400 font-mono">i</span>
+      <span className={`pointer-events-none absolute ${pos} bottom-full mb-1.5 z-50 hidden group-hover:block w-64 sm:w-72 border border-stone-600 bg-stone-950 px-2.5 py-2 text-xs leading-relaxed text-stone-300 normal-case tracking-normal text-left shadow-xl`}>
         {children}
       </span>
     </span>
@@ -2151,14 +2151,14 @@ function InfoDot({ children, align = "center" }) {
 function StatRow({ label, value, suffix, hex, info, align, sub }) {
   return (
     <div className="mb-2">
-      <div className="flex items-center justify-between text-[10px] text-stone-500 tracking-wide">
+      <div className="flex items-center justify-between text-xs text-stone-500 tracking-wide">
         <span className="flex items-center">{label}<InfoDot align={align}>{info}</InfoDot></span>
         <span className="font-bold text-stone-200">{value}{suffix}</span>
       </div>
       <div className="h-1.5 bg-stone-800 mt-1">
         <div className="h-full transition-all" style={{ width: `${Math.max(0, Math.min(100, value))}%`, backgroundColor: hex }} />
       </div>
-      {sub && <div className="text-[9px] text-stone-500 mt-0.5 leading-snug">{sub}</div>}
+      {sub && <div className="text-[11px] text-stone-500 mt-0.5 leading-snug">{sub}</div>}
     </div>
   );
 }
@@ -2225,7 +2225,7 @@ function computeOrgLayout(seed) {
   });
 
   const height = gridY + maxRows * ORG_CARD_H + (maxRows - 1) * ORG_ROW_GAP + 3;
-  const root = { x: width / 2 - 32, y: rootY, w: 64, h: ORG_ROOT_H, cx: width / 2, cy: rootY + ORG_ROOT_H / 2 };
+  const root = { x: width / 2 - 38, y: rootY, w: 76, h: ORG_ROOT_H, cx: width / 2, cy: rootY + ORG_ROOT_H / 2 };
   return { cards, teamBoxes, root, width, height, headerY, gridY };
 }
 
@@ -2296,7 +2296,7 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
     <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
       <div className="flex items-center justify-between px-3 pt-2 flex-wrap gap-y-1">
         <div className="font-stencil text-lg tracking-wide text-stone-200">THE FLOOR</div>
-        <div className="flex items-center gap-3 text-[9px] text-stone-500 flex-wrap justify-end">
+        <div className="flex items-center gap-3 text-[11px] text-stone-500 flex-wrap justify-end">
           {SUPPORT_TIERS.map(t => (
             <span key={t.label} className="flex items-center gap-1">
               <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: t.hex }} />
@@ -2309,7 +2309,7 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
           </span>
         </div>
       </div>
-      <div className="flex items-center gap-3 text-[9px] text-stone-500 flex-wrap px-3 pb-1">
+      <div className="flex items-center gap-3 text-[11px] text-stone-500 flex-wrap px-3 pb-1">
         <span className="flex items-center gap-1">
           <span className="inline-block" style={{ width: 12, height: 2, backgroundColor: EDGE_SAME_TEAM }} />
           INFLUENCE WITHIN A TEAM
@@ -2366,14 +2366,14 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
         </g>
 
         <rect x={layout.root.x} y={layout.root.y} width={layout.root.w} height={layout.root.h} rx="1" fill="#1c1917" stroke="#44403c" strokeWidth="0.5" />
-        <text x={layout.root.cx} y={layout.root.y + 5} textAnchor="middle" fontSize="3.6" fill="#a8a29e" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.3">THE STUDIO</text>
-        <text x={layout.root.cx} y={layout.root.y + 9.5} textAnchor="middle" fontSize="2.6" fill="#57534e" fontFamily="'Courier New', monospace">{workers.length} WORKERS · PLAY-EYE RUNS THE FLOOR</text>
+        <text x={layout.root.cx} y={layout.root.y + 5} textAnchor="middle" fontSize="4" fill="#a8a29e" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.3">THE STUDIO</text>
+        <text x={layout.root.cx} y={layout.root.y + 9.5} textAnchor="middle" fontSize="2.9" fill="#57534e" fontFamily="'Courier New', monospace">{workers.length} WORKERS · PLAY-EYE RUNS THE FLOOR</text>
 
         {Object.entries(layout.teamBoxes).map(([team, tb]) => (
           <g key={team}>
             <rect x={tb.x} y={tb.y} width={tb.w} height={tb.h} rx="1" fill="#1c1917" stroke={TEAM_HEX[team]} strokeWidth="0.5" strokeOpacity="0.7" />
             <rect x={tb.x} y={tb.y} width={tb.w} height="1.4" fill={TEAM_HEX[team]} fillOpacity="0.8" />
-            <text x={tb.cx} y={tb.y + 7.4} textAnchor="middle" fontSize="4" fill="#d6d3d1" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.25">{TEAM_LABEL[team]}</text>
+            <text x={tb.cx} y={tb.y + 7.6} textAnchor="middle" fontSize="4.5" fill="#d6d3d1" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.25">{TEAM_LABEL[team]}</text>
           </g>
         ))}
 
@@ -2463,17 +2463,17 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
                 />
               )}
 
-              <text x={c.x + 3.6} y={c.y + 6.6} fontSize="3.9" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{w.name.toUpperCase()}</text>
-              <text x={c.x + c.w - 2.6} y={c.y + 7.6} textAnchor="end" fontSize="5.6" fontWeight="bold" fill={w.burned ? "#57534e" : tier.hex} fontFamily="'Courier New', monospace">{w.burned ? "—" : w.support}</text>
+              <text x={c.x + 3.6} y={c.y + 6.8} fontSize="4.3" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{w.name.toUpperCase()}</text>
+              <text x={c.x + c.w - 2.6} y={c.y + 7.8} textAnchor="end" fontSize="6" fontWeight="bold" fill={w.burned ? "#57534e" : tier.hex} fontFamily="'Courier New', monospace">{w.burned ? "—" : w.support}</text>
 
               <rect x={c.x + 3.6} y={c.y + 10.4} width="24" height="1.8" rx="0.5" fill="#292524" />
               <rect x={c.x + 3.6} y={c.y + 10.4} width={24 * (w.fulfillment / 100)} height="1.8" rx="0.5" fill={FULFILL_HEX} fillOpacity={w.burned ? 0.3 : 0.85} />
-              <text x={c.x + 29.4} y={c.y + 12.1} fontSize="2.4" fill="#78716c" fontFamily="'Courier New', monospace">{w.fulfillment}</text>
+              <text x={c.x + 29.4} y={c.y + 12.3} fontSize="2.8" fill="#78716c" fontFamily="'Courier New', monospace">{w.fulfillment}</text>
 
               {planLabels ? (
-                <text x={c.x + 3.6} y={c.y + 18} fontSize="2.6" fill="#fbbf24" fontFamily="'Courier New', monospace">{planLabels.join(" + ")}</text>
+                <text x={c.x + 3.6} y={c.y + 18} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), 21)}</text>
               ) : status ? (
-                <text x={c.x + 3.6} y={c.y + 18} fontSize="2.6" fill={w.organizer ? "#f59e0b" : "#2dd4bf"} fontFamily="'Courier New', monospace">{status}</text>
+                <text x={c.x + 3.6} y={c.y + 18} fontSize="2.9" fill={w.organizer ? "#f59e0b" : "#2dd4bf"} fontFamily="'Courier New', monospace">{status}</text>
               ) : null}
               {w.burned && (
                 <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#78716c" fontFamily="'Courier New', monospace">OUT OF PLAY</text>
@@ -2491,7 +2491,7 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
                   x={c.x + c.w - 2.6}
                   y={c.y + 18}
                   textAnchor="end"
-                  fontSize="3.4"
+                  fontSize="3.7"
                   fontWeight="bold"
                   fill={hl.delta > 0 ? "#2dd4bf" : "#f87171"}
                   fontFamily="'Courier New', monospace"
@@ -2499,8 +2499,8 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
               )}
               {notes && notes[w.id] && (
                 <g key={`note-${stepKey}-${w.id}`} className="note-float">
-                  <rect x={c.cx - 18} y={c.y - 8.6} width={36} height={6.6} rx={1} fill="#0c0a09" stroke="#57534e" strokeWidth="0.3" />
-                  <text x={c.cx} y={c.y - 4.2} textAnchor="middle" fontSize="2.5" fill="#e7e5e4" fontFamily="'Courier New', monospace">{truncateNote(notes[w.id], 27)}</text>
+                  <rect x={c.cx - 20} y={c.y - 8.8} width={40} height={7} rx={1} fill="#0c0a09" stroke="#57534e" strokeWidth="0.3" />
+                  <text x={c.cx} y={c.y - 4.2} textAnchor="middle" fontSize="2.8" fill="#e7e5e4" fontFamily="'Courier New', monospace">{truncateNote(notes[w.id], 22)}</text>
                 </g>
               )}
             </g>
@@ -2528,7 +2528,7 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
 
       <div className="border-t border-stone-800 px-3 py-2 min-h-[3.6rem]">
         {hovered ? (
-          <div className="text-[10px] text-stone-400 leading-snug">
+          <div className="text-xs text-stone-400 leading-snug">
             <span className={`font-bold ${supportTier(hovered.support).text}`}>{hovered.name}{hovered.burned ? " (OUT OF PLAY)" : ""}</span>
             <span className="text-stone-500"> ({TEAM_LABEL[hovered.team]}) — support <span className="text-stone-300 font-bold">{hovered.support}</span> · {fulfillmentLabel(hovered.fulfillment).toLowerCase()} ({hovered.fulfillment}){hovered.signed ? " · SIGNED" : ""}</span>
             <span className="text-stone-500"> — {hovered.hook}</span>
@@ -2546,7 +2546,7 @@ function Act1FloorMap({ workers, influence, layout = ORG_LAYOUT, planEntries = [
             </div>
           </div>
         ) : (
-          <div className="text-[10px] text-stone-500 leading-snug">
+          <div className="text-xs text-stone-500 leading-snug">
             <div>
               {anyRevealed
                 ? "The boxes are the company's chart. The arrows are who actually moves whom — they don't line up. Click anyone to plan."
@@ -3153,40 +3153,40 @@ function ActOneGame({ onGraduate, onPrototype }) {
       <div className="border-b-2 border-stone-800 bg-stone-900 px-4 py-3 sm:px-6 flex items-center justify-between flex-wrap gap-2">
         <div>
           <div className="font-stencil text-2xl sm:text-3xl tracking-wide text-amber-400">ONE SHOP</div>
-          <div className="text-[10px] sm:text-xs tracking-[0.2em] text-stone-500">ACT ONE — CARDS ON THE TABLE</div>
+          <div className="text-xs sm:text-sm tracking-[0.2em] text-stone-500">ACT ONE — CARDS ON THE TABLE</div>
         </div>
         {phase !== "intro" && (
-          <div className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm">
+          <div className="flex items-center gap-4 sm:gap-6 text-sm sm:text-base">
             <div className="text-center">
-              <div className="text-stone-500 text-[10px]">WEEK</div>
+              <div className="text-stone-500 text-xs">WEEK</div>
               <div className="text-lg font-bold text-stone-100">{week}</div>
             </div>
             <div className="text-center">
-              <div className="text-stone-500 text-[10px]">CARDS SIGNED</div>
+              <div className="text-stone-500 text-xs">CARDS SIGNED</div>
               <div className={`text-lg font-bold ${signedCount >= ACT1_CARDS_NEEDED ? "text-teal-400" : "text-amber-400"}`}>{signedCount} / {ACT1_CARDS_NEEDED}</div>
-              <div className="text-[9px] text-stone-600">{cardPct}% of {ACT1_TOTAL_WORKERS} — need {Math.round(ACT1_CARD_THRESHOLD * 100)}%</div>
+              <div className="text-[11px] text-stone-600">{cardPct}% of {ACT1_TOTAL_WORKERS} — need {Math.round(ACT1_CARD_THRESHOLD * 100)}%</div>
             </div>
             {stage === "campaign" && (
               <div className="text-center">
-                <div className="text-stone-500 text-[10px] flex items-center gap-1"><Vote size={11} /> BALLOT IN</div>
+                <div className="text-stone-500 text-xs flex items-center gap-1"><Vote size={11} /> BALLOT IN</div>
                 <div className={`text-lg font-bold ${weeksToVote <= 1 ? "text-red-500" : "text-amber-400"}`}>{Math.max(0, weeksToVote)} wk</div>
-                <div className="text-[9px] text-stone-600">filed week {filedWeek}</div>
+                <div className="text-[11px] text-stone-600">filed week {filedWeek}</div>
               </div>
             )}
             <div className="text-center">
-              <div className="text-stone-500 text-[10px]">COMMITTEE</div>
+              <div className="text-stone-500 text-xs">COMMITTEE</div>
               <div className="text-lg font-bold text-stone-100">{organizers.length}</div>
-              <div className="text-[9px] text-stone-600">{totalHours} hrs/week</div>
+              <div className="text-[11px] text-stone-600">{totalHours} hrs/week</div>
             </div>
             <div className="text-center">
-              <div className="text-stone-500 text-[10px] flex items-center gap-1"><Eye size={11} /> HEAT</div>
+              <div className="text-stone-500 text-xs flex items-center gap-1"><Eye size={11} /> HEAT</div>
               <div className={`text-lg font-bold ${heat >= 60 ? "text-red-500" : heat >= 35 ? "text-amber-400" : "text-teal-400"}`}>{heat}</div>
             </div>
             {consultant.active && (
               <div className="text-center">
-                <div className="text-stone-500 text-[10px] flex items-center gap-1"><AlertTriangle size={11} /> ON SITE</div>
+                <div className="text-stone-500 text-xs flex items-center gap-1"><AlertTriangle size={11} /> ON SITE</div>
                 <div className="text-lg font-bold text-red-500">{CONSULTANT_NAME.toUpperCase()}</div>
-                <div className="text-[9px] text-stone-600">since week {consultant.arrivedWeek}</div>
+                <div className="text-[11px] text-stone-600">since week {consultant.arrivedWeek}</div>
               </div>
             )}
           </div>
@@ -3203,21 +3203,21 @@ function ActOneGame({ onGraduate, onPrototype }) {
       )}
 
       {phase === "plan" && (
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           {unlockMapping && !anyRevealedBeyondStart && (
-            <div className="mb-4 flex items-start gap-2 text-amber-300 text-xs border border-amber-700 bg-amber-950/30 px-3 py-2">
+            <div className="mb-4 flex items-start gap-2 text-amber-300 text-sm border border-amber-700 bg-amber-950/30 px-3 py-2">
               <Radio size={14} className="shrink-0 mt-0.5" />
               <span><span className="font-bold text-amber-400">NEW — MAP THE FLOOR.</span> Influence is relationship-specific, and most of it is invisible. Spend 2 hours mapping to find out who actually moves whom — including relationships your own people don't have.</span>
             </div>
           )}
           {unlockPublic && !anyPublicDone && (
-            <div className="mb-4 flex items-start gap-2 text-teal-300 text-xs border border-teal-700 bg-teal-950/30 px-3 py-2">
+            <div className="mb-4 flex items-start gap-2 text-teal-300 text-sm border border-teal-700 bg-teal-950/30 px-3 py-2">
               <Megaphone size={14} className="shrink-0 mt-0.5" />
               <span><span className="font-bold text-teal-400">NEW — PUBLIC ACTIONS.</span> Instead of one conversation, have one of your people do something visible. It moves everyone they carry weight with at once, in proportion to that weight. The bigger the action, the bigger the ripple — and the bigger the chance management pulls them out of play.</span>
             </div>
           )}
           {anyRecruitable && (
-            <div className="mb-4 flex items-start gap-2 text-teal-300 text-xs border border-teal-700 bg-teal-950/30 px-3 py-2">
+            <div className="mb-4 flex items-start gap-2 text-teal-300 text-sm border border-teal-700 bg-teal-950/30 px-3 py-2">
               <UsersRound size={14} className="shrink-0 mt-0.5" />
               <span><span className="font-bold text-teal-400">SOMEONE'S READY TO ORGANIZE.</span> A signer with strong support can join the committee — {ACT1_HOURS_PER_ORGANIZER} more hours a week, and their relationships become yours to use.</span>
             </div>
@@ -3227,23 +3227,23 @@ function ActOneGame({ onGraduate, onPrototype }) {
             <div className="mb-4 border-2 border-amber-700 bg-amber-950/20 px-3 py-3">
               <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
                 <div className="font-stencil text-lg tracking-wide text-amber-400">THE BALLOT IS {Math.max(0, weeksToVote)} WEEK{weeksToVote === 1 ? "" : "S"} OUT</div>
-                <div className="text-[10px] text-stone-400">Petition filed week {filedWeek} with {signedCount} cards ({cardPct}%)</div>
+                <div className="text-xs text-stone-400">Petition filed week {filedWeek} with {signedCount} cards ({cardPct}%)</div>
               </div>
               <div className="grid grid-cols-3 gap-2 mb-2">
                 <div className="border border-teal-800 bg-teal-950/30 p-2 text-center">
-                  <div className="text-[9px] text-stone-500 tracking-wide">PROJECTED YES</div>
+                  <div className="text-[11px] text-stone-500 tracking-wide">PROJECTED YES</div>
                   <div className="text-2xl font-bold text-teal-400">{projection.yes}</div>
                 </div>
                 <div className="border border-red-800 bg-red-950/30 p-2 text-center">
-                  <div className="text-[9px] text-stone-500 tracking-wide">PROJECTED NO</div>
+                  <div className="text-[11px] text-stone-500 tracking-wide">PROJECTED NO</div>
                   <div className="text-2xl font-bold text-red-400">{projection.no}</div>
                 </div>
                 <div className="border border-stone-700 p-2 text-center">
-                  <div className="text-[9px] text-stone-500 tracking-wide">WON'T VOTE</div>
+                  <div className="text-[11px] text-stone-500 tracking-wide">WON'T VOTE</div>
                   <div className="text-2xl font-bold text-stone-400">{projection.out}</div>
                 </div>
               </div>
-              <div className="text-[10px] text-stone-400 leading-relaxed">
+              <div className="text-xs text-stone-400 leading-relaxed">
                 It takes a majority of the ballots actually cast — <span className="text-stone-200 font-bold">{projection.yes > projection.no ? "you are ahead on today's numbers" : "you are behind on today's numbers"}</span>.
                 This is an estimate, not a promise: the booth is secret, people who signed still vote no, and every week between now and the ballot is a week the employer campaigns and you lose ground. A one-vote projection is a loss waiting to happen.
               </div>
@@ -3255,7 +3255,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="flex-1 min-w-[16rem]">
                   <div className="font-stencil text-lg tracking-wide text-teal-400">YOU CAN FILE TODAY</div>
-                  <div className="text-[10px] text-stone-400 leading-relaxed mt-1">
+                  <div className="text-xs text-stone-400 leading-relaxed mt-1">
                     {signedCount} of {ACT1_TOTAL_WORKERS} cards is {cardPct}% — past the 30% the NLRB requires to petition for an election.
                     Filing starts a {ELECTION_WEEKS}-week clock you cannot stop, and the vote needs a majority of ballots cast, not 30%.
                     On today's support that ballot projects <span className="text-teal-400 font-bold">{projection.yes} yes</span> to <span className="text-red-400 font-bold">{projection.no} no</span>, with {projection.out} not voting.
@@ -3273,7 +3273,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
           )}
 
           {consultant.active && (
-            <div className="mb-4 flex items-start gap-2 text-red-300 text-xs border border-red-800 bg-red-950/30 px-3 py-2">
+            <div className="mb-4 flex items-start gap-2 text-red-300 text-sm border border-red-800 bg-red-950/30 px-3 py-2">
               <AlertTriangle size={14} className="shrink-0 mt-0.5" />
               <span>
                 <span className="font-bold text-red-400">{CONSULTANT_NAME.toUpperCase()} IS ON SITE.</span> Management is paying a union-avoidance
@@ -3294,11 +3294,11 @@ function ActOneGame({ onGraduate, onPrototype }) {
           <div className="border-2 border-stone-800 bg-stone-900 p-4">
             <div className="flex items-center justify-between mb-2">
               <div className="font-stencil text-lg tracking-wide text-stone-200">PLAN WEEK {week}</div>
-              <div className={`text-sm font-bold ${overBudget ? "text-red-500" : totalUsed === totalHours ? "text-teal-400" : "text-amber-400"}`}>
+              <div className={`text-base font-bold ${overBudget ? "text-red-500" : totalUsed === totalHours ? "text-teal-400" : "text-amber-400"}`}>
                 {totalUsed} / {totalHours} HOURS
               </div>
             </div>
-            <p className="text-[10px] text-stone-500 mb-3">
+            <p className="text-xs text-stone-500 mb-3">
               Each person on the committee has {ACT1_HOURS_PER_ORGANIZER} hours a week. Click anyone on the floor to assign one of them a conversation, an ask, or a public action.
             </p>
             <div className="space-y-2 mb-3">
@@ -3308,19 +3308,19 @@ function ActOneGame({ onGraduate, onPrototype }) {
                 return (
                   <div key={o.id} className={`border px-3 py-2 ${left < 0 ? "border-red-700 bg-red-950/20" : "border-stone-700"}`}>
                     <div className="flex items-center justify-between">
-                      <button onClick={() => setSelectedWorker(o)} className="text-xs font-bold text-amber-400 hover:text-amber-300 transition-colors">
+                      <button onClick={() => setSelectedWorker(o)} className="text-sm font-bold text-amber-400 hover:text-amber-300 transition-colors">
                         {o.name} <span className="text-stone-500 font-normal">({TEAM_LABEL[o.team]})</span>
                       </button>
-                      <span className={`text-[10px] font-bold ${left < 0 ? "text-red-400" : left === 0 ? "text-teal-400" : "text-stone-400"}`}>
+                      <span className={`text-xs font-bold ${left < 0 ? "text-red-400" : left === 0 ? "text-teal-400" : "text-stone-400"}`}>
                         {left} of {hoursFor(o)} hrs left{o.shaken > 0 ? " — under watch this week" : ""}
                       </span>
                     </div>
                     {mine.length === 0 ? (
-                      <div className="text-[10px] text-stone-600 italic mt-1">Idle this week.</div>
+                      <div className="text-xs text-stone-600 italic mt-1">Idle this week.</div>
                     ) : (
                       <div className="mt-1 space-y-0.5">
                         {mine.map(e => (
-                          <div key={e.key} className="flex items-center justify-between text-[10px] text-stone-300">
+                          <div key={e.key} className="flex items-center justify-between text-xs text-stone-300">
                             <span>▸ {ACT1_ACTION[e.type].label}{e.targetId ? ` — ${workers.find(x => x.id === e.targetId)?.name}` : ""} <span className="text-stone-600">({ACT1_ACTION[e.type].hours}h)</span></span>
                             <button onClick={() => removePlan(e.key)} className="text-stone-600 hover:text-red-400 transition-colors">✕</button>
                           </div>
@@ -3343,7 +3343,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
       )}
 
       {resStep && (
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           <Act1FloorMap
             workers={resStep.workers}
             influence={influence}
@@ -3356,19 +3356,19 @@ function ActOneGame({ onGraduate, onPrototype }) {
             notes={resNotes}
           />
           <div className="flex items-center justify-between gap-3 mb-2">
-            <div className="flex-1 min-h-[1.5rem] text-xs text-stone-400 font-mono">
-              <div className="text-[10px] text-amber-400 tracking-widest">{resStep.label}</div>
+            <div className="flex-1 min-h-[1.5rem] text-sm text-stone-400 font-mono">
+              <div className="text-xs text-amber-400 tracking-widest">{resStep.label}</div>
               {resBanner.map((line, i) => <div key={`${stepIndex}-${i}`}>▸ {line}</div>)}
             </div>
-            <button onClick={commitWeek} className="shrink-0 text-[10px] text-stone-500 hover:text-amber-400 underline transition-colors">
+            <button onClick={commitWeek} className="shrink-0 text-xs text-stone-500 hover:text-amber-400 underline transition-colors">
               SKIP ▸▸
             </button>
           </div>
           {resolutionSteps.slice(0, stepIndex + 1).some(s => s.lines.length > 0) && (
-            <div ref={resLogRef} className="bg-stone-950/60 border border-stone-800 p-2 space-y-0.5 max-h-24 overflow-y-auto">
+            <div ref={resLogRef} className="bg-stone-950/60 border border-stone-800 p-2 space-y-0.5 max-h-28 overflow-y-auto">
               {resolutionSteps.slice(0, stepIndex + 1).map((s, si) =>
                 s.lines.map((line, li) => (
-                  <div key={`${si}-${li}`} className={`text-[10px] font-mono ${si === stepIndex ? "text-stone-400" : "text-stone-600"}`}>▸ {line}</div>
+                  <div key={`${si}-${li}`} className={`text-xs font-mono ${si === stepIndex ? "text-stone-400" : "text-stone-600"}`}>▸ {line}</div>
                 ))
               )}
             </div>
@@ -3406,11 +3406,11 @@ function ActOneGame({ onGraduate, onPrototype }) {
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto" onClick={() => setShowFilePrompt(false)}>
           <div className="bg-stone-900 border-2 border-teal-800 max-w-lg w-full p-5 my-auto" onClick={e => e.stopPropagation()}>
             <div className="font-stencil text-2xl text-teal-400 mb-1">FILE THE PETITION?</div>
-            <p className="text-xs text-stone-400 leading-relaxed mb-3">
+            <p className="text-sm text-stone-400 leading-relaxed mb-3">
               You have {signedCount} cards out of {ACT1_TOTAL_WORKERS} — {cardPct}% of the unit. Thirty percent is all the labor board
               needs to schedule an election. It is not what wins one.
             </p>
-            <div className="border border-stone-700 bg-stone-950/60 p-3 mb-3 space-y-2 text-[11px] text-stone-400 leading-relaxed">
+            <div className="border border-stone-700 bg-stone-950/60 p-3 mb-3 space-y-2 text-[13px] text-stone-400 leading-relaxed">
               <div>
                 <span className="text-stone-200 font-bold">What filing does.</span> You demand recognition and petition the NLRB the same day.
                 If the count is lopsided enough the company may recognize you outright and skip the vote — that is rare, and rarer still
@@ -3426,13 +3426,13 @@ function ActOneGame({ onGraduate, onPrototype }) {
               </div>
             </div>
             <div className="border border-stone-700 p-3 mb-4">
-              <div className="text-[10px] text-stone-500 tracking-wide mb-1">TODAY'S PROJECTION, BEFORE ANY OF THAT</div>
-              <div className="flex items-center gap-4 text-sm">
+              <div className="text-xs text-stone-500 tracking-wide mb-1">TODAY'S PROJECTION, BEFORE ANY OF THAT</div>
+              <div className="flex items-center gap-4 text-base">
                 <span className="text-teal-400 font-bold">{projection.yes} YES</span>
                 <span className="text-red-400 font-bold">{projection.no} NO</span>
                 <span className="text-stone-500">{projection.out} not voting</span>
               </div>
-              <div className={`text-[10px] mt-1 ${projection.yes > projection.no + 2 ? "text-teal-400" : "text-red-400"}`}>
+              <div className={`text-xs mt-1 ${projection.yes > projection.no + 2 ? "text-teal-400" : "text-red-400"}`}>
                 {projection.yes > projection.no + 2
                   ? "A real cushion. This is roughly where organizers actually file."
                   : projection.yes > projection.no
@@ -3455,11 +3455,11 @@ function ActOneGame({ onGraduate, onPrototype }) {
       {phase === "filed" && (
         <div className="max-w-xl mx-auto px-6 py-16 text-center anim-rise">
           <div className="font-stencil text-4xl mb-3 text-amber-400">THE PETITION IS IN</div>
-          <p className="text-stone-400 mb-4 leading-relaxed text-sm">
+          <p className="text-stone-400 mb-4 leading-relaxed text-base">
             You demanded recognition with {signedCount} cards. The company declined, the way companies almost always do, and the
             matter goes to the labor board. An election is scheduled for <span className="text-stone-100 font-bold">week {electionWeek}</span>.
           </p>
-          <p className="text-stone-500 mb-6 leading-relaxed text-xs">
+          <p className="text-stone-500 mb-6 leading-relaxed text-sm">
             {CONSULTANT_NAME} is now on the floor full time. There will be a mandatory meeting every week between now and the ballot,
             and he will sit down with everyone who looks like they might waver. You have {ELECTION_WEEKS} weeks and the same hours you always had.
           </p>
@@ -3537,7 +3537,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
       {phase !== "intro" && (
         <div className="fixed bottom-2 left-2 z-40">
           {confirmStartOver ? (
-            <div className="flex items-center gap-2 bg-stone-900 border border-stone-700 px-2 py-1.5 text-[10px]">
+            <div className="flex items-center gap-2 bg-stone-900 border border-stone-700 px-2 py-1.5 text-xs">
               <span className="text-stone-500">Restart Act One from scratch?</span>
               <button onClick={startOver} className="text-red-400 hover:text-red-300 font-bold">YES</button>
               <button onClick={() => setConfirmStartOver(false)} className="text-stone-500 hover:text-stone-300">CANCEL</button>
@@ -3545,7 +3545,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
           ) : (
             <button
               onClick={() => setConfirmStartOver(true)}
-              className="text-[10px] text-stone-600 hover:text-stone-400 underline transition-colors"
+              className="text-xs text-stone-600 hover:text-stone-400 underline transition-colors"
             >
               Start Over
             </button>
@@ -3558,7 +3558,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
           <button
             onClick={() => graduate(false)}
             title="Jumps to Act Two for testing without saving over your real Act One progress."
-            className="text-[10px] text-stone-600 hover:text-stone-400 underline transition-colors"
+            className="text-xs text-stone-600 hover:text-stone-400 underline transition-colors"
           >
             Skip to Phase 2 (playtest — doesn't save)
           </button>
@@ -3566,7 +3566,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
             <button
               onClick={onPrototype}
               title="A vertical slice of the proposed first-contract act. Doesn't save."
-              className="text-[10px] text-stone-600 hover:text-amber-400 underline transition-colors ml-3"
+              className="text-xs text-stone-600 hover:text-amber-400 underline transition-colors ml-3"
             >
               First Contract prototype
             </button>
@@ -3623,15 +3623,15 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
           <button onClick={onClose}><X size={18} className="text-stone-500 hover:text-stone-200" /></button>
         </div>
         <div className="flex items-center gap-2 mb-2 flex-wrap">
-          <span className={`text-xs font-bold ${supportTier(worker.support).text}`}>{supportTier(worker.support).label}</span>
-          <span className="flex items-center gap-1 text-[10px] text-stone-500">
+          <span className={`text-sm font-bold ${supportTier(worker.support).text}`}>{supportTier(worker.support).label}</span>
+          <span className="flex items-center gap-1 text-xs text-stone-500">
             <span className="inline-block w-2 h-2" style={{ backgroundColor: TEAM_HEX[worker.team] }} />
             {TEAM_LABEL[worker.team]}
           </span>
-          {worker.signed && <span className="text-[10px] font-bold text-teal-400 border border-teal-800 px-1.5">CARD SIGNED</span>}
-          {worker.organizer && <span className="text-[10px] font-bold text-amber-400 border border-amber-800 px-1.5">ON THE COMMITTEE</span>}
+          {worker.signed && <span className="text-xs font-bold text-teal-400 border border-teal-800 px-1.5">CARD SIGNED</span>}
+          {worker.organizer && <span className="text-xs font-bold text-amber-400 border border-amber-800 px-1.5">ON THE COMMITTEE</span>}
         </div>
-        <p className="text-xs text-stone-400 mb-4">{worker.hook}</p>
+        <p className="text-sm text-stone-400 mb-4">{worker.hook}</p>
 
         <div className="border border-stone-800 bg-stone-950/50 p-3 mb-4">
           <StatRow
@@ -3651,11 +3651,11 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
             sub={`${fulfillmentLabel(worker.fulfillment)} — this says nothing about whether they'll sign, only about who can move them.`}
           />
           <div className="mb-1">
-            <div className="flex items-center justify-between text-[10px] text-stone-500 tracking-wide">
+            <div className="flex items-center justify-between text-xs text-stone-500 tracking-wide">
               <span className="flex items-center">INFLUENCE<InfoDot align="left">{STAT_INFO.influence}</InfoDot></span>
               <span className="font-bold text-stone-200">{out.length ? `${out.length} mapped relationship${out.length === 1 ? "" : "s"}` : "none mapped"}</span>
             </div>
-            <div className="text-[10px] text-stone-400 mt-1 leading-relaxed">
+            <div className="text-xs text-stone-400 mt-1 leading-relaxed">
               {out.length > 0 ? (
                 <span>Moves <span className="text-amber-400">{out.map(t => `${nameOf(t.id)} (${t.weight})`).join(", ")}</span>.</span>
               ) : (
@@ -3674,7 +3674,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
               const backing = signedBacking(influence, allWorkers, worker.id);
               const shield = backing >= 90 ? "well covered" : backing >= 45 ? "partly covered" : "exposed";
               return (
-                <div className={`text-[10px] mt-1.5 border-t border-stone-800 pt-1.5 ${backing >= 45 ? "text-stone-400" : "text-red-400"}`}>
+                <div className={`text-xs mt-1.5 border-t border-stone-800 pt-1.5 ${backing >= 45 ? "text-stone-400" : "text-red-400"}`}>
                   Against {CONSULTANT_NAME}: <span className="font-bold">{shield}</span> — {backing} points of influence on them comes from people who've already signed.
                   {worker.pressuredCount > 0 && ` ${CONSULTANT_NAME} has worked on them ${worker.pressuredCount === 1 ? "once" : `${worker.pressuredCount} times`} so far.`}
                 </div>
@@ -3685,23 +3685,23 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
 
         {worker.history.length > 0 && (
           <div className="mb-4">
-            <div className="text-[10px] text-stone-500 font-bold mb-1 tracking-wide">HISTORY</div>
-            <div className="bg-stone-950 border border-stone-800 p-2 max-h-24 overflow-y-auto space-y-1">
-              {worker.history.map((h, i) => (<div key={i} className="text-[10px] text-stone-400">▸ {h}</div>))}
+            <div className="text-xs text-stone-500 font-bold mb-1 tracking-wide">HISTORY</div>
+            <div className="bg-stone-950 border border-stone-800 p-2 max-h-28 overflow-y-auto space-y-1">
+              {worker.history.map((h, i) => (<div key={i} className="text-xs text-stone-400">▸ {h}</div>))}
             </div>
           </div>
         )}
 
         {worker.burned ? (
-          <div className="text-xs text-red-400">This person is out of play for the rest of the campaign.</div>
+          <div className="text-sm text-red-400">This person is out of play for the rest of the campaign.</div>
         ) : isSelfPanel ? (
           <div className="space-y-2">
-            <div className="text-[10px] text-stone-500 tracking-wide">
+            <div className="text-xs text-stone-500 tracking-wide">
               {worker.name} HAS <span className="text-amber-400 font-bold">{hoursLeftFor(worker)}</span> OF {hoursFor(worker)} HOURS LEFT
               {worker.shaken > 0 && <span className="text-red-400"> — under a manager's eye this week</span>}
             </div>
             {!unlockPublic && (
-              <div className="text-[10px] text-stone-600 italic border border-stone-800 px-3 py-2">
+              <div className="text-xs text-stone-600 italic border border-stone-800 px-3 py-2">
                 Right now {worker.name} can only have conversations. Click someone else on the floor to plan one.
               </div>
             )}
@@ -3716,21 +3716,21 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                   onClick={() => onPlan(worker.id, tier)}
                   className={`w-full text-left border-2 px-3 py-2 transition-colors ${affordable ? "border-stone-700 hover:bg-stone-800/60" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
                 >
-                  <div className="text-xs text-stone-100 flex justify-between">
+                  <div className="text-sm text-stone-100 flex justify-between">
                     <span>{ACT1_ACTION[tier].label}</span>
                     <span className="text-stone-500">{ACT1_ACTION[tier].hours}h</span>
                   </div>
-                  <div className="text-[10px] text-stone-400 leading-snug mt-0.5">{t.blurb}</div>
-                  <div className="text-[10px] text-teal-400 leading-snug mt-0.5">
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">{t.blurb}</div>
+                  <div className="text-xs text-teal-400 leading-snug mt-0.5">
                     Reaches {p.count} coworker{p.count === 1 ? "" : "s"} along their influence{p.knownCount > 0 ? ` — about +${p.total} support in total across the ${p.knownCount} you've mapped` : ", none of them mapped yet"}.
                   </div>
                   {p.uses > 0 && (
-                    <div className="text-[10px] text-amber-500 leading-snug mt-0.5">
+                    <div className="text-xs text-amber-500 leading-snug mt-0.5">
                       {worker.name} has already done this {p.uses === 1 ? "once" : `${p.uses} times`} — it isn't news anymore. Escalating lands harder than repeating.
                     </div>
                   )}
                   {t.burn > 0 && (
-                    <div className="text-[10px] text-red-400 leading-snug mt-0.5">
+                    <div className="text-xs text-red-400 leading-snug mt-0.5">
                       Exposure risk: {tier === "large" ? "high" : "some"}. If management moves on them, they're out of the campaign and everyone they carry loses ground.
                     </div>
                   )}
@@ -3743,16 +3743,16 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                 onClick={() => onPlan(worker.id, "map")}
                 className={`w-full text-left border-2 px-3 py-2 transition-colors ${hoursLeftFor(worker) >= ACT1_ACTION.map.hours ? "border-stone-700 hover:bg-stone-800/60" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
               >
-                <div className="text-xs text-stone-100 flex justify-between"><span>{ACT1_ACTION.map.label}</span><span className="text-stone-500">{ACT1_ACTION.map.hours}h</span></div>
-                <div className="text-[10px] text-stone-400 leading-snug mt-0.5">Spend the week listening instead of talking. Reveals who moves three more people — and by how much.</div>
+                <div className="text-sm text-stone-100 flex justify-between"><span>{ACT1_ACTION.map.label}</span><span className="text-stone-500">{ACT1_ACTION.map.hours}h</span></div>
+                <div className="text-xs text-stone-400 leading-snug mt-0.5">Spend the week listening instead of talking. Reveals who moves three more people — and by how much.</div>
               </button>
             )}
           </div>
         ) : others.length === 0 ? (
-          <div className="text-xs text-stone-500">Nobody on the committee is free to work on {worker.name} right now.</div>
+          <div className="text-sm text-stone-500">Nobody on the committee is free to work on {worker.name} right now.</div>
         ) : (
           <div>
-            <div className="text-[10px] text-stone-500 font-bold mb-1 tracking-wide">WHO DOES IT</div>
+            <div className="text-xs text-stone-500 font-bold mb-1 tracking-wide">WHO DOES IT</div>
             <div className="flex flex-wrap gap-1.5 mb-2">
               {others.map(o => {
                 const wgt = infOn(influence, o.id, worker.id);
@@ -3764,8 +3764,8 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                     onClick={() => setActorId(o.id)}
                     className={`border px-2 py-1 text-left transition-colors ${selected ? "border-amber-500 bg-amber-950/30" : "border-stone-700 hover:bg-stone-800/60"}`}
                   >
-                    <div className="text-[11px] text-stone-100">{o.name}</div>
-                    <div className={`text-[9px] ${hoursLeftFor(o) <= 0 ? "text-red-400" : "text-stone-500"}`}>
+                    <div className="text-[13px] text-stone-100">{o.name}</div>
+                    <div className={`text-[11px] ${hoursLeftFor(o) <= 0 ? "text-red-400" : "text-stone-500"}`}>
                       {hoursLeftFor(o)}h left · influence {wgtKnown ? wgt : "?"}
                     </div>
                   </button>
@@ -3773,7 +3773,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
               })}
             </div>
             {actor && (
-              <div className="text-[10px] text-stone-400 border border-stone-800 bg-stone-950/50 px-2.5 py-2 mb-3 leading-relaxed">
+              <div className="text-xs text-stone-400 border border-stone-800 bg-stone-950/50 px-2.5 py-2 mb-3 leading-relaxed">
                 {weightKnown ? (
                   <>
                     <span className="text-stone-300 font-bold">{actor.name} → {worker.name}: influence {weight}.</span>{" "}
@@ -3798,11 +3798,11 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                   onClick={() => onPlan(actor.id, type, worker.id)}
                   className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford(type) ? "border-stone-700 hover:bg-stone-800/60" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
                 >
-                  <div className="text-xs text-stone-100 flex justify-between">
+                  <div className="text-sm text-stone-100 flex justify-between">
                     <span>{ACT1_ACTION[type].label}</span>
                     <span className="text-stone-500">{ACT1_ACTION[type].hours}h</span>
                   </div>
-                  <div className="text-[10px] text-stone-400 leading-snug mt-0.5">
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">
                     {weightKnown ? "+" : "≈+"}{gains[type]} support for {worker.name}.
                     {type === "deep" ? " A real sit-down — the kind of conversation that only works if they'd take the call." : " Cheap, fast, shallow."}
                   </div>
@@ -3815,20 +3815,20 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                   onClick={() => onPlan(actor.id, "ask", worker.id)}
                   className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("ask") ? "border-teal-800 hover:bg-teal-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
                 >
-                  <div className="text-xs text-teal-300 flex justify-between">
+                  <div className="text-sm text-teal-300 flex justify-between">
                     <span>{ACT1_ACTION.ask.label}</span>
                     <span className="text-stone-500">{ACT1_ACTION.ask.hours}h</span>
                   </div>
-                  <div className="text-[10px] text-stone-400 leading-snug mt-0.5">
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">
                     {worker.support < 46
                       ? "They are nowhere near ready. Asking now would be worse than not asking."
                       : `${weightKnown ? "~" : "≈"}${pctOf(chance)}% they sign, from ${actor.name}.`}
                     {worker.askedRecently > 0 && " They were asked recently — it's a harder sell right now."}
                   </div>
-                  <div className="text-[10px] text-stone-500 leading-snug mt-0.5">
+                  <div className="text-xs text-stone-500 leading-snug mt-0.5">
                     Odds are read off their support before this week's conversations land — talk to them first and the ask gets easier.
                   </div>
-                  <div className="text-[10px] text-red-400 leading-snug mt-0.5">If they say no: −5 support, and the next ask is harder.</div>
+                  <div className="text-xs text-red-400 leading-snug mt-0.5">If they say no: −5 support, and the next ask is harder.</div>
                 </button>
               )}
 
@@ -3838,11 +3838,11 @@ function Act1WorkerModal({ worker, allWorkers, influence, organizers, hoursLeftF
                   onClick={() => onPlan(actor.id, "recruit", worker.id)}
                   className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("recruit") && worker.support >= ACT1_RECRUIT_REQ ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
                 >
-                  <div className="text-xs text-amber-300 flex justify-between">
+                  <div className="text-sm text-amber-300 flex justify-between">
                     <span>{ACT1_ACTION.recruit.label}</span>
                     <span className="text-stone-500">{ACT1_ACTION.recruit.hours}h</span>
                   </div>
-                  <div className="text-[10px] text-stone-400 leading-snug mt-0.5">
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">
                     {worker.support < ACT1_RECRUIT_REQ
                       ? `Needs ${ACT1_RECRUIT_REQ} support to take this on — they're at ${worker.support}.`
                       : `${worker.name} starts organizing too: +${ACT1_HOURS_PER_ORGANIZER} hours every week, and their relationships become yours to direct.`}
@@ -4128,30 +4128,30 @@ function ContractPrototype({ onExit }) {
       <div className="border-b-2 border-stone-800 bg-stone-900 px-4 py-3 sm:px-6 flex items-center justify-between flex-wrap gap-2">
         <div>
           <div className="font-stencil text-2xl sm:text-3xl tracking-wide text-amber-400">THE FIRST CONTRACT</div>
-          <div className="text-[10px] sm:text-xs tracking-[0.2em] text-stone-500">PROTOTYPE SLICE — NOT A FINISHED ACT</div>
+          <div className="text-xs sm:text-sm tracking-[0.2em] text-stone-500">PROTOTYPE SLICE — NOT A FINISHED ACT</div>
         </div>
-        <div className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm">
+        <div className="flex items-center gap-4 sm:gap-6 text-sm sm:text-base">
           <div className="text-center">
-            <div className="text-stone-500 text-[10px]">MONTH</div>
+            <div className="text-stone-500 text-xs">MONTH</div>
             <div className="text-lg font-bold text-stone-100">{Math.min(turn, CONTRACT_MONTHS)} / {CONTRACT_MONTHS}</div>
           </div>
           <div className="text-center">
-            <div className="text-stone-500 text-[10px]">CERT YEAR</div>
+            <div className="text-stone-500 text-xs">CERT YEAR</div>
             <div className={`text-lg font-bold ${monthsLeft <= 2 ? "text-red-500" : monthsLeft <= 4 ? "text-amber-400" : "text-teal-400"}`}>{Math.max(0, monthsLeft)} left</div>
           </div>
           <div className="text-center">
-            <div className="text-stone-500 text-[10px]">LEVERAGE</div>
+            <div className="text-stone-500 text-xs">LEVERAGE</div>
             <div className="text-lg font-bold text-amber-400">{leverage}</div>
-            <div className="text-[9px] text-stone-600">cools to {cooled}</div>
+            <div className="text-[11px] text-stone-600">cools to {cooled}</div>
           </div>
           <div className="text-center">
-            <div className="text-stone-500 text-[10px]">CONTRACT</div>
+            <div className="text-stone-500 text-xs">CONTRACT</div>
             <div className="text-lg font-bold text-teal-400">{contractTierSum(issues)} / {CONTRACT_MAX_TIERS}</div>
           </div>
           <div className="text-center">
-            <div className="text-stone-500 text-[10px]">ACTION TEAM</div>
+            <div className="text-stone-500 text-xs">ACTION TEAM</div>
             <div className="text-lg font-bold text-stone-100">{cat.length}</div>
-            <div className="text-[9px] text-stone-600">{totalHours} hrs</div>
+            <div className="text-[11px] text-stone-600">{totalHours} hrs</div>
           </div>
         </div>
       </div>
@@ -4202,9 +4202,9 @@ function ContractPrototype({ onExit }) {
       )}
 
       {(phase === "plan" || phase === "result") && (
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 anim-rise">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           {turn === 1 && phase === "plan" && (
-            <div className="mb-4 flex items-start gap-2 text-stone-300 text-xs border border-stone-700 bg-stone-900/60 px-3 py-2">
+            <div className="mb-4 flex items-start gap-2 text-stone-300 text-sm border border-stone-700 bg-stone-900/60 px-3 py-2">
               <Megaphone size={14} className="shrink-0 mt-0.5" />
               <span>You won the election. Now the company has to bargain — but not to agree. The number on each card is <span className="text-stone-100 font-bold">commitment</span>: whether they'll actually do something, not whether they support the union. Run an action, and whatever turnout you get is the only argument the company answers to.</span>
             </div>
@@ -4214,7 +4214,7 @@ function ContractPrototype({ onExit }) {
           <div className="border-2 border-stone-800 bg-stone-900 p-4 mb-6">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
               <div className="font-stencil text-lg tracking-wide text-stone-200">AT THE TABLE</div>
-              <div className="text-xs text-stone-400">Spend leverage to move an issue. You will not be able to afford everything — and it cools 20% a month if you sit on it.</div>
+              <div className="text-sm text-stone-400">Spend leverage to move an issue. You will not be able to afford everything — and it cools 20% a month if you sit on it.</div>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               {CONTRACT_ISSUES.map(def => {
@@ -4224,20 +4224,20 @@ function ContractPrototype({ onExit }) {
                 const afford = !maxed && leverage >= cost;
                 return (
                   <div key={def.id} className={`border p-2.5 ${maxed ? "border-teal-800 bg-teal-950/20" : "border-stone-700"}`}>
-                    <div className="text-[10px] tracking-wide text-stone-500 mb-1">{def.label}</div>
-                    <div className="text-xs text-stone-200 leading-snug mb-2 min-h-[3rem]">{def.tiers[cur.tier]}</div>
+                    <div className="text-xs tracking-wide text-stone-500 mb-1">{def.label}</div>
+                    <div className="text-sm text-stone-200 leading-snug mb-2 min-h-[3rem]">{def.tiers[cur.tier]}</div>
                     <div className="flex items-center gap-1 mb-2">
                       {[0, 1, 2].map(t => (
                         <div key={t} className={`h-1 flex-1 ${t <= cur.tier ? "bg-teal-500" : "bg-stone-800"}`} />
                       ))}
                     </div>
                     {maxed ? (
-                      <div className="text-[10px] text-teal-400 font-bold">WON</div>
+                      <div className="text-xs text-teal-400 font-bold">WON</div>
                     ) : (
                       <button
                         onClick={() => advanceIssue(def.id)}
                         disabled={!afford}
-                        className={`w-full text-xs py-1.5 tracking-wide transition-colors ${afford ? "bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold" : "border border-stone-800 text-stone-600 cursor-not-allowed"}`}
+                        className={`w-full text-sm py-1.5 tracking-wide transition-colors ${afford ? "bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold" : "border border-stone-800 text-stone-600 cursor-not-allowed"}`}
                       >
                         PUSH IT — {cost} LEVERAGE
                       </button>
@@ -4255,7 +4255,7 @@ function ContractPrototype({ onExit }) {
                   <div className={`font-stencil text-lg tracking-wide ${monthsLeft <= 3 ? "text-red-400" : "text-teal-400"}`}>
                     {monthsLeft <= 3 ? `THE CERTIFICATION YEAR ENDS IN ${Math.max(0, monthsLeft)} MONTH${monthsLeft === 1 ? "" : "S"}` : "YOU CAN TAKE THE DEAL YOU HAVE"}
                   </div>
-                  <div className="text-[10px] text-stone-400 leading-relaxed mt-1">
+                  <div className="text-xs text-stone-400 leading-relaxed mt-1">
                     You've won <span className="text-stone-100 font-bold">{contractTierSum(issues)} of {CONTRACT_MAX_TIERS}</span> tiers. Put it to a ratification vote whenever you like — the members vote on what you actually brought back.
                     Today it projects <span className="text-teal-400 font-bold">~{Math.round(ratifyProjection)} yes</span> to <span className="text-red-400 font-bold">~{workers.length - Math.round(ratifyProjection)} no</span>.
                     {monthsLeft <= 3 && " Reach month 12 with no contract and the company petitions to decertify the union."}
@@ -4291,7 +4291,7 @@ function ContractPrototype({ onExit }) {
                     <div className={`font-stencil text-5xl ${result.action.strong ? "text-teal-400" : "text-red-400"}`}>{result.action.showed}</div>
                     <div className="text-stone-500 text-lg mb-1">of {result.action.total} took part</div>
                     <div className="ml-auto text-right">
-                      <div className="text-[10px] text-stone-500">LEVERAGE GAINED</div>
+                      <div className="text-xs text-stone-500">LEVERAGE GAINED</div>
                       <div className="text-2xl font-bold text-amber-400">+{result.gained}</div>
                     </div>
                   </div>
@@ -4299,13 +4299,13 @@ function ContractPrototype({ onExit }) {
                     <div className={result.action.strong ? "h-full bg-teal-500" : "h-full bg-red-500"} style={{ width: `${result.action.share * 100}%` }} />
                     <div className="relative" style={{ marginTop: -8, marginLeft: `${result.action.tier.threshold * 100}%`, width: 2, height: 8, background: "#e7e5e4" }} />
                   </div>
-                  <div className="text-[10px] text-stone-500 mb-3">The white mark is what this action needed to land: {Math.round(result.action.tier.threshold * 100)}%.</div>
+                  <div className="text-xs text-stone-500 mb-3">The white mark is what this action needed to land: {Math.round(result.action.tier.threshold * 100)}%.</div>
                 </>
               ) : (
                 <div className="font-stencil text-xl tracking-wide text-stone-400 mb-2">A QUIET MONTH</div>
               )}
-              <div className="bg-stone-950/60 border border-stone-800 p-2 space-y-0.5 max-h-32 overflow-y-auto mb-3">
-                {result.lines.map((l, i) => <div key={i} className="text-[10px] text-stone-400">▸ {l}</div>)}
+              <div className="bg-stone-950/60 border border-stone-800 p-2 space-y-0.5 max-h-40 overflow-y-auto mb-3">
+                {result.lines.map((l, i) => <div key={i} className="text-xs text-stone-400">▸ {l}</div>)}
               </div>
               <button onClick={nextTurn} className="w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2.5 tracking-wide transition-colors">
                 {turn >= CONTRACT_MONTHS ? "THE CERTIFICATION YEAR IS UP" : "NEXT MONTH"}
@@ -4316,7 +4316,7 @@ function ContractPrototype({ onExit }) {
               {/* THE ACTION */}
               <div className="border-2 border-stone-800 bg-stone-900 p-4 mb-4">
                 <div className="font-stencil text-lg tracking-wide text-stone-200 mb-1">CALL AN ACTION</div>
-                <p className="text-[10px] text-stone-500 mb-3">One per month. Pick who leads it — the people they carry weight with are likelier to show.</p>
+                <p className="text-xs text-stone-500 mb-3">One per month. Pick who leads it — the people they carry weight with are likelier to show.</p>
                 <div className="grid gap-2 sm:grid-cols-2 mb-3">
                   {ACTION_LADDER.map(t => {
                     const chosen = actionPlan?.tierKey === t.key;
@@ -4334,11 +4334,11 @@ function ContractPrototype({ onExit }) {
                         className={`text-left border-2 p-2.5 transition-colors ${chosen ? "border-amber-500 bg-amber-950/30" : affordable ? "border-stone-700 hover:bg-stone-800/60" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
                       >
                         <div className="flex items-baseline justify-between">
-                          <span className="text-xs text-stone-100 font-bold">{t.label}</span>
-                          <span className="text-[10px] text-stone-500">{t.hours}h</span>
+                          <span className="text-sm text-stone-100 font-bold">{t.label}</span>
+                          <span className="text-xs text-stone-500">{t.hours}h</span>
                         </div>
-                        <div className="text-[10px] text-stone-400 leading-snug mt-0.5">{t.blurb}</div>
-                        <div className={`text-[10px] mt-1 ${lands ? "text-teal-400" : "text-red-400"}`}>
+                        <div className="text-xs text-stone-400 leading-snug mt-0.5">{t.blurb}</div>
+                        <div className={`text-xs mt-1 ${lands ? "text-teal-400" : "text-red-400"}`}>
                           Projected ~{Math.round(proj)} of {workers.length} · needs {Math.round(t.threshold * workers.length)} to land
                         </div>
                       </button>
@@ -4347,19 +4347,19 @@ function ContractPrototype({ onExit }) {
                 </div>
                 {tier && (
                   <div className="border border-stone-700 bg-stone-950/60 p-2.5">
-                    <div className="text-[10px] text-stone-500 tracking-wide mb-1.5">WHO LEADS IT</div>
+                    <div className="text-xs text-stone-500 tracking-wide mb-1.5">WHO LEADS IT</div>
                     <div className="flex flex-wrap gap-1.5">
                       {cat.map(o => (
                         <button
                           key={o.id}
                           onClick={() => setActionPlan(a => ({ ...a, leadId: o.id }))}
-                          className={`border px-2 py-1 text-[11px] transition-colors ${actionPlan.leadId === o.id ? "border-amber-500 bg-amber-950/30 text-stone-100" : "border-stone-700 text-stone-400 hover:bg-stone-800/60"}`}
+                          className={`border px-2 py-1 text-[13px] transition-colors ${actionPlan.leadId === o.id ? "border-amber-500 bg-amber-950/30 text-stone-100" : "border-stone-700 text-stone-400 hover:bg-stone-800/60"}`}
                         >
                           {o.name}
                         </button>
                       ))}
                     </div>
-                    <div className="text-[10px] text-amber-400 mt-2">
+                    <div className="text-xs text-amber-400 mt-2">
                       Projected turnout with this lead: ~{Math.round(projection)} of {workers.length}.
                     </div>
                   </div>
@@ -4370,9 +4370,9 @@ function ContractPrototype({ onExit }) {
               <div className="border-2 border-stone-800 bg-stone-900 p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="font-stencil text-lg tracking-wide text-stone-200">PLAN MONTH {turn}</div>
-                  <div className={`text-sm font-bold ${overBudget ? "text-red-500" : totalUsed === totalHours ? "text-teal-400" : "text-amber-400"}`}>{totalUsed} / {totalHours} HOURS</div>
+                  <div className={`text-base font-bold ${overBudget ? "text-red-500" : totalUsed === totalHours ? "text-teal-400" : "text-amber-400"}`}>{totalUsed} / {totalHours} HOURS</div>
                 </div>
-                <p className="text-[10px] text-stone-500 mb-3">
+                <p className="text-xs text-stone-500 mb-3">
                   Click anyone on the board for a one-on-one, or to bring them onto the action team. Each person has {CAT_HOURS} hours of their own;
                   the action's prep comes out of the team's pool{actionHours > 0 ? ` (${actionHours}h this month)` : ""}.
                 </p>
@@ -4384,17 +4384,17 @@ function ContractPrototype({ onExit }) {
                     return (
                       <div key={o.id} className={`border px-3 py-2 ${left < 0 ? "border-red-700 bg-red-950/20" : "border-stone-700"}`}>
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-amber-400">{o.name} <span className="text-stone-500 font-normal">({TEAM_LABEL[o.team]})</span></span>
-                          <span className={`text-[10px] font-bold ${left < 0 ? "text-red-400" : left === 0 ? "text-teal-400" : "text-stone-400"}`}>{left} of {CAT_HOURS} hrs left</span>
+                          <span className="text-sm font-bold text-amber-400">{o.name} <span className="text-stone-500 font-normal">({TEAM_LABEL[o.team]})</span></span>
+                          <span className={`text-xs font-bold ${left < 0 ? "text-red-400" : left === 0 ? "text-teal-400" : "text-stone-400"}`}>{left} of {CAT_HOURS} hrs left</span>
                         </div>
-                        {leading && <div className="text-[10px] text-amber-300 mt-1">▸ Leads: {leading.label} <span className="text-stone-600">(team prep, {leading.hours}h from the pool)</span></div>}
+                        {leading && <div className="text-xs text-amber-300 mt-1">▸ Leads: {leading.label} <span className="text-stone-600">(team prep, {leading.hours}h from the pool)</span></div>}
                         {mine.map(e => (
-                          <div key={e.key} className="flex items-center justify-between text-[10px] text-stone-300 mt-0.5">
+                          <div key={e.key} className="flex items-center justify-between text-xs text-stone-300 mt-0.5">
                             <span>▸ {e.type === "oneOnOne" ? "One-on-one" : "Bring onto the action team"} — {workers.find(x => x.id === e.targetId)?.name} <span className="text-stone-600">({e.type === "oneOnOne" ? 2 : 3}h)</span></span>
                             <button onClick={() => setPlanEntries(p => p.filter(x => x.key !== e.key))} className="text-stone-600 hover:text-red-400">✕</button>
                           </div>
                         ))}
-                        {!leading && mine.length === 0 && <div className="text-[10px] text-stone-600 italic mt-1">Idle this month.</div>}
+                        {!leading && mine.length === 0 && <div className="text-xs text-stone-600 italic mt-1">Idle this month.</div>}
                       </div>
                     );
                   })}
@@ -4423,45 +4423,45 @@ function ContractPrototype({ onExit }) {
                 <div className="font-stencil text-2xl text-amber-400">{w.name}</div>
                 <button onClick={() => setSelected(null)}><X size={18} className="text-stone-500 hover:text-stone-200" /></button>
               </div>
-              <p className="text-xs text-stone-400 mb-3">{w.hook}</p>
+              <p className="text-sm text-stone-400 mb-3">{w.hook}</p>
               <StatRow label="COMMITMENT" value={w.commitment} hex={supportTier(w.commitment).hex} align="left"
                 info="Whether this person will actually do something — not whether they support the union. They already voted yes. Commitment is what turns that into showing up." />
               <StatRow label="JOB FULFILLMENT" value={w.fulfillment} hex={FULFILL_HEX} align="left"
                 info="Still decides who can move them. It also decides how far they'll go: somebody who loves this job will sign a letter but won't hold a milestone hostage."
                 sub={`${fulfillmentLabel(w.fulfillment)} — expect them at the low rungs, not the high ones.`} />
-              <div className="text-[10px] text-stone-400 border-t border-stone-800 pt-2 mb-3">
+              <div className="text-xs text-stone-400 border-t border-stone-800 pt-2 mb-3">
                 {backing} points of influence on them comes from the action team. That's what pulls them out on the day.
               </div>
-              <div className="text-[10px] text-stone-500 tracking-wide mb-1">TURNOUT ODDS</div>
+              <div className="text-xs text-stone-500 tracking-wide mb-1">TURNOUT ODDS</div>
               <div className="grid grid-cols-2 gap-1 mb-3">
                 {ACTION_LADDER.map(t => (
-                  <div key={t.key} className="text-[10px] text-stone-400 border border-stone-800 px-2 py-1">
+                  <div key={t.key} className="text-xs text-stone-400 border border-stone-800 px-2 py-1">
                     {t.label}: <span className="text-stone-200 font-bold">{Math.round(participationChance(w, t, backing) * 100)}%</span>
                   </div>
                 ))}
               </div>
               {w.cat ? (
-                <div className="text-xs text-amber-400">Already on the contract action team.</div>
+                <div className="text-sm text-amber-400">Already on the contract action team.</div>
               ) : (
                 <div className="space-y-2">
-                  <div className="text-[10px] text-stone-500 tracking-wide">WHO DOES IT</div>
+                  <div className="text-xs text-stone-500 tracking-wide">WHO DOES IT</div>
                   <div className="flex flex-wrap gap-1.5">
                     {actors.map(o => (
                       <button key={o.id} onClick={() => { addPlan(o.id, "oneOnOne", w.id); setSelected(null); }}
                         disabled={hoursLeft(o) < 2 || poolLeft < 2}
-                        className={`border px-2 py-1 text-[11px] transition-colors ${hoursLeft(o) < 2 || poolLeft < 2 ? "border-stone-800 text-stone-700 cursor-not-allowed" : "border-stone-700 text-stone-300 hover:bg-stone-800/60"}`}>
+                        className={`border px-2 py-1 text-[13px] transition-colors ${hoursLeft(o) < 2 || poolLeft < 2 ? "border-stone-800 text-stone-700 cursor-not-allowed" : "border-stone-700 text-stone-300 hover:bg-stone-800/60"}`}>
                         {o.name} <span className="text-stone-600">· inf {infOn(influence, o.id, w.id)}</span>
                       </button>
                     ))}
                   </div>
-                  <div className="text-[10px] text-stone-500">Click a name to spend 2 of their hours on a one-on-one.</div>
+                  <div className="text-xs text-stone-500">Click a name to spend 2 of their hours on a one-on-one.</div>
                   <button
                     onClick={() => { const o = actors.find(x => hoursLeft(x) >= 3); if (o) { addPlan(o.id, "recruit", w.id); setSelected(null); } }}
                     disabled={w.commitment < CAT_JOIN_REQ || !actors.some(x => hoursLeft(x) >= 3) || poolLeft < 3}
                     className={`w-full text-left border-2 px-3 py-2 transition-colors ${w.commitment >= CAT_JOIN_REQ && actors.some(x => hoursLeft(x) >= 3) && poolLeft >= 3 ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
                   >
-                    <div className="text-xs text-amber-300">Bring onto the contract action team <span className="text-stone-500">3h</span></div>
-                    <div className="text-[10px] text-stone-400 mt-0.5">
+                    <div className="text-sm text-amber-300">Bring onto the contract action team <span className="text-stone-500">3h</span></div>
+                    <div className="text-xs text-stone-400 mt-0.5">
                       {w.commitment < CAT_JOIN_REQ
                         ? `Needs ${CAT_JOIN_REQ} commitment — they're at ${w.commitment}.`
                         : `+${CAT_HOURS} hours a month, and everyone they can turn out becomes yours.`}
@@ -4475,7 +4475,7 @@ function ContractPrototype({ onExit }) {
       })()}
 
       <div className="fixed bottom-2 right-2 z-40">
-        <button onClick={onExit} className="text-[10px] text-stone-600 hover:text-stone-400 underline transition-colors">Leave the prototype</button>
+        <button onClick={onExit} className="text-xs text-stone-600 hover:text-stone-400 underline transition-colors">Leave the prototype</button>
       </div>
     </div>
   );
@@ -4539,7 +4539,7 @@ export default function PermadeathOrganizing() {
         <GlobalStyle />
         <div className="max-w-md text-center anim-rise">
           <div className="font-stencil text-4xl text-amber-400 mb-4">WELCOME BACK</div>
-          <p className="text-stone-400 text-sm leading-relaxed mb-6">
+          <p className="text-stone-400 text-base leading-relaxed mb-6">
             You've already organized this shop, with {savedRun.leaders.length} leader{savedRun.leaders.length === 1 ? "" : "s"} who stepped up: {savedRun.leaders.map(l => l.name).join(", ")}.
           </p>
           <button
@@ -4550,7 +4550,7 @@ export default function PermadeathOrganizing() {
           </button>
           <button
             onClick={handleFullRestart}
-            className="text-xs text-stone-500 hover:text-stone-300 underline"
+            className="text-sm text-stone-500 hover:text-stone-300 underline"
           >
             Replay One Shop from the start instead
           </button>
@@ -4568,7 +4568,7 @@ export default function PermadeathOrganizing() {
   return (
     <div>
       {content}
-      <div className="text-center text-xs text-stone-600 py-4">
+      <div className="text-center text-sm text-stone-600 py-4">
         A <a href="https://permadeathmedia.com" target="_blank" rel="noopener noreferrer" className="hover:text-stone-400 transition-colors">Permadeath Studio</a> game
       </div>
     </div>
