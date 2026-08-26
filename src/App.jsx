@@ -2891,11 +2891,11 @@ function InfluenceTraitChip({ worker, size = "text-[11px]" }) {
 const AFF_ICON = {
   dogs: (
     <>
-      <ellipse cx="1.85" cy="5.3" rx="1.3" ry="2.6" fill="currentColor" />
-      <ellipse cx="8.15" cy="5.3" rx="1.3" ry="2.6" fill="currentColor" />
-      <path d="M2.6 3.6 C2.6 1.9 7.4 1.9 7.4 3.6 L7.4 6 C7.4 8.3 2.6 8.3 2.6 6 Z" fill="currentColor" />
-      <ellipse cx="5" cy="7" rx="1.5" ry="1.15" fill="#100e0d" />
-      <circle cx="5" cy="6.5" r="0.6" fill="currentColor" />
+      <path d="M5.7 3.6 L7.1 0.3 L8.9 3.8 Z" fill="currentColor" />
+      <circle cx="6.4" cy="5.5" r="2.8" fill="currentColor" />
+      <rect x="0.9" y="5.1" width="4.9" height="2.3" rx="1.15" fill="currentColor" />
+      <circle cx="1.75" cy="5.8" r="0.7" fill="#100e0d" />
+      <circle cx="6.7" cy="4.8" r="0.5" fill="#100e0d" />
     </>
   ),
   parent: (
@@ -3030,7 +3030,7 @@ const AFFINITY_POOL = [
     perk: "covered patio with heaters", barb: "The dock was where people talked without a manager in earshot." },
   { id: "church", label: "Church every Sunday",
     perk: "Sunday shifts made voluntary", barb: "Voluntary, and the schedule still gets written by someone." },
-  { id: "vet", label: "Served",
+  { id: "vet", label: "Veteran",
     perk: "veterans\u2019 resource group, company-sponsored", barb: "A group for them, chaired by HR, meeting on company time." },
 ];
 
