@@ -2922,8 +2922,13 @@ const AFF_ICON = {
   ),
   veg: (
     <>
-      <path d="M8.8 1.4 C4.1 1.4 1.5 4 1.5 8.7 C6.2 8.7 8.8 6.1 8.8 1.4 Z" fill="currentColor" />
-      <path d="M1.4 8.8 L8.6 1.6" stroke="#0c0a09" strokeWidth="0.75" strokeLinecap="round" />
+      {/* leafy tops */}
+      <path d="M5 4.1 L5 0.5 M5 4.1 L2.9 1.4 M5 4.1 L7.1 1.4"
+        stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />
+      {/* root, tapering to a point */}
+      <path d="M3 3.9 L7 3.9 C6.6 6.2 5.9 8.2 5 9.6 C4.1 8.2 3.4 6.2 3 3.9 Z" fill="currentColor" />
+      {/* the ridges are what stop it reading as a plain triangle */}
+      <path d="M3.85 5.4 L6.15 5.4 M4.3 7 L5.7 7" stroke="#100e0d" strokeWidth="0.55" strokeLinecap="round" />
     </>
   ),
   gym: (
