@@ -2883,6 +2883,119 @@ function InfluenceTraitChip({ worker, size = "text-[11px]" }) {
   );
 }
 
+// ---------- COMMON GROUND, DRAWN ----------
+// Each affinity is a picture of the thing, not an abstract mark you have to be told the
+// meaning of. Every icon lives in the same 0-10 box and paints with currentColor, so one
+// definition serves the board, the panel and the hover line, and the surfaced / bought
+// colour coding still applies.
+const AFF_ICON = {
+  dogs: (
+    <>
+      <ellipse cx="1.85" cy="5.3" rx="1.3" ry="2.6" fill="currentColor" />
+      <ellipse cx="8.15" cy="5.3" rx="1.3" ry="2.6" fill="currentColor" />
+      <path d="M2.6 3.6 C2.6 1.9 7.4 1.9 7.4 3.6 L7.4 6 C7.4 8.3 2.6 8.3 2.6 6 Z" fill="currentColor" />
+      <ellipse cx="5" cy="7" rx="1.5" ry="1.15" fill="#100e0d" />
+      <circle cx="5" cy="6.5" r="0.6" fill="currentColor" />
+    </>
+  ),
+  parent: (
+    <>
+      <circle cx="5" cy="2.1" r="1.7" fill="currentColor" />
+      <path d="M5 3.9 L5 6.9 M2.6 5.1 L7.4 5.1 M5 6.9 L3.3 9.5 M5 6.9 L6.7 9.5"
+        stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" fill="none" />
+    </>
+  ),
+  commute: (
+    <>
+      <path d="M1 6.6 L1.9 4.3 L8.1 4.3 L9 6.6 Z" fill="currentColor" />
+      <path d="M2.9 4.3 L3.7 2.4 L6.3 2.4 L7.1 4.3 Z" fill="currentColor" />
+      <circle cx="2.9" cy="7.4" r="1.15" fill="currentColor" />
+      <circle cx="7.1" cy="7.4" r="1.15" fill="currentColor" />
+    </>
+  ),
+  ttrpg: (
+    <>
+      <path d="M5 0.7 L9.1 3.1 L9.1 6.9 L5 9.3 L0.9 6.9 L0.9 3.1 Z"
+        fill="none" stroke="currentColor" strokeWidth="1.05" strokeLinejoin="round" />
+      <path d="M5 2.7 L7.4 6.7 L2.6 6.7 Z" fill="currentColor" />
+    </>
+  ),
+  veg: (
+    <>
+      <path d="M8.8 1.4 C4.1 1.4 1.5 4 1.5 8.7 C6.2 8.7 8.8 6.1 8.8 1.4 Z" fill="currentColor" />
+      <path d="M1.4 8.8 L8.6 1.6" stroke="#0c0a09" strokeWidth="0.75" strokeLinecap="round" />
+    </>
+  ),
+  gym: (
+    <>
+      <path d="M2.9 5 L7.1 5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+      <rect x="0.7" y="2.6" width="1.9" height="4.8" rx="0.5" fill="currentColor" />
+      <rect x="7.4" y="2.6" width="1.9" height="4.8" rx="0.5" fill="currentColor" />
+    </>
+  ),
+  transplant: (
+    <>
+      <path d="M3.8 2.9 L3.8 1.5 L6.2 1.5 L6.2 2.9" fill="none" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+      <rect x="1" y="2.9" width="8" height="5.6" rx="0.7" fill="currentColor" />
+      <path d="M5 2.9 L5 8.5" stroke="#0c0a09" strokeWidth="0.7" />
+    </>
+  ),
+  debt: (
+    <>
+      <path d="M5 0.7 L5 9.3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+      <path d="M7.5 2.9 C7.5 1.5 2.5 1.3 2.5 3.7 C2.5 5.8 7.5 4.5 7.5 6.6 C7.5 9 2.5 8.7 2.5 7.1"
+        fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" />
+    </>
+  ),
+  modder: (
+    <>
+      {[0, 60, 120, 180, 240, 300].map(a => (
+        <rect key={a} x="4.3" y="0.4" width="1.4" height="2.4" rx="0.35" fill="currentColor" transform={`rotate(${a} 5 5)`} />
+      ))}
+      <circle cx="5" cy="5" r="2.85" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="5" cy="5" r="0.85" fill="currentColor" />
+    </>
+  ),
+  secondjob: (
+    <>
+      <circle cx="5" cy="5" r="3.9" fill="none" stroke="currentColor" strokeWidth="1.05" />
+      <path d="M5 5 L5 2.6 M5 5 L7 6.2" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </>
+  ),
+  caretaker: (
+    <path d="M5 8.9 C0.9 6 0.9 3.3 2.6 2.3 C3.9 1.5 5 2.7 5 3.6 C5 2.7 6.1 1.5 7.4 2.3 C9.1 3.3 9.1 6 5 8.9 Z"
+      fill="currentColor" />
+  ),
+  smoker: (
+    <>
+      <rect x="1" y="6.1" width="5.6" height="1.7" rx="0.4" fill="currentColor" />
+      <rect x="7" y="6.1" width="2" height="1.7" rx="0.4" fill="currentColor" fillOpacity="0.55" />
+      <path d="M3.1 4.6 C4.1 3.7 2.6 3.1 3.6 2.1" fill="none" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
+    </>
+  ),
+  church: (
+    <>
+      <path d="M5 0.8 L5 9.2 M2.4 3.7 L7.6 3.7" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
+    </>
+  ),
+  vet: (
+    <path d="M5 0.6 L6.4 3.7 L9.7 4.1 L7.2 6.3 L7.9 9.5 L5 7.9 L2.1 9.5 L2.8 6.3 L0.3 4.1 L3.6 3.7 Z"
+      fill="currentColor" />
+  ),
+};
+
+// The same drawing in an HTML context — panels, the hover line.
+function AffIcon({ id, size = 13, hex = "currentColor", title }) {
+  const art = AFF_ICON[id];
+  if (!art) return null;
+  return (
+    <svg viewBox="0 0 10 10" width={size} height={size} style={{ color: hex, display: "inline-block", verticalAlign: "-0.15em" }} aria-hidden="true">
+      {title ? <title>{title}</title> : null}
+      {art}
+    </svg>
+  );
+}
+
 // ---------- AFFINITY TRAITS ----------
 // Tier two of the trait system. These do not make anyone a better organizer — they
 // decide WHO can reach WHOM. Hidden until a conversation surfaces them, which is the
@@ -2891,33 +3004,33 @@ function InfluenceTraitChip({ worker, size = "text-[11px]" }) {
 // aimed at a person — it is aimed at a THING PEOPLE HAVE IN COMMON, which is the
 // thing the campaign was using to reach them.
 const AFFINITY_POOL = [
-  { id: "dogs", label: "Dog person", glyph: "\u25CF",
+  { id: "dogs", label: "Dog person",
     perk: "Dog-Friendly Fridays", barb: "A photo wall goes up by reception within a week." },
-  { id: "parent", label: "Has small kids", glyph: "\u25B2",
+  { id: "parent", label: "Has small kids",
     perk: "backup childcare stipend", barb: "Capped, reimbursed quarterly, and worth less than the raise it replaced." },
-  { id: "commute", label: "Long commute", glyph: "\u25AC",
+  { id: "commute", label: "Long commute",
     perk: "transit subsidy", barb: "Ninety dollars a month, and a reminder of who pays it, every month." },
-  { id: "ttrpg", label: "Runs a tabletop game", glyph: "\u25C6",
+  { id: "ttrpg", label: "Runs a tabletop game",
     perk: "games room, bookable after hours", barb: "The company now hosts the thing they did to get away from the company." },
-  { id: "veg", label: "Vegetarian", glyph: "\u25CB",
+  { id: "veg", label: "Vegetarian",
     perk: "catered lunch with a real plant-based menu", barb: "Thursdays. Attendance is noted, warmly." },
-  { id: "gym", label: "Lifts before shift", glyph: "\u25A0",
+  { id: "gym", label: "Lifts before shift",
     perk: "gym reimbursement", barb: "Submitted through the same portal as the performance review." },
-  { id: "transplant", label: "Moved here for the job", glyph: "\u2726",
+  { id: "transplant", label: "Moved here for the job",
     perk: "relocation top-up, paid late", barb: "Money they were owed, arriving now, framed as generosity." },
-  { id: "debt", label: "Carrying student debt", glyph: "\u25BC",
+  { id: "debt", label: "Carrying student debt",
     perk: "student loan matching", barb: "Vests over four years. Nobody says the word \u2018vests\u2019 out loud." },
-  { id: "modder", label: "Came up through modding", glyph: "\u2756",
+  { id: "modder", label: "Came up through modding",
     perk: "company game jam, on the clock", barb: "The one weekend a year the work feels like it used to." },
-  { id: "secondjob", label: "Works a second job", glyph: "\u25AA",
+  { id: "secondjob", label: "Works a second job",
     perk: "shift-flexibility pilot", barb: "A pilot. Reviewed in six months, by the people running it." },
-  { id: "caretaker", label: "Cares for a parent", glyph: "\u2733",
+  { id: "caretaker", label: "Cares for a parent",
     perk: "eldercare leave", barb: "Unpaid, but approved quickly, and everyone hears whose was approved." },
-  { id: "smoker", label: "Takes the loading-dock break", glyph: "\u25AD",
+  { id: "smoker", label: "Takes the loading-dock break",
     perk: "covered patio with heaters", barb: "The dock was where people talked without a manager in earshot." },
-  { id: "church", label: "Church every Sunday", glyph: "\u2732",
+  { id: "church", label: "Church every Sunday",
     perk: "Sunday shifts made voluntary", barb: "Voluntary, and the schedule still gets written by someone." },
-  { id: "vet", label: "Served", glyph: "\u2691",
+  { id: "vet", label: "Served",
     perk: "veterans\u2019 resource group, company-sponsored", barb: "A group for them, chaired by HR, meeting on company time." },
 ];
 
@@ -3177,7 +3290,7 @@ function LadderBadge({ worker, showLabel = true }) {
   );
 }
 
-// Affinity as glyphs. A trait both people share lights up — that is the entire
+// Common ground, drawn. A trait both people share lights up — that is the entire
 // "who do I send" decision, rendered without a sentence.
 function AffinityChips({ worker, actor = null, max = 6 }) {
   const known = knownAff(worker);
@@ -3199,7 +3312,7 @@ function AffinityChips({ worker, actor = null, max = 6 }) {
               backgroundColor: match ? "rgba(45,212,191,0.10)" : "transparent",
             }}
           >
-            <span style={{ fontSize: 9 }}>{a.glyph}</span>{a.label}
+            <AffIcon id={a.id} size={13} />{a.label}
           </span>
         );
       })}
@@ -3322,8 +3435,6 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD" };
 function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
-  // Which common-ground mark the cursor is on, so it can name itself.
-  const [hoverAff, setHoverAff] = useState(null);
   const anyRevealed = workers.some(w => w.revealed && !w.organizer);
   const active = hoverId != null ? hoverId : focusId;
 
@@ -3566,38 +3677,27 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
               })()}
 
               {/* Common ground, with the whole of its own row now that the pips have moved
-                  off it. A glyph you have surfaced is drawn; one you haven't is a hollow
-                  tick, so the card shows how much of this person you still don't know. */}
+                  off it. One you have surfaced is drawn; one you haven't is an empty
+                  ring, so the card shows how much of this person you still don't know. */}
               <g opacity={w.burned ? 0.3 : 1}>
                 {affList(w).slice(0, 5).map((t, i) => {
                   const seen = knownAff(w).includes(t);
                   const bought = isPoisoned(w, t);
+                  const hex = seen ? (bought ? "#f87171" : "#a8a29e") : "#57534e";
+                  const S = 5.2;                       // icon box, in board units
+                  const x = c.x + 3.4 + i * 5.9;
+                  const y = c.y + 10.6;
                   return (
-                    <g
-                      key={t}
-                      onMouseEnter={() => setHoverAff({
-                        x: c.x + 5.2 + i * 5.8,
-                        y: c.y + 11.4,
-                        seen,
-                        bought,
-                        label: seen ? (AFF_BY_ID[t]?.label ?? t) : "Not surfaced yet",
-                        sub: seen
-                          ? (bought ? "The company sponsors this now \u2014 it counts for nothing." : "Shared common ground makes a conversation land harder.")
-                          : "A quick chat is the cheapest way to find out.",
-                      })}
-                      onMouseLeave={() => setHoverAff(null)}
-                    >
-                      {/* An unsurfaced tick is barely a pixel wide, so the whole slot is
-                          the hover target rather than the mark itself. */}
-                      <rect x={c.x + 3.2 + i * 5.8} y={c.y + 10.8} width="5.4" height="5.6" fill="transparent" />
-                      <text
-                        x={c.x + 3.9 + i * 5.8}
-                        y={c.y + 15.2}
-                        fontSize={seen ? "4.6" : "4"}
-                        fill={seen ? (bought ? "#f87171" : "#a8a29e") : "#57534e"}
-                        fillOpacity={seen && bought ? 0.75 : 1}
-                        fontFamily="'Courier New', monospace"
-                      >{seen ? AFF_BY_ID[t]?.glyph ?? "\u25CF" : "\u00b7"}</text>
+                    <g key={t}>
+                      <title>{seen ? `${AFF_BY_ID[t]?.label ?? t}${bought ? " \u2014 bought by the company" : ""}` : "Not surfaced yet"}</title>
+                      {seen ? (
+                        <g transform={`translate(${x} ${y}) scale(${S / 10})`} style={{ color: hex }} opacity={bought ? 0.85 : 1}>
+                          {AFF_ICON[t]}
+                        </g>
+                      ) : (
+                        // An empty slot reads as an empty slot: a ring with nothing in it.
+                        <circle cx={x + S / 2} cy={y + S / 2} r="1.5" fill="none" stroke={hex} strokeWidth="0.35" />
+                      )}
                     </g>
                   );
                 })}
@@ -3700,28 +3800,6 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
           );
         })}
 
-        {/* Last in the SVG so it sits over everything: the mark says what it is. */}
-        {hoverAff && (() => {
-          const pad = 2.2;
-          const w1 = hoverAff.label.length * 1.62 + pad * 2;
-          const w2 = hoverAff.sub.length * 1.18 + pad * 2;
-          const boxW = Math.max(w1, w2, 26);
-          const boxH = 10.4;
-          const x = Math.max(1, Math.min(layout.width - boxW - 1, hoverAff.x - boxW / 2));
-          const y = Math.max(1, hoverAff.y - boxH - 1.6);
-          const hex = hoverAff.bought ? "#f87171" : hoverAff.seen ? "#e7e5e4" : "#a8a29e";
-          return (
-            <g style={{ pointerEvents: "none" }}>
-              <rect x={x} y={y} width={boxW} height={boxH} rx="1.2" fill="#0c0a09" stroke={hex} strokeWidth="0.3" strokeOpacity="0.7" />
-              <text x={x + pad} y={y + 4.4} fontSize="2.7" fill={hex} fontFamily="'Courier New', monospace" fontWeight="bold">
-                {hoverAff.label}{hoverAff.bought ? " (bought)" : ""}
-              </text>
-              <text x={x + pad} y={y + 8.2} fontSize="2" fill="#78716c" fontFamily="'Courier New', monospace">
-                {hoverAff.sub}
-              </text>
-            </g>
-          );
-        })()}
       </svg>
 
       <div className="border-t border-stone-800 px-3 py-2 min-h-[3.6rem]">
@@ -3737,7 +3815,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                 <span>
                   {knownAff(hovered).map((t, i) => (
                     <span key={t} className={isPoisoned(hovered, t) ? "text-red-400" : "text-stone-300"}>
-                      {i > 0 ? "  ·  " : ""}{AFF_BY_ID[t]?.glyph ?? ""} {AFF_BY_ID[t]?.label ?? t}
+                      {i > 0 ? "  ·  " : ""}<AffIcon id={t} size={12} /> {AFF_BY_ID[t]?.label ?? t}
                       {isPoisoned(hovered, t) ? " (bought)" : ""}
                     </span>
                   ))}
@@ -4517,7 +4595,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
             x.support = clamp(x.support - Math.max(1, Math.round(trueHit * 0.4)));
             x.fulfillment = clamp(x.fulfillment + fullGain);
             trueTotal += trueHit; fullTotal += fullGain;
-            consultantNotes[x.id] = `${aff.glyph} BOUGHT`;
+            consultantNotes[x.id] = "BOUGHT";
             x.history.push(`Week ${week}: the company bought ${aff.label.toLowerCase()} (-${trueHit} true support).`);
           });
           heatNext = clamp(heatNext - 4);
@@ -4943,7 +5021,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
                     THE COMPANY OWNS: {perks.map(pk => {
                       const left = pk.until - week;
                       const when = left <= 0 ? "lapses after this week" : `${left} more week${left === 1 ? "" : "s"}`;
-                      return `${AFF_BY_ID[pk.id]?.glyph ?? ""} ${AFF_BY_ID[pk.id]?.label ?? pk.id} (${when})`;
+                      return `${AFF_BY_ID[pk.id]?.label ?? pk.id} (${when})`;
                     }).join(" · ")}
                     <span className="text-stone-400"> — these stop counting as common ground in any conversation until the perk lapses.</span>
                   </span>
