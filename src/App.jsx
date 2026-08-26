@@ -3435,6 +3435,9 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD" };
 function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
+  // Which common-ground mark the cursor is on. The tooltip is HTML rather than SVG so
+  // its type is real pixels — the SVG version scaled down to about eight of them.
+  const [hoverAff, setHoverAff] = useState(null);
   const anyRevealed = workers.some(w => w.revealed && !w.organizer);
   const active = hoverId != null ? hoverId : focusId;
 
@@ -3508,6 +3511,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
         ))}
       </div>
 
+      <div className="relative">
       <svg viewBox={`0 0 ${layout.width} ${layout.height}`} className="w-full block select-none">
         <defs>
           <marker id="org-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
@@ -3688,8 +3692,26 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                   const x = c.x + 3.4 + i * 5.9;
                   const y = c.y + 10.6;
                   return (
-                    <g key={t}>
-                      <title>{seen ? `${AFF_BY_ID[t]?.label ?? t}${bought ? " \u2014 bought by the company" : ""}` : "Not surfaced yet"}</title>
+                    <g
+                      key={t}
+                      onMouseEnter={() => setHoverAff({
+                        leftPct: ((x + S / 2) / layout.width) * 100,
+                        topPct: (y / layout.height) * 100,
+                        // Anchor to whichever side keeps the box on the board.
+                        align: ((x + S / 2) / layout.width) < 0.2 ? "left"
+                          : ((x + S / 2) / layout.width) > 0.8 ? "right" : "center",
+                        tone: seen ? (bought ? "bought" : "known") : "unknown",
+                        label: seen ? (AFF_BY_ID[t]?.label ?? t) : "Not surfaced yet",
+                        sub: seen
+                          ? (bought
+                              ? "The company sponsors this now \u2014 it counts for nothing."
+                              : "Shared common ground makes a conversation land harder.")
+                          : "A quick chat is the cheapest way to find out.",
+                      })}
+                      onMouseLeave={() => setHoverAff(null)}
+                    >
+                      {/* A drawn icon is a few pixels of ink; the slot is the hover target. */}
+                      <rect x={x - 0.4} y={y - 0.5} width={S + 0.8} height={S + 1} fill="transparent" />
                       {seen ? (
                         <g transform={`translate(${x} ${y}) scale(${S / 10})`} style={{ color: hex }} opacity={bought ? 0.85 : 1}>
                           {AFF_ICON[t]}
@@ -3713,7 +3735,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                 <text x={c.x + 3.6} y={c.y + 17.5} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), budget != null ? 13 : 17)}</text>
               ) : null}
               {w.burned && (
-                <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#78716c" fontFamily="'Courier New', monospace">OUT OF PLAY</text>
+                <text x={c.x + c.w - 3.4} y={c.y + 18.6} textAnchor="end" fontSize="3.6" fill="#78716c" fontFamily="'Courier New', monospace">{"\u2715"}</text>
               )}
               {/* The hours budget lives on the card so the player can see it without
                   leaving the board. On someone the company is working on it goes red,
@@ -3754,7 +3776,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                 );
               })()}
               {budget == null && !w.burned && !hl && w.underPressure > 0 && (
-                <text x={c.x + c.w - 2.6} y={c.y + 18} textAnchor="end" fontSize="2.6" fill="#f87171" fontFamily="'Courier New', monospace">WORKED ON</text>
+                <text x={c.x + c.w - 3.4} y={c.y + 18.6} textAnchor="end" fontSize="3.4" fill="#f87171" fontFamily="'Courier New', monospace">{"\u25C9"}</text>
               )}
 
               {hl && hl.delta !== 0 && !w.burned && (
@@ -3801,6 +3823,21 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
         })}
 
       </svg>
+      {hoverAff && (
+        <div
+          className={`absolute z-20 pointer-events-none -translate-y-full ${
+            hoverAff.align === "left" ? "translate-x-0" : hoverAff.align === "right" ? "-translate-x-full" : "-translate-x-1/2"}`}
+          style={{ left: `${hoverAff.leftPct}%`, top: `${hoverAff.topPct}%` }}
+        >
+          <div className={`mb-1.5 whitespace-nowrap border bg-stone-950 px-2.5 py-1.5 shadow-lg ${hoverAff.tone === "bought" ? "border-red-700" : hoverAff.tone === "unknown" ? "border-stone-700" : "border-stone-600"}`}>
+            <div className={`text-sm font-bold leading-tight ${hoverAff.tone === "bought" ? "text-red-400" : hoverAff.tone === "unknown" ? "text-stone-400" : "text-stone-100"}`}>
+              {hoverAff.label}
+            </div>
+            <div className="text-xs text-stone-500 leading-tight mt-0.5">{hoverAff.sub}</div>
+          </div>
+        </div>
+      )}
+      </div>
 
       <div className="border-t border-stone-800 px-3 py-2 min-h-[3.6rem]">
         {hovered ? (
