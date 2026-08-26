@@ -15,11 +15,16 @@ export function playGame(opts = {}) {
       filedOn = G.week;
     }
     G = E.resolveWeek(G, planWeek(G, opts));
-    if (G.ballot) break;
+    if (G.ballot) {
+      // What the campaign believed on the eve of the vote, minus what happened.
+      const proj = C.voteProjection(G.workers);
+      G.projError = proj.yes - G.ballot.yes;
+      break;
+    }
   }
   const w = G.workers;
   return {
-    won: G.ballot?.won ?? false, ballot: G.ballot, weeks: G.week - 1,
+    won: G.ballot?.won ?? false, ballot: G.ballot, weeks: G.week - 1, projError: G.projError ?? 0,
     thresholdOn, filedOn,
     signed: w.filter(x => x.signed).length,
     committee: w.filter(x => x.organizer && !x.burned).length,

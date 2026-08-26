@@ -2545,25 +2545,40 @@ function IntroInfluenceVisual() {
 const ELECTION_WEEKS = 4;
 const VOLUNTARY_RECOGNITION_FLOOR = 0.5;
 
+// A secret ballot is decided by what somebody would actually do, not by what they have
+// been telling the organizer who keeps stopping by their desk. Every other number in the
+// game is a read on this one — which is why the company spends its whole budget attacking
+// the read and can barely touch this.
+const ballotStanding = (w) => w.trueSupport ?? w.support;
+// Where the yes-curve sits. True support runs about 25 points below stated support, so
+// these are not the numbers a stated-support ballot would use. Tuned in sim/: a careful
+// campaign carries the unit about two thirds of the time, a sloppy one is a coin flip,
+// and the median result is decided by three votes.
+const BALLOT_PIVOT = 20;
+const BALLOT_SPAN = 35;
+
 // Turnout: people with strong feelings in either direction show up. Fence-sitters are the
 // ones who stay at their desks, and a fence-sitter who doesn't vote is a vote you lost.
 function turnoutChance(w) {
-  const conviction = Math.abs(w.support - 50) / 50;
+  const conviction = Math.abs(ballotStanding(w) - 50) / 50;
   return Math.min(0.96, 0.62 + 0.28 * conviction + (w.signed ? 0.06 : 0));
 }
-// A secret ballot is secret. Even someone who signed can vote no in the booth, and at the
-// top end there is always a little slippage that no amount of organizing removes.
+// Even someone who signed can vote no in the booth, and at the top end there is always a
+// little slippage that no amount of organizing removes.
 function yesChance(w) {
-  const base = (w.support - 32) / 48;
+  const base = (ballotStanding(w) - BALLOT_PIVOT) / BALLOT_SPAN;
   return Math.min(0.93, Math.max(0.02, base + (w.signed ? 0.05 : 0)));
 }
-// Expected-value projection, shown to the player during the campaign. It is an estimate,
-// not a promise — and it does not know what the next four weeks of pressure will do.
+// The projection is a read, not an oracle. It can only use the true number for people the
+// campaign has actually sat down with; everywhere else it has to go on what they have been
+// saying. So it is wrong in exactly the places the player hasn't done the work — and it is
+// wrong in the flattering direction, which is the whole lesson.
 function voteProjection(workers) {
   let yes = 0, no = 0, out = 0;
   workers.forEach(w => {
-    const t = turnoutChance(w);
-    const y = yesChance(w);
+    const believed = { ...w, trueSupport: w.trueKnown ? ballotStanding(w) : w.support };
+    const t = turnoutChance(believed);
+    const y = yesChance(believed);
     yes += t * y;
     no += t * (1 - y);
     out += 1 - t;

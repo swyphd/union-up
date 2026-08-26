@@ -22,7 +22,7 @@ const parts = [
   block('function makeAct1Workers', '// ---------- THE COMMITTEE DEVELOPS'),
   block('function holdsFast', 'const ACT1_TOTAL_WORKERS'),
   block('const KIRKMAN_SIGHT', '// ---------- THE OUTSIDER LADDER'),
-  block('function turnoutChance', 'function recognitionChance'),
+  block('const ballotStanding', 'function recognitionChance'),
   block('const OUTSIDERS = [', '// ---------- CAN ACT ONE STILL BE WON?'),
 ];
 let out = parts.join('\n\n');
