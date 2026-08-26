@@ -4592,10 +4592,17 @@ function ActOneGame({ onGraduate, onPrototype }) {
           meetingTotal += hit; meetingCount += 1; meetingWorst = Math.max(meetingWorst, hit);
         });
         consultantLines.push(
-          `CAPTIVE-AUDIENCE MEETING \u2014 all ${meetingCount} workers, \u2212${meetingTotal} stated support between them, up to \u2212${meetingWorst} each. ` +
-          `Base 4, less 1 for anyone who has signed and 1 more per 70 points of signed backing behind them. ` +
-          `True support is untouched \u2014 a mandatory meeting changes what people will say out loud, not what they'd do in a booth. ` +
-          `Paid time, catered, and nobody from the union side is allowed to answer back. It runs again every week until the ballot.`
+          `CAPTIVE-AUDIENCE MEETING \u2014 all ${meetingCount} workers. Not one vote moves. ` +
+          `A mandatory meeting changes what people are willing to say out loud, not what they'd do behind a curtain, ` +
+          `so every number this costs you is a number you were reading, not a number you had. ` +
+          `Up to \u2212${meetingWorst} each off what they'll admit to \u2014 least from the ones who have signed, ` +
+          `and least of all from the ones with signed coworkers they trust standing behind them.`
+        );
+        consultantLines.push(
+          `WHICH IS THE POINT. He is not trying to change minds in that room; he is trying to make the room unreadable, ` +
+          `so that you spend your last weeks reassuring people who were never going to leave and miss the ones who were. ` +
+          `The only cure is a conversation: anyone you have actually sat down with still reads true. ` +
+          `Paid time, catered, and nobody from the union side allowed to answer back. It runs again every week until the ballot.`
         );
       }
 
@@ -4684,7 +4691,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
             mark.support = clamp(mark.support - 25);
             mark.underPressure = 2;
             consultantNotes[mark.id] = "STEPS BACK";
-            consultantLines.push(`JOB THREAT LANDS \u2014 ${mark.name} steps off the committee: \u221225 support, and everyone they carry loses up to 5. They had ${Math.round(markBacking(mark))} signed backing, so this was a ${Math.round(foldChance * 100)}% chance of folding. ${mark.name} is walked into a room with ${CONSULTANT_NAME} and their manager and asked, carefully, whether they've thought about how this looks on a performance file. Nothing actionable is said. He picks the most isolated person on your committee, because that is the only kind this works on.`);
+            consultantLines.push(`JOB THREAT LANDS \u2014 ${mark.name} steps off the committee. That is the damage: their hours are gone, their reach is gone, and everyone who took cues from them loses a little of what they had. They had ${Math.round(markBacking(mark))} signed backing, so this was a ${Math.round(foldChance * 100)}% chance of folding. ${mark.name} is walked into a room with ${CONSULTANT_NAME} and their manager and asked, carefully, whether they've thought about how this looks on a performance file. Nothing actionable is said. They will still vote yes \u2014 nobody talks somebody out of a union by frightening them. They just won't organize anyone else. He picks the most isolated person on your committee, because that is the only kind this works on.`);
             mark.history.push(`Week ${week}: pressured off the committee.`);
             outgoingTies(influence, mark.id).forEach(t => {
               const other = byId(t.id);
@@ -4696,7 +4703,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
             mark.support = clamp(mark.support + 5);
             heatNext = clamp(heatNext + 8);
             consultantNotes[mark.id] = "DOESN'T BLINK";
-            consultantLines.push(`JOB THREAT BACKFIRES \u2014 ${mark.name} holds: +5 support to them, +8 heat, and everyone they carry gains up to 6. With ${Math.round(markBacking(mark))} signed backing they only had a ${Math.round(foldChance * 100)}% chance of folding \u2014 every 3 points of backing takes 1% off it. ${CONSULTANT_NAME} asks how this will look on their performance file. ${mark.name} writes down the date, the time, and who was in the room, and tells everyone. Threatening someone's job over a union is illegal, and now it's documented.`);
+            consultantLines.push(`JOB THREAT BACKFIRES \u2014 ${mark.name} holds, keeps their seat on the committee, and everyone they carry moves toward you for real. +8 heat. With ${Math.round(markBacking(mark))} signed backing they only had a ${Math.round(foldChance * 100)}% chance of folding \u2014 every 3 points of backing takes 1% off it, which is to say the defence was the people around them, not their nerve. ${CONSULTANT_NAME} asks how this will look on their performance file. ${mark.name} writes down the date, the time, and who was in the room, and tells everyone. Threatening someone's job over a union is illegal, and now it's documented.`);
             mark.history.push(`Week ${week}: threatened, didn't budge, and put it on the record.`);
             outgoingTies(influence, mark.id).forEach(t => {
               const other = byId(t.id);
@@ -4717,13 +4724,13 @@ function ActOneGame({ onGraduate, onPrototype }) {
             mark.underPressure = 2;
             heatNext = clamp(heatNext - 5);
             consultantNotes[mark.id] = wasSigned ? "PULLS THEIR CARD" : "TAKES THE OFFER";
-            consultantLines.push(`BUY-OFF LANDS \u2014 ${mark.name}: \u221235 support${wasSigned ? ", card withdrawn" : ""}, and \u22125 heat, because a quiet raise draws no attention. He offers it to whoever on your side is cheapest to buy: at ${before35} support that was a ${Math.round(takeChance * 100)}% chance of being taken. They're offered a title bump and a number that solves a real problem at home. They take it.${wasSigned ? " Their card comes off the table." : ""} Nobody in the room blames them, which is the worst part.`);
+            consultantLines.push(`BUY-OFF LANDS \u2014 ${mark.name}${wasSigned ? " withdraws their card" : " goes quiet"}, and \u22125 heat, because a quiet raise draws no attention. ${wasSigned ? "That card is the damage \u2014 you need thirty percent on paper to file, and it just came off the table. " : ""}He offers it to whoever on your side is cheapest to buy: at ${before35} support that was a ${Math.round(takeChance * 100)}% chance of being taken. They're offered a title bump and a number that solves a real problem at home. They take it. This is the one thing the company does that works on material interest rather than persuasion, which is why it works. Nobody in the room blames them, which is the worst part.`);
             mark.history.push(`Week ${week}: took the raise${wasSigned ? " and withdrew their card" : ""}.`);
           } else {
             mark.support = clamp(mark.support + 8);
             heatNext = clamp(heatNext + 6);
             consultantNotes[mark.id] = "TURNS IT DOWN";
-            consultantLines.push(`BUY-OFF REFUSED \u2014 ${mark.name}: +8 support, +6 heat, and everyone they carry gains up to 6. At ${before35} support it was a ${Math.round(takeChance * 100)}% chance of landing \u2014 the more convinced somebody already is, the less a raise is worth. They're offered a title bump and a raise, quietly, a week after signing on. They turn it down and repeat the offer out loud in the kitchen. Buying one person is cheap; getting caught at it is not.`);
+            consultantLines.push(`BUY-OFF REFUSED \u2014 ${mark.name} keeps their card, and everyone they carry moves toward you for real. +6 heat. At ${before35} support it was a ${Math.round(takeChance * 100)}% chance of landing \u2014 the more convinced somebody already is, the less a raise is worth. They're offered a title bump and a raise, quietly, a week after signing on. They turn it down and repeat the offer out loud in the kitchen. Buying one person is cheap; getting caught at it is not.`);
             mark.history.push(`Week ${week}: refused a raise meant to buy them off, and said so publicly.`);
             outgoingTies(influence, mark.id).forEach(t => {
               const other = byId(t.id);
