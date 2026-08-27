@@ -3544,6 +3544,11 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
   const [hoverAff, setHoverAff] = useState(null);
   const anyRevealed = workers.some(w => w.revealed && !w.organizer);
   const active = hoverId != null ? hoverId : focusId;
+  // The organizer the player has picked to act. Once somebody is armed, every card on
+  // the floor lights the marks it has in common with them — which is the whole of the
+  // deep-conversation decision, and the biggest cliff in the game: a sit-down with
+  // somebody you share nothing with misfires and guards them for three weeks.
+  const armed = focusId != null ? workers.find(x => x.id === focusId && x.organizer && !x.burned) : null;
 
   // An influence line is visible once either end is known to you — you can see your own
   // people's reach from day one, and mapping the floor reveals everyone else's.
@@ -3559,7 +3564,12 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
       const tie = tieFrom(t.weight, a, b);
       if (tie < EDGE_MIN_DRAW) return;
       if (!influenceKnown(a, b)) return;
-      edges.push({ from: a, to: b, weight: tie, base: t.weight, shared: tieBonus(a, b), crossTeam: a.team !== b.team });
+      // A line from a committee member is a move you can make this week. Every other
+      // line is real — it carries passive spread and public actions — but it is not a
+      // choice, and drawing it at the same strength was telling the player to plan
+      // around relationships they cannot direct.
+      edges.push({ from: a, to: b, weight: tie, base: t.weight, shared: tieBonus(a, b),
+        lever: !!a.organizer && !a.burned, crossTeam: a.team !== b.team });
     });
   });
   const crossCount = edges.filter(e => e.crossTeam).length;
@@ -3611,6 +3621,10 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
         <span className="flex items-center gap-1">
           <span className="inline-block" style={{ width: 12, height: 3, backgroundColor: EDGE_COMMON_GROUND }} />
           THICKENED BY COMMON GROUND
+        </span>
+        <span className="flex items-center gap-1 text-stone-400">
+          <span className="inline-block" style={{ width: 12, height: 3, backgroundColor: "#a8a29e" }} />
+          BRIGHT = YOURS TO USE THIS WEEK
         </span>
       </div>
 
@@ -3684,8 +3698,10 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
               key={i}
               x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y}
               stroke={e.shared ? EDGE_COMMON_GROUND : e.crossTeam ? EDGE_CROSS_TEAM : EDGE_SAME_TEAM}
-              strokeWidth={(e.crossTeam ? 0.44 : 0.28) + (e.weight / 100) * 0.7}
-              strokeOpacity={active != null ? 0.14 : e.shared ? 0.85 : e.crossTeam ? 1 : 0.6}
+              strokeWidth={((e.crossTeam ? 0.44 : 0.28) + (e.weight / 100) * 0.7) * (e.lever ? 1 : 0.72)}
+              strokeOpacity={active != null ? 0.12
+                : e.lever ? (e.shared ? 0.95 : 0.8)
+                : e.shared ? 0.3 : 0.2}
               markerEnd={e.crossTeam ? "url(#org-arrow-cross)" : "url(#org-arrow)"}
             />
           );
@@ -3812,7 +3828,10 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
                 {affList(w).slice(0, 5).map((t, i) => {
                   const seen = knownAff(w).includes(t);
                   const bought = isPoisoned(w, t);
-                  const hex = seen ? (bought ? "#f87171" : "#a8a29e") : "#57534e";
+                  const withArmed = !!armed && armed.id !== w.id && seen && !bought
+                    && affList(armed).includes(t) && knownAff(armed).includes(t);
+                  const hex = withArmed ? EDGE_COMMON_GROUND
+                    : seen ? (bought ? "#f87171" : "#a8a29e") : "#57534e";
                   const S = 5.2;                       // icon box, in board units
                   const x = c.x + 3.4 + i * 5.9;
                   const y = c.y + 10.6;
@@ -3825,18 +3844,25 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
                         // Anchor to whichever side keeps the box on the board.
                         align: ((x + S / 2) / layout.width) < 0.2 ? "left"
                           : ((x + S / 2) / layout.width) > 0.8 ? "right" : "center",
-                        tone: seen ? (bought ? "bought" : "known") : "unknown",
+                        tone: withArmed ? "known" : seen ? (bought ? "bought" : "known") : "unknown",
                         label: seen ? (AFF_BY_ID[t]?.label ?? t) : "Not surfaced yet",
-                        sub: seen
-                          ? (bought
-                              ? "The company sponsors this now \u2014 it counts for nothing."
-                              : "Shared common ground makes a conversation land harder.")
-                          : "A quick chat is the cheapest way to find out.",
+                        sub: withArmed
+                          ? `${armed.name} shares this \u2014 a sit-down with them has something to open on.`
+                          : seen
+                            ? (bought
+                                ? "The company sponsors this now \u2014 it counts for nothing."
+                                : "Shared common ground makes a conversation land harder.")
+                            : "A quick chat is the cheapest way to find out.",
                       })}
                       onMouseLeave={() => setHoverAff(null)}
                     >
                       {/* A drawn icon is a few pixels of ink; the slot is the hover target. */}
                       <rect x={x - 0.4} y={y - 0.5} width={S + 0.8} height={S + 1} fill="transparent" />
+                      {withArmed && (
+                        <rect x={x - 0.5} y={y - 0.6} width={S + 1} height={S + 1.2} rx="0.6"
+                          fill={EDGE_COMMON_GROUND} fillOpacity="0.16"
+                          stroke={EDGE_COMMON_GROUND} strokeWidth="0.25" strokeOpacity="0.7" />
+                      )}
                       {seen ? (
                         <g transform={`translate(${x} ${y}) scale(${S / 10})`} style={{ color: hex }} opacity={bought ? 0.85 : 1}>
                           {AFF_ICON[t]}
@@ -4038,8 +4064,8 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
           <div className="text-xs text-stone-500 leading-snug">
             <div>
               {anyRevealed
-                ? "The boxes are the company's chart. The arrows are who actually moves whom — they don't line up. Click anyone to plan."
-                : "The boxes are the company's chart. You can see who your own two people reach; the rest of the floor's influence is invisible until you map it. Click anyone to plan."}
+                ? "The boxes are the company's chart. The arrows are who actually moves whom \u2014 they don't line up. The bright ones run from your committee: those are the moves you can make this week. Pick one of your people and the marks they share light up across the floor."
+                : "The boxes are the company's chart. You can see who your own two people reach; the rest of the floor's influence is invisible until you map it. Pick one of your people and the marks they share light up across the floor."}
             </div>
             {edges.length > 0 && (
               <div className="text-stone-500 not-italic mt-0.5">
