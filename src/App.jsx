@@ -3540,6 +3540,23 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 // labels lets a second act reuse this board with its own vocabulary — the geometry,
 // influence arrows and card layout are identical, only the words change.
 const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD" };
+// One swatch and a label. Dashed draws the same way the board does, so the key and the
+// thing it explains are the same mark.
+function LineKey({ hex, h = 2, dashed = false, children }) {
+  return (
+    <span className="flex items-center gap-1">
+      {dashed ? (
+        <svg width="16" height={h + 2} aria-hidden="true">
+          <line x1="0" y1={(h + 2) / 2} x2="16" y2={(h + 2) / 2} stroke={hex} strokeWidth={h} strokeDasharray="5 3" />
+        </svg>
+      ) : (
+        <span className="inline-block" style={{ width: 14, height: h, backgroundColor: hex }} />
+      )}
+      {children}
+    </span>
+  );
+}
+
 function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
   // Which common-ground mark the cursor is on. The tooltip is HTML rather than SVG so
@@ -3617,23 +3634,22 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
       <div className="flex items-center justify-between px-3 pt-2 flex-wrap gap-y-1">
         <div className="font-stencil text-lg tracking-wide text-stone-200">THE FLOOR</div>
       </div>
-      <div className="flex items-center gap-3 text-[11px] text-stone-500 flex-wrap px-3 pb-1">
-        <span className="flex items-center gap-1">
-          <span className="inline-block" style={{ width: 12, height: 2, backgroundColor: EDGE_SAME_TEAM }} />
-          INFLUENCE WITHIN A TEAM
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block" style={{ width: 12, height: 2, backgroundColor: EDGE_CROSS_TEAM }} />
-          INFLUENCE ACROSS TEAMS
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block" style={{ width: 12, height: 3, backgroundColor: EDGE_COMMON_GROUND }} />
-          THICKENED BY COMMON GROUND
-        </span>
-        <span className="flex items-center gap-1 text-stone-400">
-          <span className="inline-block" style={{ width: 12, height: 3, backgroundColor: "#a8a29e" }} />
-          BRIGHT = YOURS TO USE THIS WEEK
-        </span>
+      {/* Two rows, because a line carries two different kinds of fact: what the
+          relationship is, and — once you have picked somebody to act — what you can
+          safely do along it. The second row is the one that was missing. */}
+      <div className="text-[11px] text-stone-500 px-3 pb-1 space-y-0.5">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-stone-600 tracking-wide">LINES, THICKER = MOVES THEM HARDER:</span>
+          <LineKey hex={EDGE_SAME_TEAM} h={2}>SAME TEAM</LineKey>
+          <LineKey hex={EDGE_CROSS_TEAM} h={2}>ACROSS TEAMS</LineKey>
+          <LineKey hex={EDGE_COMMON_GROUND} h={3}>COMMON GROUND FOUND</LineKey>
+          <LineKey hex="#a8a29e" h={3}>BRIGHT: YOURS THIS WEEK</LineKey>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-stone-600 tracking-wide">ONCE YOU PICK SOMEONE:</span>
+          <LineKey hex={EDGE_COMMON_GROUND} h={3}>SOLID: SOMETHING TO OPEN ON</LineKey>
+          <LineKey hex="#fbbf24" h={3} dashed>DASHED: A LONG TALK MISFIRES</LineKey>
+        </div>
       </div>
 
       {/* THE LADDER. Left to right is the whole campaign. */}
