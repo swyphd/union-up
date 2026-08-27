@@ -3378,6 +3378,50 @@ function LadderBadge({ worker, showLabel = true }) {
 
 // Common ground, drawn. A trait both people share lights up — that is the entire
 // "who do I send" decision, rendered without a sentence.
+// One wording for an affinity nobody has found yet, so the board and the panel say the
+// same thing about the same mark.
+const AFF_UNKNOWN_LABEL = "Not surfaced yet";
+const AFF_UNKNOWN_SUB = "A quick chat is the cheapest way to find out.";
+
+// The tooltip body, shared by both places a mark can be hovered. Positioning is the
+// caller's job, because the board places it in percentages over an SVG and the panel
+// places it against the mark itself.
+function AffTip({ tone, label, sub }) {
+  return (
+    <div className={`whitespace-nowrap border bg-stone-950 px-2.5 py-1.5 shadow-lg ${tone === "bought" ? "border-red-700" : tone === "unknown" ? "border-stone-700" : "border-stone-600"}`}>
+      <div className={`text-sm font-bold leading-tight ${tone === "bought" ? "text-red-400" : tone === "unknown" ? "text-stone-400" : "text-stone-100"}`}>{label}</div>
+      <div className="text-xs text-stone-500 leading-tight mt-0.5">{sub}</div>
+    </div>
+  );
+}
+
+// Wraps a mark in the panel so it raises the same tooltip the board does, rather than a
+// browser title that looks nothing like it and arrives a second late.
+function MarkWithTip({ tone, label, sub, children }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <span className="relative inline-flex" onMouseEnter={() => setOpen(true)} onMouseLeave={() => setOpen(false)}>
+      {children}
+      {open && (
+        <span className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-1.5 pointer-events-none">
+          <AffTip tone={tone} label={label} sub={sub} />
+        </span>
+      )}
+    </span>
+  );
+}
+
+// An affinity nobody has surfaced, drawn the same way in both places: a dashed slot with
+// nothing in it yet.
+function AffEmptySlot({ size = 30 }) {
+  return (
+    <span className="inline-flex items-center justify-center border border-dashed border-stone-700"
+      style={{ width: size, height: size }}>
+      <span className="rounded-full border border-stone-700" style={{ width: size * 0.27, height: size * 0.27 }} />
+    </span>
+  );
+}
+
 // Symbols, at a size you can actually read, with the name on hover. A mark shared with
 // whoever is doing the asking lights up teal, because that is the only thing on this row
 // the player is deciding on. An empty ring is something about them nobody has found yet.
@@ -3393,11 +3437,15 @@ function AffinityMarks({ worker, actor = null }) {
         const match = shared.includes(id);
         const bought = isPoisoned(worker, id);
         return (
-          <span
+          <MarkWithTip
             key={id}
-            title={bought ? `${a.label} — the company sponsors this now, so it counts for nothing`
-              : match ? `${a.label} — shared with ${actor.name}`
-              : a.label}
+            tone={bought ? "bought" : "known"}
+            label={a.label}
+            sub={bought ? "The company sponsors this now \u2014 it counts for nothing."
+              : match ? `${actor.name} shares this \u2014 a sit-down has something to open on.`
+              : "Shared common ground makes a conversation land harder."}
+          >
+          <span
             className="inline-flex items-center justify-center border"
             style={{
               width: 30, height: 30,
@@ -3408,14 +3456,13 @@ function AffinityMarks({ worker, actor = null }) {
           >
             <AffIcon id={a.id} size={17} />
           </span>
+          </MarkWithTip>
         );
       })}
       {Array.from({ length: hidden }).map((_, i) => (
-        <span key={"h" + i} title="Something about them nobody has found yet — a quick chat is the cheapest way to look"
-          className="inline-flex items-center justify-center border border-dashed border-stone-700"
-          style={{ width: 30, height: 30 }}>
-          <span className="w-2 h-2 rounded-full border border-stone-700" />
-        </span>
+        <MarkWithTip key={"h" + i} tone="unknown" label={AFF_UNKNOWN_LABEL} sub={AFF_UNKNOWN_SUB}>
+          <AffEmptySlot />
+        </MarkWithTip>
       ))}
       {shared.length > 0 && (
         <span className="text-xs text-teal-300 ml-1">
@@ -3832,14 +3879,14 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
                         align: ((x + S / 2) / layout.width) < 0.2 ? "left"
                           : ((x + S / 2) / layout.width) > 0.8 ? "right" : "center",
                         tone: withArmed ? "known" : seen ? (bought ? "bought" : "known") : "unknown",
-                        label: seen ? (AFF_BY_ID[t]?.label ?? t) : "Not surfaced yet",
+                        label: seen ? (AFF_BY_ID[t]?.label ?? t) : AFF_UNKNOWN_LABEL,
                         sub: withArmed
                           ? `${armed.name} shares this \u2014 a sit-down with them has something to open on.`
                           : seen
                             ? (bought
                                 ? "The company sponsors this now \u2014 it counts for nothing."
                                 : "Shared common ground makes a conversation land harder.")
-                            : "A quick chat is the cheapest way to find out.",
+                            : AFF_UNKNOWN_SUB,
                       })}
                       onMouseLeave={() => setHoverAff(null)}
                     >
@@ -3855,8 +3902,14 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
                           {AFF_ICON[t]}
                         </g>
                       ) : (
-                        // An empty slot reads as an empty slot: a ring with nothing in it.
-                        <circle cx={x + S / 2} cy={y + S / 2} r="1.5" fill="none" stroke={hex} strokeWidth="0.35" />
+                        // The same dashed slot the panel draws, in board units: an empty
+                        // frame with nothing in it yet.
+                        <g>
+                          <rect x={x} y={y} width={S} height={S} fill="none"
+                            stroke="#57534e" strokeWidth="0.35" strokeDasharray="1.1 0.9" />
+                          <circle cx={x + S / 2} cy={y + S / 2} r={S * 0.135}
+                            fill="none" stroke="#57534e" strokeWidth="0.3" />
+                        </g>
                       )}
                     </g>
                   );
@@ -3992,12 +4045,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
             hoverAff.align === "left" ? "translate-x-0" : hoverAff.align === "right" ? "-translate-x-full" : "-translate-x-1/2"}`}
           style={{ left: `${hoverAff.leftPct}%`, top: `${hoverAff.topPct}%` }}
         >
-          <div className={`mb-1.5 whitespace-nowrap border bg-stone-950 px-2.5 py-1.5 shadow-lg ${hoverAff.tone === "bought" ? "border-red-700" : hoverAff.tone === "unknown" ? "border-stone-700" : "border-stone-600"}`}>
-            <div className={`text-sm font-bold leading-tight ${hoverAff.tone === "bought" ? "text-red-400" : hoverAff.tone === "unknown" ? "text-stone-400" : "text-stone-100"}`}>
-              {hoverAff.label}
-            </div>
-            <div className="text-xs text-stone-500 leading-tight mt-0.5">{hoverAff.sub}</div>
-          </div>
+          <div className="mb-1.5"><AffTip tone={hoverAff.tone} label={hoverAff.label} sub={hoverAff.sub} /></div>
         </div>
       )}
       </div>
