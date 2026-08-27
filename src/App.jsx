@@ -2130,7 +2130,7 @@ const FULFILL_HEX = "#7dd3fc";
 const STAT_INFO = {
   support: "There is one number: what this person would actually do with a card in front of them. You do not get to see it. What you get is a read, and the band is how wide your uncertainty is. Warm words set the top of that band and nothing else \u2014 everyone who talks a good game looks identical from outside, and cheap actions make more of them: watching a coworker wear a button makes people talk warmer without making anyone likelier to sign. Only sitting down with somebody turns the band into a number, and it blurs again over the following weeks. The card ask, the committee, and the ballot all roll against the real figure, never against your read of it.",
   trueSupport: "There is one number: what this person would actually do with a card in front of them. You do not get to see it. What you get is a read, and the band is how wide your uncertainty is. Only sitting down with somebody turns that band into a number.",
-  influence: "Influence is relationship-specific. There is no single number for how persuasive someone is — Camille might carry real weight with one coworker and none at all with the next. The map shows who moves whom, and by how much. Every conversation and every public action lands in proportion to the influence between those two people.",
+  influence: "A tie is relationship-specific. There is no single number for how persuasive somebody is — Camille might carry real weight with one coworker and none at all with the next — and it runs one way, so Camille moving Dante says nothing about Dante moving Camille. What a tie is worth is standing plus whatever common ground you have surfaced between those two people: find something they share and the line thickens and turns teal; let the company buy it and the line goes thin and grey again. Common ground you have not found yet counts for nothing, and anything the company has bought counts for nothing either. Every conversation, card ask and public action lands in proportion to the tie.",
   fulfillment: "How much this person likes the job — which is to say, how much they feel they would be risking. It says nothing about their politics. What it changes is the ask: a worker who loves it here hesitates longer over the card. This is the lever the company buys with offsites and new hardware, one department at a time.",
   _legacyFulfillment: "How fulfilled this person is by the work itself. Fulfilled and burned-out workers both sign union cards — fulfillment does not predict support. What it predicts is who they'll listen to: people are moved much harder by an organizer whose relationship to the job resembles their own.",
 };
@@ -3122,10 +3122,33 @@ function sharedAffinities(a, b) {
 function visibleShared(a, b) {
   return sharedAffinities(a, b).filter(t => knownAff(a).includes(t) && knownAff(b).includes(t));
 }
-// 0 shared -> 0.70, 1 -> 1.05, 2 -> 1.40, 3+ -> 1.75. A matched pairing is worth
-// roughly two and a half times a cold one, which is what makes scouting pay.
-function affinityMult(a, b) {
-  return 0.7 + 0.35 * Math.min(3, sharedAffinities(a, b).length);
+// ---------- COMMON GROUND IS WHAT THE MAP IS MADE OF ----------
+// Affinity is not a second system running alongside the influence map. It is what the
+// map is made of. There is one number for a relationship — the tie — and the symbols
+// under somebody's name are the reason the line into them is as thick as it is.
+//
+// It amplifies the standing two people already had rather than manufacturing standing
+// out of nothing: finding out you both have dogs makes a real difference to somebody you
+// already talk to, and gets you a foot in the door with somebody you don't. And it
+// counts only what you have SURFACED. Common ground nobody has found yet is doing no
+// work for anybody, which is the whole argument for scouting the floor.
+//
+// The multipliers are the old affinity multiplier's own numbers, moved from the gain to
+// the relationship, which is where they always belonged. Every formula downstream kept
+// its original shape and simply reads the tie where it used to read raw influence.
+const TIE_COLD = 0.7;          // a relationship with nothing found in it
+const TIE_PER_SHARED = 0.35;   // and what each surfaced thing is worth on top
+const TIE_STRANGER_STEP = 3;   // a foot in the door for two people with no standing
+const TIE_SHARED_CAP = 3;
+function tieBonus(a, b) {
+  return Math.min(TIE_SHARED_CAP, visibleShared(a, b).length);
+}
+function tieFrom(base, a, b) {
+  const n = tieBonus(a, b);
+  return Math.round(clamp(base * (TIE_COLD + TIE_PER_SHARED * n) + TIE_STRANGER_STEP * n));
+}
+function tieOn(influence, a, b) {
+  return tieFrom(infOn(influence, a.id, b.id), a, b);
 }
 function affinityLabel(a, b) {
   const seen = visibleShared(a, b).length;
@@ -3160,8 +3183,8 @@ const CONVO_BASE = { quick: 5, deep: 12 };
 // exchange, not an ask. A deep conversation is the only action that reliably moves the
 // number underneath, and only when the two of them actually have something in common.
 const TRUE_RATIO = { quick: 0.35, deep: 0.9 };
-function convoGain(actor, target, weight) {
-  const scale = (0.45 + 0.85 * (weight / 100)) * affinityMult(actor, target) * senderMult(actor) * recvMult(target);
+function convoGain(actor, target, tie) {
+  const scale = (0.45 + 0.85 * (tie / 100)) * senderMult(actor) * recvMult(target);
   const quick = Math.max(1, Math.round(CONVO_BASE.quick * scale));
   const deep = Math.max(2, Math.round(CONVO_BASE.deep * scale));
   return {
@@ -3193,7 +3216,7 @@ function revealAffinities(target, n) {
 }
 
 // Support is not action. Readiness gates everything, but who's asking still matters.
-function signChance(actor, target, weight) {
+function signChance(actor, target, tie) {
   if (target.signed) return 0;
   // Deliberately concave: a worker at 70 support is nowhere near twice as likely to sign
   // as one at 55. Saying you're for it and putting your name on paper are different acts.
@@ -3203,10 +3226,10 @@ function signChance(actor, target, weight) {
   // CAUTIOUS needs to see it working first; HOTHEAD signs before they have thought it through.
   const bar = 45 + (infTrait(target).signShift || 0);
   const readiness = Math.pow(Math.max(0, Math.min(1, (real - bar) / 50)), 1.3);
-  const trustPart = 0.55 + 0.45 * (weight / 100);
+  const trustPart = 0.55 + 0.45 * (tie / 100);
   const recent = target.askedRecently > 0 ? 0.6 : 1;
   const guard = target.guarded > 0 ? 0.65 : 1;
-  return Math.min(0.93, readiness * trustPart * affinityMult(actor, target) * recent * guard * complacencyMult(target) * senderMult(actor));
+  return Math.min(0.93, readiness * trustPart * recent * guard * complacencyMult(target) * senderMult(actor));
 }
 
 const PUBLIC_TIERS = {
@@ -3220,11 +3243,11 @@ const PUBLIC_TIERS = {
 function publicFatigue(uses) {
   return 1 / (1 + 0.6 * uses);
 }
-function publicGain(actor, target, weight, tier, uses = 0) {
+function publicGain(actor, target, tie, tier, uses = 0) {
   const t = infTrait(actor);
   const cross = infTrait(actor).crossTeam && actor.team !== target.team ? t.crossTeam : 1;
   return Math.round(
-    PUBLIC_TIERS[tier].base * (weight / 100) * affinityMult(actor, target) * publicFatigue(uses)
+    PUBLIC_TIERS[tier].base * (tie / 100) * publicFatigue(uses)
     * senderMult(actor) * recvMult(target) * (t.publicGain || 1) * cross
   );
 }
@@ -3434,6 +3457,7 @@ function Stars({ count, size = "text-3xl" }) {
 // The chart is the company's own picture of itself: teams, boxes, reporting lines.
 // The influence arrows drawn on top of it are the real structure, and the whole point
 // is that they don't respect the boxes. Organizing runs on the second map, not the first.
+// A tie below this is too weak to draw, and too weak for a public action to carry along.
 const EDGE_MIN_DRAW = 20;
 const ORG_CARD_W = 42;
 const ORG_CARD_H = 25;
@@ -3445,6 +3469,9 @@ const ORG_TEAM_COLS = 2;
 const ORG_ROOT_H = 12;
 const ORG_HEADER_H = 11;
 const EDGE_SAME_TEAM = "#6b625c";
+// A tie thickened by common ground you have surfaced. Same teal the affinity symbols
+// use, so the line and the icons under the name read as one fact.
+const EDGE_COMMON_GROUND = "#2dd4bf";
 const EDGE_CROSS_TEAM = "#e7e5e4";
 
 // Fixed layout — the org chart never moves, so the player learns one stable picture of
@@ -3515,9 +3542,15 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
   workers.forEach(a => {
     outgoingTies(influence, a.id).forEach(t => {
       const b = workers.find(x => x.id === t.id);
-      if (!b || t.weight < EDGE_MIN_DRAW) return;
+      if (!b) return;
+      // Drawn on the tie, not on the bare org-chart standing — so surfacing something
+      // two people share thickens the line between them and turns it teal, and the
+      // company buying that thing thins it again. The symbols on the cards are the
+      // reason the map looks the way it does.
+      const tie = tieFrom(t.weight, a, b);
+      if (tie < EDGE_MIN_DRAW) return;
       if (!influenceKnown(a, b)) return;
-      edges.push({ from: a, to: b, weight: t.weight, crossTeam: a.team !== b.team });
+      edges.push({ from: a, to: b, weight: tie, base: t.weight, shared: tieBonus(a, b), crossTeam: a.team !== b.team });
     });
   });
   const crossCount = edges.filter(e => e.crossTeam).length;
@@ -3565,6 +3598,10 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
         <span className="flex items-center gap-1">
           <span className="inline-block" style={{ width: 12, height: 2, backgroundColor: EDGE_CROSS_TEAM }} />
           INFLUENCE ACROSS TEAMS
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block" style={{ width: 12, height: 3, backgroundColor: EDGE_COMMON_GROUND }} />
+          THICKENED BY COMMON GROUND
         </span>
       </div>
 
@@ -3637,9 +3674,9 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
             <line
               key={i}
               x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y}
-              stroke={e.crossTeam ? EDGE_CROSS_TEAM : EDGE_SAME_TEAM}
+              stroke={e.shared ? EDGE_COMMON_GROUND : e.crossTeam ? EDGE_CROSS_TEAM : EDGE_SAME_TEAM}
               strokeWidth={(e.crossTeam ? 0.44 : 0.28) + (e.weight / 100) * 0.7}
-              strokeOpacity={active != null ? 0.14 : e.crossTeam ? 1 : 0.6}
+              strokeOpacity={active != null ? 0.14 : e.shared ? 0.85 : e.crossTeam ? 1 : 0.6}
               markerEnd={e.crossTeam ? "url(#org-arrow-cross)" : "url(#org-arrow)"}
             />
           );
@@ -4156,8 +4193,8 @@ function ActOneGame({ onGraduate, onPrototype }) {
       const actor = byId(e.actorId);
       const target = byId(e.targetId);
       if (!actor || !target || actor.burned || target.burned) return;
-      const weight = infOn(influence, actor.id, target.id);
-      const g = convoGain(actor, target, weight);
+      const tie = tieOn(influence, actor, target);
+      const g = convoGain(actor, target, tie);
       const before = target.support;
       target.revealed = true; // you learn who they listen to by sitting down with them
 
@@ -4184,12 +4221,14 @@ function ActOneGame({ onGraduate, onPrototype }) {
       bump(target, e.type === "deep" ? g.deep : g.quick, trueGain);
       if (target.guarded > 0 && e.type === "deep" && visibleShared(actor, target).length) target.guarded = 0;
       convoPulses.push({ from: actor.id, to: target.id, tone: "up" });
-      const shared = sharedAffinities(actor, target).length;
+      // Only common ground you have SURFACED does any work, so only that is worth
+      // narrating — otherwise the line would credit a connection the tie never got.
+      const shared = tieBonus(actor, target);
       const flavor = shared >= 2
         ? `they find real common ground fast`
         : shared === 1
           ? `${actor.name} finds a way in`
-          : weight >= 55
+          : tie >= 55
             ? `${actor.name} has standing, but nothing to build on`
             : `${actor.name} can't find a thread to pull`;
       convoNotes[target.id] = shared >= 2 ? `${actor.name} connects` : shared === 1 ? `${actor.name} gets heard` : `${actor.name} bounces off`;
@@ -4216,14 +4255,17 @@ function ActOneGame({ onGraduate, onPrototype }) {
       actor.publicUses = { ...actor.publicUses, [e.type]: uses + 1 };
       actor.support = clamp(actor.support + tier.selfSupport);
       heatNext = clamp(heatNext + Math.round(tier.heat * (infTrait(actor).publicHeat || 1)));
-      const reached = outgoingTies(influence, actor.id).filter(t => {
+      // Reach is measured on the tie, so common ground you have surfaced can pull a
+      // relationship over the line and put somebody inside this person's reach who
+      // wasn't there last week.
+      const reached = outgoingTies(influence, actor.id).map(t => {
         const target = byId(t.id);
-        return target && !target.burned && t.weight >= EDGE_MIN_DRAW;
-      });
+        return target && !target.burned ? { ...t, target, tie: tieFrom(t.weight, actor, target) } : null;
+      }).filter(t => t && t.tie >= EDGE_MIN_DRAW);
       let moved = 0;
       reached.forEach(t => {
-        const target = byId(t.id);
-        const gain = publicGain(actor, target, t.weight, e.type, uses);
+        const target = t.target;
+        const gain = publicGain(actor, target, t.tie, e.type, uses);
         if (gain <= 0) return;
         // Visibility is not commitment. Watching a coworker go public makes people say
         // warmer things; it barely moves what they'd sign.
@@ -4275,8 +4317,8 @@ function ActOneGame({ onGraduate, onPrototype }) {
       const actor = byId(e.actorId);
       const target = byId(e.targetId);
       if (!actor || !target || actor.burned || target.burned || target.signed) return;
-      const weight = infOn(influence, actor.id, target.id);
-      const chance = signChance(actor, target, weight);
+      const tie = tieOn(influence, actor, target);
+      const chance = signChance(actor, target, tie);
       target.revealed = true;
       touched.add(target.id);
       if (Math.random() < chance) {
@@ -4382,7 +4424,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
         if (t.weight < 50) return;
         const target = byId(t.id);
         if (!target || target.burned || target.signed) return;
-        const gain = Math.max(1, Math.round((t.weight / 100) * 2 * affinityMult(signer, target) * (infTrait(signer).passive || 1) * recvMult(target)));
+        const gain = Math.max(1, Math.round((tieFrom(t.weight, signer, target) / 100) * 2 * (infTrait(signer).passive || 1) * recvMult(target)));
         bump(target, gain);
         passivePulses.push({ from: signer.id, to: t.id, tone: "up" });
       });
@@ -5526,23 +5568,23 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
   const pctOf = (c) => Math.round(c * 20) * 5;
 
   const weight = actor && !isSelfPanel ? shownInfluence(influence, actor, worker) : 0;
+  // What the relationship is actually worth, once the common ground you have surfaced
+  // is counted. This is the number every formula below runs on.
+  const tie = actor && !isSelfPanel ? tieFrom(weight, actor, worker) : 0;
   const weightKnown = influenceKnown(actor, worker);
-  const gains = actor && !isSelfPanel ? convoGain(actor, worker, weight) : null;
-  const chance = actor && !isSelfPanel ? signChance(actor, worker, weight) : 0;
+  const gains = actor && !isSelfPanel ? convoGain(actor, worker, tie) : null;
+  const chance = actor && !isSelfPanel ? signChance(actor, worker, tie) : 0;
 
   const canAfford = (type) => actor && hoursLeftFor(actor) >= ACT1_ACTION[type].hours;
 
   const publicPreview = (tier) => {
     const uses = worker.publicUses?.[tier] || 0;
-    const reached = outgoingTies(influence, worker.id).filter(t => {
+    const reached = outgoingTies(influence, worker.id).map(t => {
       const target = allWorkers.find(x => x.id === t.id);
-      return target && !target.burned && t.weight >= EDGE_MIN_DRAW;
-    });
-    const known = reached.filter(t => influenceKnown(worker, allWorkers.find(x => x.id === t.id)));
-    const total = known.reduce((s, t) => {
-      const target = allWorkers.find(x => x.id === t.id);
-      return s + publicGain(worker, target, t.weight, tier, uses);
-    }, 0);
+      return target && !target.burned ? { ...t, target, tie: tieFrom(t.weight, worker, target) } : null;
+    }).filter(t => t && t.tie >= EDGE_MIN_DRAW);
+    const known = reached.filter(t => influenceKnown(worker, t.target));
+    const total = known.reduce((s, t) => s + publicGain(worker, t.target, t.tie, tier, uses), 0);
     return { count: reached.length, knownCount: known.length, total, uses };
   };
 
@@ -5796,20 +5838,25 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
             </div>
             {actor && (
               <div className="text-xs text-stone-400 border border-stone-800 bg-stone-950/50 px-2.5 py-2 mb-3 leading-relaxed">
+                {/* One number for the relationship, shown as what it is made of: what
+                    they had before anyone found anything, plus what the common ground
+                    you surfaced is worth on top of it. */}
                 {weightKnown ? (
                   <>
-                    <span className="text-stone-300 font-bold">{actor.name} → {worker.name}: influence {weight}.</span>{" "}
-                    {weight >= 55 ? "Real standing — this is who should be doing it." : weight >= 25 ? "Some standing. It'll land, but not hard." : "Almost none. Whatever they say bounces off."}
+                    <span className="text-stone-300 font-bold">{actor.name} → {worker.name}: {tie}.</span>{" "}
+                    {tie >= 55 ? "Real standing — this is who should be doing it." : tie >= 25 ? "Some standing. It'll land, but not hard." : "Almost none. Whatever they say bounces off."}
                   </>
                 ) : (
-                  <><span className="text-stone-300 font-bold">Influence unmapped.</span> Numbers below assume an average relationship — map {worker.name} to see the real ones.</>
+                  <><span className="text-stone-300 font-bold">Unmapped.</span> Numbers below assume an average relationship — map {worker.name} to see the real one.</>
                 )}
                 <br />
                 <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                   <span className="text-stone-500">COMMON GROUND</span>
-                  <Pips filled={visibleShared(actor, worker).length} total={3} hex="#2dd4bf" size={7} gap={2.5} />
-                  <span className="font-bold" style={{ color: visibleShared(actor, worker).length ? "#5eead4" : "#a8a29e" }}>
-                    {Math.round(affinityMult(actor, worker) * 100)}% strength
+                  <Pips filled={tieBonus(actor, worker)} total={3} hex="#2dd4bf" size={7} gap={2.5} />
+                  <span className="font-bold" style={{ color: tieBonus(actor, worker) ? "#5eead4" : "#a8a29e" }}>
+                    {tieBonus(actor, worker)
+                      ? `${weight} + ${tie - weight} from what they share`
+                      : "nothing on this tie yet"}
                   </span>
                 </div>
                 <span className="text-stone-500">{affinityLabel(actor, worker)}.</span>
@@ -6090,8 +6137,8 @@ function ContractPrototype({ onExit }) {
     planEntries.filter(e => e.type === "oneOnOne").forEach(e => {
       const a = byId(e.actorId), t = byId(e.targetId);
       if (!a || !t) return;
-      const weight = infOn(influence, a.id, t.id);
-      const gain = Math.max(1, Math.round(11 * (0.45 + 0.85 * (weight / 100)) * affinityMult(a, t)));
+      const tie = tieOn(influence, a, t);
+      const gain = Math.max(1, Math.round(11 * (0.45 + 0.85 * (tie / 100))));
       const before = t.commitment;
       t.commitment = clamp(t.commitment + gain);
       notes[t.id] = `${a.name} +${t.commitment - before}`;

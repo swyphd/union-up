@@ -1,6 +1,4 @@
 import { playGame } from './run.mjs';
-import { applyRules } from './rules.mjs';
-applyRules('current');
 const N = 600, mean=(a)=>a.reduce((s,x)=>s+x,0)/(a.length||1);
 const pad=(s,n)=>String(s).padEnd(n);
 console.log(pad('when public',26)+pad('won%',8)+pad('filed%',8)+pad('burns',8)+pad('stated',8)+'true');

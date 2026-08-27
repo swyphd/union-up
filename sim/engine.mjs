@@ -2,8 +2,8 @@
 // of src/App.jsx — the narration is dropped, the arithmetic is not.
 import * as C from './core.mjs';
 const { clamp, rand, infOn, outgoingTies, signedBacking, orgChartResistance, holdsFast,
-  infTrait, affList, poisonedAff, affinityMult, convoGain, publicGain, signChance,
-  misfireChance, revealCount, revealAffinities, sharedAffinities, visibleShared,
+  infTrait, affList, poisonedAff, convoGain, publicGain, signChance,
+  misfireChance, revealCount, revealAffinities, sharedAffinities, visibleShared, tieOn, tieFrom,
   PUBLIC_TIERS, ACT1_ACTION, ACT1_CARDS_NEEDED, ACT1_TOTAL_WORKERS, ACT1_RECRUIT_REQ,
   ACT1_HOURS_PER_ORGANIZER, EDGE_MIN_DRAW, XP_PER_ACTION, XP_PER_CARD, IDLE_GRACE, IDLE_QUIT,
   CARD_LIFESPAN, KIRKMAN_SIGHT, CONSULTANT_TRIGGER_COMMITTEE, CONSULTANT_SETPIECE_GAP,
@@ -48,8 +48,8 @@ export function resolveWeek(G, plan) {
   plan.filter(e => e.type === 'quick' || e.type === 'deep').forEach(e => {
     const actor = byId(e.actorId), target = byId(e.targetId);
     if (!actor || !target || actor.burned || target.burned) return;
-    const weight = infOn(influence, actor.id, target.id);
-    const g = convoGain(actor, target, weight);
+    const tie = tieOn(influence, actor, target);
+    const g = convoGain(actor, target, tie);
     target.revealed = true;
     revealAffinities(target, revealCount(e.type, actor, target));
     if (e.type === 'deep' && Math.random() < misfireChance(actor, target)) {
@@ -73,11 +73,12 @@ export function resolveWeek(G, plan) {
     actor.publicUses = { ...actor.publicUses, [e.type]: uses + 1 };
     actor.support = clamp(actor.support + tier.selfSupport);
     heatNext = clamp(heatNext + Math.round(tier.heat * (infTrait(actor).publicHeat || 1)));
-    outgoingTies(influence, actor.id).filter(t => {
-      const tg = byId(t.id); return tg && !tg.burned && t.weight >= EDGE_MIN_DRAW;
-    }).forEach(t => {
-      const target = byId(t.id);
-      const gain = publicGain(actor, target, t.weight, e.type, uses);
+    outgoingTies(influence, actor.id).map(t => {
+      const tg = byId(t.id);
+      return tg && !tg.burned ? { ...t, target: tg, tie: tieFrom(t.weight, actor, tg) } : null;
+    }).filter(t => t && t.tie >= EDGE_MIN_DRAW).forEach(t => {
+      const target = t.target;
+      const gain = publicGain(actor, target, t.tie, e.type, uses);
       if (gain <= 0) return;
       bump(target, gain, Math.round(gain * 0.15));
       T.publicGain += gain;
@@ -106,8 +107,8 @@ export function resolveWeek(G, plan) {
   plan.filter(e => e.type === 'ask').forEach(e => {
     const actor = byId(e.actorId), target = byId(e.targetId);
     if (!actor || !target || actor.burned || target.burned || target.signed) return;
-    const weight = infOn(influence, actor.id, target.id);
-    const chance = signChance(actor, target, weight);
+    const tie = tieOn(influence, actor, target);
+    const chance = signChance(actor, target, tie);
     target.revealed = true; touched.add(target.id); T.asks++;
     if (Math.random() < chance) {
       target.signed = true; target.signedWeek = week; T.signs++;
@@ -155,7 +156,7 @@ export function resolveWeek(G, plan) {
       if (t.weight < 50) return;
       const target = byId(t.id);
       if (!target || target.burned || target.signed) return;
-      const gain = Math.max(1, Math.round((t.weight / 100) * 2 * C.RULES.passiveAff(signer, target)
+      const gain = Math.max(1, Math.round((tieFrom(t.weight, signer, target) / 100) * 2
         * (infTrait(signer).passive || 1) * C.recvMult(target)));
       bump(target, gain); T.passiveGain += gain;
     });

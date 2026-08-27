@@ -3,8 +3,6 @@
 import * as E from './engine.mjs';
 import * as C from './core.mjs';
 import { planWeek } from './policy.mjs';
-import { applyRules } from './rules.mjs';
-applyRules('current');
 
 const PLAYERS = { careful: {}, sloppy: { blindDeep: true }, careless: { blindDeep: true, askBar: 58 } };
 const N = Number(process.argv[2] || 300);

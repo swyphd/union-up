@@ -4,8 +4,6 @@
 import * as E from './engine.mjs';
 import * as C from './core.mjs';
 import { planWeek } from './policy.mjs';
-import { applyRules } from './rules.mjs';
-applyRules('current');
 
 // `useTrue` false reproduces what ships today, as the control row.
 function runBallot(w, { useTrue, pivot, span }) {

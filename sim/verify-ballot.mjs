@@ -1,7 +1,5 @@
 // Runs the real engine against the real shipped ballot functions — no shim.
 import { playGame } from './run.mjs';
-import { applyRules } from './rules.mjs';
-applyRules('current');
 const N = Number(process.argv[2] || 3000);
 const pad = (s, n) => String(s).padEnd(n);
 const PLAYERS = { careful: {}, sloppy: { blindDeep: true }, careless: { blindDeep: true, askBar: 58 } };

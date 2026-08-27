@@ -1,7 +1,5 @@
 import { playGame } from './run.mjs';
-import { applyRules } from './rules.mjs';
 import * as C from './core.mjs';
-applyRules('current');
 const N=1500, mean=(a)=>a.reduce((s,x)=>s+x,0)/(a.length||1), pad=(s,n)=>String(s).padEnd(n);
 console.log(`Public actions DURING THE DRIVE, n=${N}. Burn risk by tier: `
   + Object.entries(C.PUBLIC_TIERS).map(([k,v])=>`${k} ${v.burn}`).join(', ') + '\n');
