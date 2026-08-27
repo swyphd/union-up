@@ -2587,10 +2587,12 @@ function readOf(w, week = 1) {
       exact: half <= READ_NUMBER_MAX, kind: age <= 1 ? "fresh" : "fading", age,
     };
   }
-  const drop = w.revealed ? READ_WARM_DROP : READ_COLD_DROP;
+  // Mapping tells you who listens to whom. It tells you nothing about where somebody
+  // stands, so only an actual conversation narrows this.
+  const drop = w.spokenTo ? READ_WARM_DROP : READ_COLD_DROP;
   return {
     lo: clamp(w.support - drop), hi: clamp(w.support), mid: clamp(w.support - drop / 2),
-    exact: false, kind: w.revealed ? "warm" : "cold",
+    exact: false, kind: w.spokenTo ? "warm" : "cold",
   };
 }
 // How much of the floor you can actually see. The one number worth putting on the HUD.
@@ -2843,6 +2845,7 @@ function makeAct1Workers() {
     trueSupport: w.organizer ? clamp(w.support) : clamp(w.support - 6 - rand(14)),
     trueKnown: !!w.organizer,
     trueKnownWeek: w.organizer ? 1 : null,
+    spokenTo: !!w.organizer,
     guarded: 0,
     fulfillment: clamp(w.fulfillment + rand(9) - 4),
     burned: false,
@@ -3252,7 +3255,7 @@ const ACT1_ACTION = {
   small: { label: "Small public action", hours: 1, short: "small action" },
   medium: { label: "Medium public action", hours: 2, short: "medium action" },
   large: { label: "Big public action", hours: 3, short: "big action" },
-  map: { label: "Map the floor", hours: 2, short: "mapping" },
+  map: { label: "Map the floor", hours: 2, short: "mapping" },   // draws lines; never surfaces common ground
   checkin: { label: "Check in with them", hours: 1, short: "check-in" },
 };
 
@@ -3577,6 +3580,11 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
   // hovered person's lines are pulled out here and re-drawn above the cards, so you can
   // always follow exactly where someone's influence lands.
   const touchesActive = (e) => active != null && (e.from.id === active || e.to.id === active);
+  // A line tells you who somebody can reach. It has never told you whether the LONG
+  // version is safe along it — and on half of them it isn't, because a deep conversation
+  // with somebody you share nothing with lands as a pitch and guards them for weeks.
+  // Solid means you have something to open on; dashed means you don't, yet.
+  const openable = (e) => visibleShared(e.from, e.to).length > 0;
   const restEdges = edges.filter(e => !touchesActive(e));
   const hotEdges = edges.filter(touchesActive);
   const edgeGeom = (e, endPad = 1.8) => {
@@ -3650,6 +3658,9 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
           </marker>
           <marker id="org-arrow-hot" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
             <path d="M 0 0 L 6 3 L 0 6 z" fill="#fbbf24" />
+          </marker>
+          <marker id="org-arrow-open" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+            <path d="M 0 0 L 6 3 L 0 6 z" fill={EDGE_COMMON_GROUND} />
           </marker>
         </defs>
 
@@ -3991,8 +4002,9 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
               <line x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y} stroke="#0c0a09" strokeWidth={w + 0.9} strokeOpacity="0.9" strokeLinecap="round" />
               <line
                 x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y}
-                stroke="#fbbf24" strokeWidth={w} strokeOpacity="1"
-                markerEnd="url(#org-arrow-hot)"
+                stroke={openable(e) ? EDGE_COMMON_GROUND : "#fbbf24"} strokeWidth={w} strokeOpacity="1"
+                strokeDasharray={openable(e) ? undefined : "2.2 1.6"}
+                markerEnd={openable(e) ? "url(#org-arrow-open)" : "url(#org-arrow-hot)"}
               />
             </g>
           );
@@ -4064,8 +4076,8 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
           <div className="text-xs text-stone-500 leading-snug">
             <div>
               {anyRevealed
-                ? "The boxes are the company's chart. The arrows are who actually moves whom \u2014 they don't line up. The bright ones run from your committee: those are the moves you can make this week. Pick one of your people and the marks they share light up across the floor."
-                : "The boxes are the company's chart. You can see who your own two people reach; the rest of the floor's influence is invisible until you map it. Pick one of your people and the marks they share light up across the floor."}
+                ? "The boxes are the company's chart. The arrows are who actually moves whom \u2014 they don't line up. The bright ones run from your committee: those are the moves you can make this week. Pick one of your people: solid teal lines are people they have something to open on, dashed amber ones they don\u2019t \u2014 a long conversation there lands as a pitch."
+                : "The boxes are the company's chart. You can see who your own two people reach; the rest of the floor's influence is invisible until you map it. Pick one of your people: solid teal lines are people they have something to open on, dashed amber ones they don\u2019t \u2014 a long conversation there lands as a pitch."}
             </div>
             {edges.length > 0 && (
               <div className="text-stone-500 not-italic mt-0.5">
@@ -4215,9 +4227,9 @@ function ActOneGame({ onGraduate, onPrototype }) {
         if (!hidden.length) { mapLines.push("Everyone worth mapping is already mapped."); break; }
         const picked = [...hidden].sort(() => Math.random() - 0.5).slice(0, 3);
         picked.forEach(x => { x.revealed = true; });
-        mapLines.push(`Quiet weeks of listening pay off — you now know who actually moves ${picked.map(x => x.name).join(", ")}.`);
+        mapLines.push(`Quiet weeks of listening pay off \u2014 the lines into ${picked.map(x => x.name).join(", ")} are on your map now. What any of them have in common with your committee is still a conversation away.`);
       }
-      steps.push({ label: "MAPPING THE FLOOR", sub: "Finding out who listens to whom, and how much.", workers: w.map(x => ({ ...x })), lines: mapLines });
+      steps.push({ label: "MAPPING THE FLOOR", sub: "Who listens to whom, and how hard \u2014 the lines, not the people.", workers: w.map(x => ({ ...x })), lines: mapLines });
     }
 
     // --- CONVERSATIONS ---
@@ -4232,6 +4244,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
       const g = convoGain(actor, target, tie);
       const before = target.support;
       target.revealed = true; // you learn who they listen to by sitting down with them
+      target.spokenTo = true; // and, unlike mapping, you learn something about where they are
 
       // Surface what they have in common. This is the payload of the quick chat.
       const found = revealAffinities(target, revealCount(e.type, actor, target));
@@ -5775,7 +5788,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                 className={`w-full text-left border-2 px-3 py-2 transition-colors ${hoursLeftFor(worker) >= ACT1_ACTION.map.hours ? "border-stone-700 hover:bg-stone-800/60" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
               >
                 <div className="text-sm text-stone-100 flex justify-between"><span>{ACT1_ACTION.map.label}</span><CostPips hours={ACT1_ACTION.map.hours} affordable={hoursLeftFor(worker) >= ACT1_ACTION.map.hours} /></div>
-                <div className="text-xs text-stone-400 leading-snug mt-0.5">Spend the week listening instead of talking. Reveals who moves three more people — and by how much.</div>
+                <div className="text-xs text-stone-400 leading-snug mt-0.5">Spend the week listening instead of talking. Draws the lines into three more people \u2014 who moves them, and how hard. It tells you nothing about what those people have in common with anyone: only a conversation does that.</div>
               </button>
             )}
           </div>
