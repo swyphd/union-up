@@ -3527,11 +3527,8 @@ const ORG_MARGIN = 6;
 const ORG_TEAM_COLS = 2;
 const ORG_ROOT_H = 12;
 const ORG_HEADER_H = 11;
-const EDGE_SAME_TEAM = "#6b625c";
-// A tie thickened by common ground you have surfaced. Same teal the affinity symbols
-// use, so the line and the icons under the name read as one fact.
+// Common ground you have surfaced, wherever it is marked.
 const EDGE_COMMON_GROUND = "#2dd4bf";
-const EDGE_CROSS_TEAM = "#e7e5e4";
 
 // Fixed layout — the org chart never moves, so the player learns one stable picture of
 // the floor instead of re-reading a new arrangement every week.
@@ -3603,40 +3600,20 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
 
   // An influence line is visible once either end is known to you — you can see your own
   // people's reach from day one, and mapping the floor reveals everyone else's.
-  const edges = [];
-  workers.forEach(a => {
-    outgoingTies(influence, a.id).forEach(t => {
-      const b = workers.find(x => x.id === t.id);
-      if (!b) return;
-      // Drawn on the tie, not on the bare org-chart standing — so surfacing something
-      // two people share thickens the line between them and turns it teal, and the
-      // company buying that thing thins it again. The symbols on the cards are the
-      // reason the map looks the way it does.
-      const tie = tieFrom(t.weight, a, b);
-      if (tie < EDGE_MIN_DRAW) return;
-      if (!influenceKnown(a, b)) return;
-      // A line from a committee member is a move you can make this week. Every other
-      // line is real — it carries passive spread and public actions — but it is not a
-      // choice, and drawing it at the same strength was telling the player to plan
-      // around relationships they cannot direct.
-      edges.push({ from: a, to: b, weight: tie, base: t.weight, shared: tieBonus(a, b),
-        lever: !!a.organizer && !a.burned, crossTeam: a.team !== b.team });
+  // Kept as a stat rather than a picture: how much of the floor's real structure you have
+  // found, and how much of it the org chart would never have told you.
+  const mapped = (() => {
+    let total = 0, cross = 0;
+    workers.forEach(a => {
+      outgoingTies(influence, a.id).forEach(t => {
+        const b = workers.find(x => x.id === t.id);
+        if (!b || !influenceKnown(a, b)) return;
+        if (tieFrom(t.weight, a, b) < EDGE_MIN_DRAW) return;
+        total++; if (a.team !== b.team) cross++;
+      });
     });
-  });
-  const crossCount = edges.filter(e => e.crossTeam).length;
-  // A long arrow that passes over an intervening box used to disappear behind it. The
-  // hovered person's lines are pulled out here and re-drawn above the cards, so you can
-  // always follow exactly where someone's influence lands.
-  const touchesActive = (e) => active != null && (e.from.id === active || e.to.id === active);
-  const restEdges = edges.filter(e => !touchesActive(e));
-  const hotEdges = edges.filter(touchesActive);
-  const edgeGeom = (e, endPad = 1.8) => {
-    const a = layout.cards[e.from.id];
-    const b = layout.cards[e.to.id];
-    if (!a || !b) return null;
-    const dx = b.cx - a.cx, dy = b.cy - a.cy;
-    return { p1: cardEdgePoint(a, dx, dy, 0.4), p2: cardEdgePoint(b, -dx, -dy, endPad) };
-  };
+    return { total, cross };
+  })();
 
   const plannedByWorker = {};
   planEntries.forEach(e => {
@@ -3652,8 +3629,14 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
   const nameOf = (id) => workers.find(w => w.id === id)?.name || "?";
   const teamOf = (id) => workers.find(w => w.id === id)?.team;
 
+  // Who the active person actually reaches, read straight off the influence map now that
+  // nothing is drawn between the cards.
+  const reaches = (aId, bId) => {
+    const a = workers.find(x => x.id === aId), b = workers.find(x => x.id === bId);
+    return !!a && !!b && influenceKnown(a, b) && tieFrom(infOn(influence, aId, bId), a, b) >= EDGE_MIN_DRAW;
+  };
   const connectedToActive = (id) =>
-    active != null && (id === active || edges.some(e => (e.from.id === active && e.to.id === id) || (e.to.id === active && e.from.id === id)));
+    active != null && (id === active || reaches(active, id) || reaches(id, active));
 
   return (
     <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
@@ -3676,12 +3659,6 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
       <div className="relative">
       <svg viewBox={`0 0 ${layout.width} ${layout.height}`} className="w-full block select-none">
         <defs>
-          <marker id="org-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-            <path d="M 0 0 L 6 3 L 0 6 z" fill={EDGE_SAME_TEAM} />
-          </marker>
-          <marker id="org-arrow-cross" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-            <path d="M 0 0 L 6 3 L 0 6 z" fill={EDGE_CROSS_TEAM} />
-          </marker>
           <marker id="org-arrow-hot" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
             <path d="M 0 0 L 6 3 L 0 6 z" fill="#fbbf24" />
           </marker>
@@ -3722,24 +3699,6 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
             <text x={tb.cx} y={tb.y + 7.6} textAnchor="middle" fontSize="4.5" fill="#d6d3d1" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.25">{TEAM_LABEL[team]}</text>
           </g>
         ))}
-
-        {/* ---- the real structure, drawn on top of the official one ---- */}
-        {restEdges.map((e, i) => {
-          const g = edgeGeom(e);
-          if (!g) return null;
-          return (
-            <line
-              key={i}
-              x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y}
-              stroke={e.shared ? EDGE_COMMON_GROUND : e.crossTeam ? EDGE_CROSS_TEAM : EDGE_SAME_TEAM}
-              strokeWidth={((e.crossTeam ? 0.44 : 0.28) + (e.weight / 100) * 0.7) * (e.lever ? 1 : 0.72)}
-              strokeOpacity={active != null ? 0.12
-                : e.lever ? (e.shared ? 0.95 : 0.8)
-                : e.shared ? 0.3 : 0.2}
-              markerEnd={e.crossTeam ? "url(#org-arrow-cross)" : "url(#org-arrow)"}
-            />
-          );
-        })}
 
         {planArrows.map((e, i) => {
           const a = layout.cards[e.actorId];
@@ -4020,23 +3979,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
           );
         })}
 
-        {/* Drawn last so it sits above the boxes: a dark halo keeps the line readable
-            where it crosses a card, then the line itself. */}
-        {hotEdges.map((e, i) => {
-          const g = edgeGeom(e, 2.2);
-          if (!g) return null;
-          const w = 0.6 + (e.weight / 100) * 0.7;
-          return (
-            <g key={`hot-${i}`}>
-              <line x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y} stroke="#0c0a09" strokeWidth={w + 0.9} strokeOpacity="0.9" strokeLinecap="round" />
-              <line
-                x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y}
-                stroke="#fbbf24" strokeWidth={w} strokeOpacity="1"
-                markerEnd="url(#org-arrow-hot)"
-              />
-            </g>
-          );
-        })}
+        
 
       </svg>
       {hoverAff && (
@@ -4099,13 +4042,12 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
           <div className="text-xs text-stone-500 leading-snug">
             <div>
               {anyRevealed
-                ? "The boxes are the company's chart. The arrows are who actually moves whom \u2014 they don't line up. The bright ones run from your committee: those are the moves you can make this week. Pick one of your people and the marks they share light up across the floor \u2014 those are the ones a long conversation has something to open on."
-                : "The boxes are the company's chart. You can see who your own two people reach; the rest of the floor's influence is invisible until you map it. Pick one of your people and the marks they share light up across the floor \u2014 those are the ones a long conversation has something to open on."}
+                ? "The boxes are the company's chart, and it is not the map you organize on. Pick one of your people: the marks they share light up across the floor, and hovering anyone says who moves them and how hard."
+                : "The boxes are the company's chart, and it is not the map you organize on. Pick one of your people: the marks they share light up across the floor. Who moves whom stays hidden until you map it."}
             </div>
-            {edges.length > 0 && (
+            {mapped.total > 0 && (
               <div className="text-stone-500 not-italic mt-0.5">
-                Of the {edges.length} influence {edges.length === 1 ? "line" : "lines"} you've mapped, <span className="text-stone-200 font-bold">{crossCount}</span> cross team boundaries.
-                {crossCount > 0 && " The org chart is not the map you organize on."}
+                Of the {mapped.total} {mapped.total === 1 ? "relationship" : "relationships"} you've mapped, <span className="text-stone-200 font-bold">{mapped.cross}</span> cross team boundaries.
               </div>
             )}
           </div>
