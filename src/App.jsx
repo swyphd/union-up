@@ -2925,7 +2925,7 @@ const INFLUENCE_TRAITS = [
   { id: "stubborn", label: "STUBBORN",       hex: "#fb7185", send: 1.0,  recv: 0.6,  signShift: 0,   burnMult: 0.9, passive: 1.0, holdsFast: true,
     blurb: "Takes far more work to move. But nothing management does moves them back — once they're with you, they stay." },
   { id: "cautious", label: "CAUTIOUS",       hex: "#a8a29e", send: 0.95, recv: 1.0,  signShift: 12,  burnMult: 0.35, passive: 1.0,
-    blurb: "Wants to see it work before committing. Needs 12 more points of true support to sign, and rarely draws management's eye." },
+    blurb: "Wants to see it work before committing. Needs 12 more points before they'll sign, and rarely draws management's eye." },
   { id: "hothead",  label: "HOTHEAD",        hex: "#f97316", send: 1.1,  recv: 1.15, signShift: -8,  burnMult: 1.9, passive: 1.0, publicGain: 1.4, publicHeat: 1.6,
     blurb: "Goes first and goes loud. Public actions hit 40% harder and draw 60% more heat — and they are the likeliest person to get walked out." },
   { id: "quiet",    label: "KEEPS THEIR HEAD DOWN", hex: "#78716c", send: 0.7, recv: 0.9, signShift: 6, burnMult: 0.1, passive: 0.6,
@@ -4702,7 +4702,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
     if (!consultantNext.active && (committeeNow >= CONSULTANT_TRIGGER_COMMITTEE || signedForTrigger >= ACT1_CARDS_NEEDED - 2)) {
       consultantNext = { ...consultantNext, active: true, arrivedWeek: week };
       consultantLines.push(`A consultant from ${CONSULTANT_FIRM} is on site by Wednesday. ${CONSULTANT_NAME} has a badge, a corner office nobody was using, and a list of names.`);
-      consultantLines.push(`WHAT HE DOES: two one-on-ones a week, aimed at the highest-support person who isn't already surrounded by signed coworkers. Each costs that person up to \u22128 stated support and 60% of that in true support. Every ${CONSULTANT_SETPIECE_GAP} weeks he runs one set piece \u2014 a raise offered to a waverer, or a job threat aimed at your most isolated committee member \u2014 ${CONSULTANT_MAX_EACH} of each, all campaign.`);
+      consultantLines.push(`WHAT HE DOES: two one-on-ones a week, aimed at the highest-support person who isn't already surrounded by signed coworkers. Each costs that person up to \u22128 off what they'll say and 60% of that off where they actually stand. Every ${CONSULTANT_SETPIECE_GAP} weeks he runs one set piece \u2014 a raise offered to a waverer, or a job threat aimed at your most isolated committee member \u2014 ${CONSULTANT_MAX_EACH} of each, all campaign.`);
       consultantLines.push(`WHAT BLUNTS HIM: signed coworkers who carry weight with the target. Every 30 points of that backing takes 1 off the blow, to a floor of 1. Below ${KIRKMAN_SIGHT} heat he can't see your map and picks names off the org chart instead, which lands at 55% strength. Your own visibility is what teaches him where to aim.`);
     } else if (consultantNext.active) {
       // One-on-ones: he works the people closest to signing, minus whoever is already
@@ -4727,7 +4727,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
         if (holdsFast(t)) {
           t.pressuredCount = (t.pressuredCount || 0) + 1;
           consultantNotes[t.id] = `${CONSULTANT_NAME_UC} gets nowhere`;
-          consultantLines.push(`NO MOVEMENT \u2014 ${t.name}: 0 stated, 0 true. STUBBORN ignores everything ${CONSULTANT_NAME} does, permanently. It cuts both ways \u2014 they were hard to bring over, and now they're impossible to take back.`);
+          consultantLines.push(`NO MOVEMENT \u2014 ${t.name}: nothing moves, either way. STUBBORN ignores everything ${CONSULTANT_NAME} does, permanently. It cuts both ways \u2014 they were hard to bring over, and now they're impossible to take back.`);
           return;
         }
         const realBacking = signedBacking(influence, w, t.id);
@@ -4833,14 +4833,14 @@ function ActOneGame({ onGraduate, onPrototype }) {
             x.fulfillment = clamp(x.fulfillment + fullGain);
             trueTotal += trueHit; fullTotal += fullGain;
             consultantNotes[x.id] = "BOUGHT";
-            x.history.push(`Week ${week}: the company bought ${aff.label.toLowerCase()} (-${trueHit} true support).`);
+            x.history.push(`Week ${week}: the company bought ${aff.label.toLowerCase()} (\u2212${trueHit} where they stand).`);
           });
           heatNext = clamp(heatNext - 4);
           consultantPerks.push({ id: aff.id, until: week + PERK_WEEKS });
           consultantLines.push(
             `PERK LANDS \u2014 ${aff.perk.toUpperCase()}. Everyone on the floor who shares \u201C${aff.label}\u201D ` +
             `(${holders.length} ${holders.length === 1 ? "worker" : "workers"}, whether or not you had found them): ` +
-            `\u2212${trueTotal} true support between them, +${fullTotal} fulfilment, \u22124 heat. ` +
+            `\u2212${trueTotal} between them off where they actually stand, +${fullTotal} fulfilment, \u22124 heat. ` +
             `${aff.barb}`
           );
           consultantLines.push(
@@ -5241,10 +5241,10 @@ function ActOneGame({ onGraduate, onPrototype }) {
               <span>
                 <span className="font-bold text-red-400">{CONSULTANT_NAME.toUpperCase()} IS ON SITE.</span>{" "}
                 <span className="text-stone-300">
-                  {stage === "campaign" ? "4" : "2"} one-on-ones a week at up to <span className="font-bold">−8</span>{" "}
-                  and <span className="font-bold">−5 true</span> each, aimed at your highest-support person who isn't already covered.
+                  {stage === "campaign" ? "4" : "2"} one-on-ones a week, each taking up to <span className="font-bold">−5</span> off
+                  where somebody actually stands, aimed at whoever looks strongest and isn't already covered by signed coworkers.
                   {stage === "campaign"
-                    ? " Plus a mandatory all-hands every week: −1 to −4 stated on every worker on the floor."
+                    ? " Plus a mandatory all-hands every week: −1 to −4 off what every worker on the floor will say — it moves no votes, it just makes the room harder to read."
                     : ""}
                   {" "}{(() => {
                     const left = [
@@ -5638,6 +5638,35 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
           </span>
           {worker.guarded > 0 && <span className="text-[11px] font-bold text-red-400 border border-red-900 px-1.5">GUARDED · {worker.guarded}w</span>}
         </div>
+
+        {/* The read, as the same bar that is on their card. This is the panel where the
+            player decides whether to ask, so how sure they are has to be in front of
+            them at that moment — but it is one bar and a number, not a section. */}
+        {!worker.burned && (() => {
+          const r = readOf(worker, week);
+          const hex = supportTier(r.mid).hex;
+          return (
+            <div className="flex items-center gap-2 mb-3"
+              title={worker.signed ? "They signed — this is not an estimate."
+                : r.exact ? "Somebody sat down with them recently, so this is where they actually stand."
+                : r.kind === "fading" ? `Last read ${r.age} weeks ago, and people move.`
+                : r.kind === "warm" ? "You've talked, never sat down. Their words are the top of this range, not the middle."
+                : "Nobody has spoken to them. All you have is what they say to the room, which is a ceiling."}>
+              <div className="relative h-1.5 flex-1 bg-stone-800 rounded-full overflow-hidden">
+                <div className="absolute inset-y-0 rounded-full" style={{
+                  left: `${r.lo}%`, width: `${Math.max(1.5, r.hi - r.lo)}%`,
+                  backgroundColor: hex, opacity: r.exact ? 0.95 : r.kind === "cold" ? 0.3 : 0.5,
+                }} />
+                {r.exact
+                  ? <div className="absolute inset-y-0 w-0.5" style={{ left: `${r.mid}%`, backgroundColor: hex }} />
+                  : <div className="absolute -inset-y-0.5 w-0.5" style={{ left: `${r.hi}%`, backgroundColor: hex, opacity: 0.8 }} />}
+              </div>
+              <span className="font-mono text-sm font-bold shrink-0" style={{ color: hex }}>
+                {r.exact ? r.mid : `${r.lo}\u2013${r.hi}`}
+              </span>
+            </div>
+          );
+        })()}
 
         {plannedFor.length > 0 && onCancelPlans && (
           // Cancelling lives here, next to what it cancels, rather than as a mark on the
