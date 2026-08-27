@@ -3540,22 +3540,6 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 // labels lets a second act reuse this board with its own vocabulary — the geometry,
 // influence arrows and card layout are identical, only the words change.
 const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD" };
-// One swatch and a label. Dashed draws the same way the board does, so the key and the
-// thing it explains are the same mark.
-function LineKey({ hex, h = 2, dashed = false, children }) {
-  return (
-    <span className="flex items-center gap-1">
-      {dashed ? (
-        <svg width="16" height={h + 2} aria-hidden="true">
-          <line x1="0" y1={(h + 2) / 2} x2="16" y2={(h + 2) / 2} stroke={hex} strokeWidth={h} strokeDasharray="5 3" />
-        </svg>
-      ) : (
-        <span className="inline-block" style={{ width: 14, height: h, backgroundColor: hex }} />
-      )}
-      {children}
-    </span>
-  );
-}
 
 function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
@@ -3597,11 +3581,6 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
   // hovered person's lines are pulled out here and re-drawn above the cards, so you can
   // always follow exactly where someone's influence lands.
   const touchesActive = (e) => active != null && (e.from.id === active || e.to.id === active);
-  // A line tells you who somebody can reach. It has never told you whether the LONG
-  // version is safe along it — and on half of them it isn't, because a deep conversation
-  // with somebody you share nothing with lands as a pitch and guards them for weeks.
-  // Solid means you have something to open on; dashed means you don't, yet.
-  const openable = (e) => visibleShared(e.from, e.to).length > 0;
   const restEdges = edges.filter(e => !touchesActive(e));
   const hotEdges = edges.filter(touchesActive);
   const edgeGeom = (e, endPad = 1.8) => {
@@ -3634,14 +3613,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
       <div className="flex items-center justify-between px-3 pt-2 flex-wrap gap-y-1">
         <div className="font-stencil text-lg tracking-wide text-stone-200">THE FLOOR</div>
       </div>
-      {/* Only the fact the board cannot show on its own. What a line's colour and
-          thickness mean is legible from the board itself; whether a sit-down along it
-          will land is not, so that is the one thing the key is for. */}
-      <div className="flex items-center gap-3 text-[11px] text-stone-500 flex-wrap px-3 pb-1">
-        <span className="text-stone-600 tracking-wide">ONCE YOU PICK SOMEONE:</span>
-        <LineKey hex={EDGE_COMMON_GROUND} h={3}>SOLID: SOMETHING TO OPEN ON</LineKey>
-        <LineKey hex="#fbbf24" h={3} dashed>DASHED: A LONG TALK MISFIRES</LineKey>
-      </div>
+
 
       {/* THE LADDER. Left to right is the whole campaign. */}
       <div className="flex items-center gap-3 flex-wrap text-[10px] mb-2 px-0.5">
@@ -3665,9 +3637,6 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
           </marker>
           <marker id="org-arrow-hot" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
             <path d="M 0 0 L 6 3 L 0 6 z" fill="#fbbf24" />
-          </marker>
-          <marker id="org-arrow-open" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
-            <path d="M 0 0 L 6 3 L 0 6 z" fill={EDGE_COMMON_GROUND} />
           </marker>
         </defs>
 
@@ -4009,9 +3978,8 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
               <line x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y} stroke="#0c0a09" strokeWidth={w + 0.9} strokeOpacity="0.9" strokeLinecap="round" />
               <line
                 x1={g.p1.x} y1={g.p1.y} x2={g.p2.x} y2={g.p2.y}
-                stroke={openable(e) ? EDGE_COMMON_GROUND : "#fbbf24"} strokeWidth={w} strokeOpacity="1"
-                strokeDasharray={openable(e) ? undefined : "2.2 1.6"}
-                markerEnd={openable(e) ? "url(#org-arrow-open)" : "url(#org-arrow-hot)"}
+                stroke="#fbbf24" strokeWidth={w} strokeOpacity="1"
+                markerEnd="url(#org-arrow-hot)"
               />
             </g>
           );
@@ -4083,8 +4051,8 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
           <div className="text-xs text-stone-500 leading-snug">
             <div>
               {anyRevealed
-                ? "The boxes are the company's chart. The arrows are who actually moves whom \u2014 they don't line up. The bright ones run from your committee: those are the moves you can make this week. Pick one of your people: solid teal lines are people they have something to open on, dashed amber ones they don\u2019t \u2014 a long conversation there lands as a pitch."
-                : "The boxes are the company's chart. You can see who your own two people reach; the rest of the floor's influence is invisible until you map it. Pick one of your people: solid teal lines are people they have something to open on, dashed amber ones they don\u2019t \u2014 a long conversation there lands as a pitch."}
+                ? "The boxes are the company's chart. The arrows are who actually moves whom \u2014 they don't line up. The bright ones run from your committee: those are the moves you can make this week. Pick one of your people and the marks they share light up across the floor \u2014 those are the ones a long conversation has something to open on."
+                : "The boxes are the company's chart. You can see who your own two people reach; the rest of the floor's influence is invisible until you map it. Pick one of your people and the marks they share light up across the floor \u2014 those are the ones a long conversation has something to open on."}
             </div>
             {edges.length > 0 && (
               <div className="text-stone-500 not-italic mt-0.5">
