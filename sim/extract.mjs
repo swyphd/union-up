@@ -22,7 +22,7 @@ const parts = [
   block('function makeAct1Workers', '// ---------- THE COMMITTEE DEVELOPS'),
   block('function holdsFast', 'const ACT1_TOTAL_WORKERS'),
   block('const KIRKMAN_SIGHT', '// ---------- THE OUTSIDER LADDER'),
-  block('const ballotStanding', 'function recognitionChance'),
+  block('// A secret ballot is decided by', 'function recognitionChance'),
   block('const OUTSIDERS = [', '// ---------- CAN ACT ONE STILL BE WON?'),
 ];
 let out = parts.join('\n\n');
@@ -66,7 +66,7 @@ export { ACT1_WORKERS_SEED, ACT1_CARDS_NEEDED, ACT1_TOTAL_WORKERS, ACT1_ACTION, 
   PUBLIC_TIERS, publicFatigue, publicGain, signChance, infTrait, senderMult, recvMult, holdsFast,
   ORG_TIERS, orgTier, orgMult, committeeHours, idlePenalty, makeAct1Workers, generateInfluence,
   infOn, outgoingTies, incomingTies, influenceKnown, shownInfluence, signedBacking, orgChartResistance,
-  clamp, rand, RULES, turnoutChance, yesChance, voteProjection, OUTSIDERS, PERK_WEEKS,
+  clamp, rand, RULES, readOf, floorClarity, turnoutChance, yesChance, voteProjection, OUTSIDERS, PERK_WEEKS,
   poisonedAff, TEAM_LABEL, ACT1_CARD_THRESHOLD, ELECTION_WEEKS };
 `;
 fs.writeFileSync(new URL('core.mjs', import.meta.url), out);

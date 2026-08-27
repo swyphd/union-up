@@ -2128,8 +2128,8 @@ const fulfillmentLabel = (f) => (f >= 70 ? "FULFILLED" : f >= 40 ? "MIXED" : "BU
 const FULFILL_HEX = "#7dd3fc";
 
 const STAT_INFO = {
-  support: "How much this person backs the idea of a union. Support is not action: people who say they're behind it still hesitate when a card is actually in front of them. Ask someone who isn't ready and you lose ground with them.",
-  trueSupport: "What this person would actually do with a card in front of them. Always lower than what they say, and cheap actions widen the gap: watching a coworker wear a button makes people talk warmer without making them any more willing to sign. Only a real conversation moves it.",
+  support: "There is one number: what this person would actually do with a card in front of them. You do not get to see it. What you get is a read, and the band is how wide your uncertainty is. Warm words set the top of that band and nothing else \u2014 everyone who talks a good game looks identical from outside, and cheap actions make more of them: watching a coworker wear a button makes people talk warmer without making anyone likelier to sign. Only sitting down with somebody turns the band into a number, and it blurs again over the following weeks. The card ask, the committee, and the ballot all roll against the real figure, never against your read of it.",
+  trueSupport: "There is one number: what this person would actually do with a card in front of them. You do not get to see it. What you get is a read, and the band is how wide your uncertainty is. Only sitting down with somebody turns that band into a number.",
   influence: "Influence is relationship-specific. There is no single number for how persuasive someone is — Camille might carry real weight with one coworker and none at all with the next. The map shows who moves whom, and by how much. Every conversation and every public action lands in proportion to the influence between those two people.",
   fulfillment: "How much this person likes the job — which is to say, how much they feel they would be risking. It says nothing about their politics. What it changes is the ask: a worker who loves it here hesitates longer over the card. This is the lever the company buys with offsites and new hardware, one department at a time.",
   _legacyFulfillment: "How fulfilled this person is by the work itself. Fulfilled and burned-out workers both sign union cards — fulfillment does not predict support. What it predicts is who they'll listen to: people are moved much harder by an organizer whose relationship to the job resembles their own.",
@@ -2554,6 +2554,53 @@ const ballotStanding = (w) => w.trueSupport ?? w.support;
 // these are not the numbers a stated-support ballot would use. Tuned in sim/: a careful
 // campaign carries the unit about two thirds of the time, a sloppy one is a coin flip,
 // and the median result is decided by three votes.
+// ---------- WHAT YOU ACTUALLY KNOW ----------
+// There is one real number per worker: what they would do. The player never sees it.
+// What the board shows is a READ, and the width of that read is the honest measure of
+// how much organizing has been done on that person.
+//
+// Warm words are a ceiling, not an estimate. Somebody who says all the right things
+// might be exactly where they sound or twenty points below it and being polite; what
+// they cannot be is further along than they claim. So a read built only on what
+// somebody says hangs DOWN from their words instead of sitting around them, and the
+// only thing that moves it off the ceiling and onto a number is a conversation.
+const READ_COLD_DROP = 45;   // never spoken to: they could be anywhere under their words
+const READ_WARM_DROP = 28;   // you've talked, but never the long version
+const READ_FRESH_HALF = 4;   // the week you sit down with them
+const READ_BLUR_RATE = 1;    // and it blurs again at this rate afterwards
+// A read never decays to worse than a quick chat's ceiling band: having sat down with
+// somebody once is permanently worth something, it just stops being worth a number.
+const READ_BLUR_CAP = 9;
+// Wide enough to still be worth printing a figure for. Buys a deep conversation about
+// three weeks of a hard number before it goes back to being a range.
+const READ_NUMBER_MAX = 6;
+
+function readOf(w, week = 1) {
+  const commitment = w.trueSupport ?? w.support;
+  // A signature is not a report, it is an act. You know what it was worth.
+  if (w.signed) return { lo: commitment, hi: commitment, mid: commitment, exact: true, kind: "signed" };
+  if (w.trueKnown) {
+    const age = Math.max(0, week - (w.trueKnownWeek ?? week));
+    const half = Math.min(READ_BLUR_CAP, READ_FRESH_HALF + age * READ_BLUR_RATE);
+    return {
+      lo: clamp(commitment - half), hi: clamp(commitment + half), mid: commitment,
+      exact: half <= READ_NUMBER_MAX, kind: age <= 1 ? "fresh" : "fading", age,
+    };
+  }
+  const drop = w.revealed ? READ_WARM_DROP : READ_COLD_DROP;
+  return {
+    lo: clamp(w.support - drop), hi: clamp(w.support), mid: clamp(w.support - drop / 2),
+    exact: false, kind: w.revealed ? "warm" : "cold",
+  };
+}
+// How much of the floor you can actually see. The one number worth putting on the HUD.
+function floorClarity(workers, week) {
+  const live = workers.filter(x => !x.burned);
+  if (!live.length) return 0;
+  const width = live.reduce((n, x) => { const r = readOf(x, week); return n + (r.hi - r.lo); }, 0) / live.length;
+  return Math.round(100 * (1 - width / READ_COLD_DROP));
+}
+
 const BALLOT_PIVOT = 20;
 const BALLOT_SPAN = 35;
 
@@ -2790,11 +2837,12 @@ function makeAct1Workers() {
       const affinities = pool.slice(0, 3 + rand(3)).map(a => a.id);
       return { affinities, knownAffinities: w.organizer ? [...affinities] : [], poisoned: [] };
     })(),
-    // Stated support is what they SAY. True support is what they'd actually do with a
+    // What they SAY is a signal the player can pick up for free. What they'd DO is the
     // card in front of them, and it starts lower for everyone but your own people.
     support: clamp(w.support + rand(9) - 4),
     trueSupport: w.organizer ? clamp(w.support) : clamp(w.support - 6 - rand(14)),
     trueKnown: !!w.organizer,
+    trueKnownWeek: w.organizer ? 1 : null,
     guarded: 0,
     fulfillment: clamp(w.fulfillment + rand(9) - 4),
     burned: false,
@@ -3453,7 +3501,7 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 // labels lets a second act reuse this board with its own vocabulary — the geometry,
 // influence arrows and card layout are identical, only the words change.
 const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD" };
-function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
+function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
   // Which common-ground mark the cursor is on. The tooltip is HTML rather than SVG so
   // its type is real pixels — the SVG version scaled down to about eight of them.
@@ -3677,7 +3725,18 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
               )}
 
               <text x={c.x + 3.6} y={c.y + 8.2} fontSize="4.3" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{w.name.toUpperCase()}</text>
-              <text x={c.x + c.w - 2.6} y={c.y + 9.2} textAnchor="end" fontSize="6" fontWeight="bold" fill={w.burned ? "#57534e" : tier.hex} fontFamily="'Courier New', monospace">{w.burned ? "—" : w.support}</text>
+              {/* A number here would be a lie on anybody you haven't sat down with, so
+                  only a read narrow enough to be worth a number gets one. Everyone else
+                  gets the band below and nothing else — not knowing is the information. */}
+              {(() => {
+                if (w.burned) return <text x={c.x + c.w - 2.6} y={c.y + 9.2} textAnchor="end" fontSize="6" fontWeight="bold" fill="#57534e" fontFamily="'Courier New', monospace">{"\u2014"}</text>;
+                const r = readOf(w, weekNow);
+                if (!r.exact) return null;
+                return (
+                  <text x={c.x + c.w - 2.6} y={c.y + 9.2} textAnchor="end" fontSize="6" fontWeight="bold"
+                    fill={supportTier(r.mid).hex} fontFamily="'Courier New', monospace">{r.mid}</text>
+                );
+              })()}
 
               {/* Commitment ladder in the top-right corner, where the trait tick used to
                   sit. Small, because it is a state you glance at rather than read. */}
@@ -3750,6 +3809,31 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
                   </text>
                 )}
               </g>
+
+              {/* ---- THE READ ---- One bar per person: how sure you are, drawn to scale.
+                   A wide bar hanging off the right-hand end is somebody who has said warm
+                   things to nobody in particular. A short bar with a tick is somebody a
+                   member of your committee has actually sat down with. The board reads at
+                   a glance as how much of this floor you can honestly see. */}
+              {!w.burned && (() => {
+                const r = readOf(w, weekNow);
+                const X0 = c.x + 3.6, W = c.w - 7.2, Y = c.y + 18.9;
+                const at = (v) => X0 + (W * clamp(v)) / 100;
+                const hex = supportTier(r.mid).hex;
+                const bandW = Math.max(0.8, at(r.hi) - at(r.lo));
+                return (
+                  <g opacity={w.signed ? 1 : 0.95}>
+                    <rect x={X0} y={Y} width={W} height="1.5" rx="0.75" fill="#292524" />
+                    <rect x={at(r.lo)} y={Y} width={bandW} height="1.5" rx="0.75"
+                      fill={hex} fillOpacity={r.exact ? 0.95 : r.kind === "cold" ? 0.22 : 0.4} />
+                    {/* The tick is the claim. Only a read worth trusting makes one. */}
+                    {r.exact && <rect x={at(r.mid) - 0.3} y={Y - 0.7} width="0.6" height="2.9" fill={hex} />}
+                    {/* Cold reads get a nick at the top of the band: that edge is their
+                        words, and their words are the only thing you have. */}
+                    {!r.exact && <rect x={at(r.hi) - 0.35} y={Y - 0.4} width="0.7" height="2.3" fill={hex} fillOpacity="0.75" />}
+                  </g>
+                );
+              })()}
 
               {planLabels ? (
                 <text x={c.x + 3.6} y={c.y + 17.5} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), budget != null ? 13 : 17)}</text>
@@ -3863,7 +3947,12 @@ function Act1FloorMap({ workers, influence, staleWeek = null, layout = ORG_LAYOU
         {hovered ? (
           <div className="text-xs text-stone-400 leading-snug">
             <span className={`font-bold ${supportTier(hovered.support).text}`}>{hovered.name}{hovered.burned ? " (OUT OF PLAY)" : ""}</span>
-            <span className="text-stone-500"> ({TEAM_LABEL[hovered.team]}) — support <span className="text-stone-300 font-bold">{hovered.support}</span> · {fulfillmentLabel(hovered.fulfillment).toLowerCase()} ({hovered.fulfillment}){hovered.signed ? " · SIGNED" : ""}</span>
+            <span className="text-stone-500"> ({TEAM_LABEL[hovered.team]}) — {(() => {
+              const r = readOf(hovered, weekNow);
+              return r.exact
+                ? <>stands at <span className="text-stone-300 font-bold">{r.mid}</span></>
+                : <>somewhere in <span className="text-stone-300 font-bold">{r.lo}{"\u2013"}{r.hi}</span>{r.kind === "cold" ? " — never spoken to" : r.kind === "fading" ? ` — last read ${r.age} weeks ago` : " — talked to, never sat down with"}</>;
+            })()} · {fulfillmentLabel(hovered.fulfillment).toLowerCase()} ({hovered.fulfillment}){hovered.signed ? " · SIGNED" : ""}</span>
             <span style={{ color: infTrait(hovered).hex }} className="font-bold"> · {infTrait(hovered).label}</span>
             <span className="text-stone-500"> — {hovered.hook}</span>
             <div className="mt-0.5">
@@ -4031,7 +4120,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
     const byId = (id) => w.find(x => x.id === id);
     let heatNext = heat;
     const touched = new Set();
-    // Stated support and true support are separate numbers. Anything that doesn't ask
+    // What they say and what they'd do are separate numbers. Anything that doesn't ask
     // a person to DO something moves the first far more than the second — which is how
     // a campaign talks itself into believing it has the votes.
     // Every action an organizer runs makes them better at this. Successes count double.
@@ -4089,7 +4178,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
       }
 
       // The sit-down is also the only thing that tells you the truth about them.
-      if (e.type === "deep") target.trueKnown = true;
+      if (e.type === "deep") { target.trueKnown = true; target.trueKnownWeek = week; }
       gainXp(actor, e.type === "deep" ? XP_PER_ACTION : Math.round(XP_PER_ACTION * 0.6));
       const trueGain = e.type === "deep" ? g.deepTrue : g.quickTrue;
       bump(target, e.type === "deep" ? g.deep : g.quick, trueGain);
@@ -4104,8 +4193,14 @@ function ActOneGame({ onGraduate, onPrototype }) {
             ? `${actor.name} has standing, but nothing to build on`
             : `${actor.name} can't find a thread to pull`;
       convoNotes[target.id] = shared >= 2 ? `${actor.name} connects` : shared === 1 ? `${actor.name} gets heard` : `${actor.name} bounces off`;
-      convoLines.push(`${target.name}: ${e.type === "deep" ? "a long, honest conversation" : "a quick word"} with ${actor.name} — ${flavor}. Stated support ${before} → ${target.support}.${foundNames.length ? ` You learn: ${foundNames.join(", ")}.` : ""}`);
-      target.history.push(`Week ${week}: ${ACT1_ACTION[e.type].label.toLowerCase()} with ${actor.name} (+${target.support - before} stated).`);
+      // A deep conversation's real payload is not the support it moves, it is that you
+      // now know something. Lead with that, because that is what the player just bought.
+      convoLines.push(
+        e.type === "deep"
+          ? `${target.name}: a long, honest conversation with ${actor.name} — ${flavor}. You now know where ${target.name} actually stands: ${target.trueSupport}, against the ${target.support} they talk like. That read is good for a few weeks before people move again.${foundNames.length ? ` You also learn: ${foundNames.join(", ")}.` : ""}`
+          : `${target.name}: a quick word with ${actor.name} — ${flavor}. They talk warmer, ${before} → ${target.support}, which narrows what they could be without telling you where they are.${foundNames.length ? ` You learn: ${foundNames.join(", ")}.` : ""}`
+      );
+      target.history.push(`Week ${week}: ${ACT1_ACTION[e.type].label.toLowerCase()} with ${actor.name} (+${target.support - before} to what they'll say).`);
     });
     if (convoLines.length) steps.push({ label: "ONE-ON-ONES", sub: "Influence is relationship-specific — the same conversation lands differently depending on who has it.", workers: w.map(x => ({ ...x })), lines: convoLines, edgePulses: convoPulses, notes: convoNotes });
 
@@ -4223,9 +4318,10 @@ function ActOneGame({ onGraduate, onPrototype }) {
       // A committee member reports honestly on the people they actually know. This is
       // the Act One version of the shop committee's true-support read in Act Two.
       newMember.trueKnown = true;
+      newMember.trueKnownWeek = week;
       outgoingTies(influence, newMember.id).filter(t => t.weight >= 40).forEach(t => {
         const target = byId(t.id);
-        if (target) target.trueKnown = true;
+        if (target) { target.trueKnown = true; target.trueKnownWeek = week; }
       });
     };
     planEntries.filter(e => e.type === "recruit").forEach(e => {
@@ -4353,11 +4449,11 @@ function ActOneGame({ onGraduate, onPrototype }) {
         // A committee member's card lapsing is worse: they've been carrying this for
         // over three months with nothing to show anyone.
         x.experience = Math.round((x.experience || 0) * 0.85);
-        staleLines.push(`${x.name} signed ${CARD_LIFESPAN} weeks ago and has been organizing on that card ever since. It's too old to count now. They re-sign without being asked \u2014 but something goes out of them. \u221210 true support.`);
+        staleLines.push(`${x.name} signed ${CARD_LIFESPAN} weeks ago and has been organizing on that card ever since. It's too old to count now. They re-sign without being asked \u2014 but something goes out of them, and it comes off where it counts, not off what they say.`);
         x.signed = true;
         x.signedWeek = week;
       } else {
-        staleLines.push(`${x.name}'s card is ${CARD_LIFESPAN} weeks old. The board won't accept it as evidence of what they think today, and honestly, neither should you. \u22126 stated, \u221210 true, and the second ask is harder than the first was.`);
+        staleLines.push(`${x.name}'s card is ${CARD_LIFESPAN} weeks old. The board won't accept it as evidence of what they think today, and honestly, neither should you. \u22126 off what they'll say and \u221210 off where they actually are, and the second ask is harder than the first was.`);
       }
       x.history.push(`Week ${week}: card went stale after ${CARD_LIFESPAN} weeks.`);
     });
@@ -4396,7 +4492,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
           stated += up; moved += 1;
         });
         ladderLines.push(
-          `DANIELS WORKS THE FLOOR \u2014 ${moved} people: +${moved ? Math.round(stated / moved) : 0} STATED support each, \u22122 TRUE. ` +
+          `DANIELS WORKS THE FLOOR \u2014 ${moved} people: +${moved ? Math.round(stated / moved) : 0} each to what they'll tell you, \u22122 to where they stand. ` +
           `He is warm, he is specific, and he means it. Nobody changes their mind about the union. Everybody sounds friendlier about the company, which is worse: the morale number is now further from the vote than it has ever been.`
         );
       }
@@ -4415,7 +4511,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
         });
         heatNext = clamp(heatNext + 5);
         ladderLines.push(
-          `VANTAGE PARTNERS REVIEWS ${TEAM_LABEL[t]} \u2014 ${n} people: +6 what-they'd-be-risking, \u22124 true support. ` +
+          `VANTAGE PARTNERS REVIEWS ${TEAM_LABEL[t]} \u2014 ${n} people: +6 what-they'd-be-risking, \u22124 where they stand. ` +
           `A slide deck nobody was supposed to see puts a question mark next to the department. No threat is made. None needs to be.`
         );
       }
@@ -4439,7 +4535,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
         });
         heatNext = clamp(heatNext + 9);
         ladderLines.push(
-          `THE PODCAST WEIGHS IN \u2014 ${hit} people: \u22123 stated. ${backfired} people: +6 stated, +5 TRUE. +9 heat. ` +
+          `THE PODCAST WEIGHS IN \u2014 ${hit} people: \u22123 to what they'll say. ${backfired} people: +6 to that and +5 to where they actually stand. +9 heat. ` +
           `Eleven minutes on your campaign from four million subscribers and a man who has never been in the building. ` +
           `The stubborn and the hotheaded hear an outsider telling them what to think about their own workplace, and sign up harder.`
         );
@@ -4473,7 +4569,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
           hitTotal += hit; hitCount += 1;
         });
         mgmtLines.push(
-          `CAPTIVE-AUDIENCE MEETING \u2014 ${TEAM_LABEL[meetTeam]} \u2014 ${hitCount} hit, average \u2212${hitCount ? Math.round(hitTotal / hitCount) : 0} stated support.` +
+          `CAPTIVE-AUDIENCE MEETING \u2014 ${TEAM_LABEL[meetTeam]} \u2014 ${hitCount} hit, average \u2212${hitCount ? Math.round(hitTotal / hitCount) : 0} to what they'll say, and about half that off where they stand.` +
           (shrugged ? ` ${shrugged} of them barely moved: they already have people they trust more who've signed.` : "") +
           (held ? ` ${held} stubborn holdout${held === 1 ? "" : "s"} sat through it unmoved.` : "") +
           ` Attendance was mandatory for the department. It is not a mandatory meeting for a friendship.`
@@ -4568,7 +4664,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
         t.pressuredCount = (t.pressuredCount || 0) + 1;
         consultantNotes[t.id] = `${CONSULTANT_NAME_UC} works on them`;
         consultantLines.push(
-          `${seesNetwork ? "TARGETED 1:1" : "ORG-CHART 1:1"} \u2014 ${t.name}: \u2212${before - t.support} stated, \u2212${Math.round((before - t.support) * 0.6)} true. ` +
+          `${seesNetwork ? "TARGETED 1:1" : "ORG-CHART 1:1"} \u2014 ${t.name}: \u2212${before - t.support} to what they'll say, \u2212${Math.round((before - t.support) * 0.6)} to where they stand. ` +
           `Base 8` +
           (resist > 0 ? `, \u2212${resist} from ${Math.round(realBacking)} signed backing` : "") +
           (!seesNetwork ? `, \u00d70.55 because he's guessing off the reporting line` : "") +
@@ -4859,6 +4955,11 @@ function ActOneGame({ onGraduate, onPrototype }) {
   const cardShare = signedCount / ACT1_TOTAL_WORKERS;
   const canFile = stage === "drive" && signedCount >= ACT1_CARDS_NEEDED;
   const projection = voteProjection(workers);
+  const clarity = floorClarity(workers, week);
+  const readCounts = (() => {
+    const live = workers.filter(x => !x.burned);
+    return { live: live.length, exact: live.filter(x => readOf(x, week).exact).length };
+  })();
   const weeksToVote = electionWeek != null ? electionWeek - week : null;
 
   function fileWithNLRB() {
@@ -4926,6 +5027,13 @@ function ActOneGame({ onGraduate, onPrototype }) {
                 <div className="text-[11px] text-stone-600">filed week {filedWeek}</div>
               </div>
             )}
+            {/* How much of this floor you can honestly see. Nothing else on the HUD says
+                whether the numbers you are steering by are worth anything. */}
+            <div className="text-center">
+              <div className="text-stone-500 text-xs">YOU CAN SEE</div>
+              <div className={`text-lg font-bold ${clarity >= 65 ? "text-teal-400" : clarity >= 35 ? "text-amber-400" : "text-red-400"}`}>{clarity}%</div>
+              <div className="text-[11px] text-stone-600">{readCounts.exact} of {readCounts.live} read properly</div>
+            </div>
             <div className="text-center">
               <div className="text-stone-500 text-xs">COMMITTEE</div>
               <div className="text-lg font-bold text-stone-100">{organizers.length}</div>
@@ -5056,7 +5164,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
               <span>
                 <span className="font-bold text-red-400">{CONSULTANT_NAME.toUpperCase()} IS ON SITE.</span>{" "}
                 <span className="text-stone-300">
-                  {stage === "campaign" ? "4" : "2"} one-on-ones a week at up to <span className="font-bold">−8 stated</span>{" "}
+                  {stage === "campaign" ? "4" : "2"} one-on-ones a week at up to <span className="font-bold">−8</span>{" "}
                   and <span className="font-bold">−5 true</span> each, aimed at your highest-support person who isn't already covered.
                   {stage === "campaign"
                     ? " Plus a mandatory all-hands every week: −1 to −4 stated on every worker on the floor."
@@ -5095,6 +5203,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
           )}
           <Act1FloorMap
             workers={workers}
+            weekNow={week}
             influence={influence}
             layout={ORG_LAYOUT}
             planEntries={planEntries}
@@ -5137,6 +5246,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           <Act1FloorMap
             workers={resStep.workers}
+            weekNow={resStep.week ?? week}
             influence={influence}
             layout={ORG_LAYOUT}
             planEntries={[]}
@@ -5488,36 +5598,45 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
         </div>
 
         <div className="border border-stone-800 bg-stone-950/50 p-3 mb-4">
-          <StatRow
-            label="STATED SUPPORT (what they say)"
-            value={worker.support}
-            hex={supportTier(worker.support).hex}
-            info={STAT_INFO.support}
-            align="left"
-            sub={worker.signed ? "Already signed a card." : worker.support >= 80 ? "Sounds ready." : worker.support >= 55 ? "With you in principle. Not yet a signature." : "Not close to putting their name on anything."}
-          />
-          {worker.trueKnown ? (
-            <StatRow
-              label="TRUE SUPPORT (what they'd do)"
-              value={worker.trueSupport}
-              hex={supportTier(worker.trueSupport).hex}
-              info={STAT_INFO.trueSupport}
-              align="left"
-              sub={worker.trueSupport < worker.support - 12
-                ? `They talk warmer than they are. The card ask rolls against ${worker.trueSupport}, not ${worker.support}.`
-                : "Their words and their commitment line up."}
-            />
-          ) : (
-            <div className="mb-2">
-              <div className="flex items-center justify-between text-xs text-stone-500 tracking-wide">
-                <span className="flex items-center">TRUE SUPPORT (what they'd do)<InfoDot align="left">{STAT_INFO.trueSupport}</InfoDot></span>
-                <span className="font-bold text-stone-600">UNKNOWN</span>
+          {(() => {
+            // One row, because there is one number — and how wide the band around it is
+            // says everything about whether the campaign has earned the right to a figure.
+            const r = readOf(worker, week);
+            const hex = supportTier(r.mid).hex;
+            const headline = r.exact ? String(r.mid) : `${r.lo}\u2013${r.hi}`;
+            const label = worker.signed ? "WHERE THEY STAND"
+              : r.exact ? "WHERE THEY STAND (read this week)"
+              : r.kind === "fading" ? `WHERE THEY STAND (read ${r.age} weeks ago)`
+              : "WHERE THEY STAND (no read)";
+            const sub = worker.signed
+              ? "They signed. That is not a report on their opinion, it is a thing they did, so this number is not an estimate."
+              : r.kind === "fresh"
+                ? "Somebody on your committee sat down with them this week. This is what they'd actually do — the card ask rolls against it."
+                : r.kind === "fading"
+                  ? `The sit-down that produced this was ${r.age} weeks ago and people move. Another conversation would tighten it again.`
+                  : r.kind === "warm"
+                    ? `They talk like a ${worker.support}. That is the top of the range and nothing more: everyone in this band says the same things. Only a long conversation tells you where in it they sit.`
+                    : `Nobody has spoken to them. The only thing you have is what they say to the room, and what they say to the room is a ceiling.`;
+            return (
+              <div className="mb-2">
+                <div className="flex items-center justify-between text-xs text-stone-500 tracking-wide">
+                  <span className="flex items-center">{label}<InfoDot align="left">{STAT_INFO.support}</InfoDot></span>
+                  <span className="font-mono text-lg font-bold" style={{ color: hex }}>{headline}</span>
+                </div>
+                {/* The same band as the card, at a size you can actually read. */}
+                <div className="relative h-2 bg-stone-800 rounded-full mt-1.5 overflow-hidden">
+                  <div className="absolute inset-y-0 rounded-full" style={{
+                    left: `${r.lo}%`, width: `${Math.max(1.5, r.hi - r.lo)}%`,
+                    backgroundColor: hex, opacity: r.exact ? 0.95 : r.kind === "cold" ? 0.3 : 0.5,
+                  }} />
+                  {r.exact
+                    ? <div className="absolute inset-y-0 w-0.5" style={{ left: `${r.mid}%`, backgroundColor: hex }} />
+                    : <div className="absolute -inset-y-0.5 w-0.5" style={{ left: `${r.hi}%`, backgroundColor: hex, opacity: 0.8 }} />}
+                </div>
+                <div className="text-xs text-stone-500 italic mt-1.5 leading-snug">{sub}</div>
               </div>
-              <div className="text-xs text-stone-600 italic mt-1 leading-snug">
-                Only visible once somebody on the committee actually knows them. The card ask rolls against this number, not the one above.
-              </div>
-            </div>
-          )}
+            );
+          })()}
           <StatRow
             label="WHAT THEY'D BE RISKING"
             value={worker.fulfillment}
@@ -5734,10 +5853,9 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                     <CostPips hours={ACT1_ACTION[type].hours} affordable={canAfford(type)} />
                   </div>
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">
-                    {weightKnown ? "+" : "\u2248+"}{gains[type]} stated / <span className="text-teal-400">+{type === "deep" ? gains.deepTrue : gains.quickTrue} true</span> support.
                     {type === "deep"
-                      ? " Moves what they'd actually do. Surfaces 3-4 things about them."
-                      : " Cheap. Mostly moves what they say. Surfaces 1-3 things about them."}
+                      ? <>Moves where they actually stand by <span className="text-teal-400 font-bold">{weightKnown ? "+" : "\u2248+"}{gains.deepTrue}</span>, and tells you the number afterwards. Surfaces 3-4 things about them.</>
+                      : <>Moves what they'll say by {weightKnown ? "+" : "\u2248+"}{gains.quick}, and where they stand by <span className="text-teal-400">{weightKnown ? "+" : "\u2248+"}{gains.quickTrue}</span>. Narrows your read without giving you a number. Surfaces 1-3 things about them.</>}
                   </div>
                   {type === "deep" && misfireChance(actor, worker) > 0 && (
                     <div className="text-xs text-red-400 leading-snug mt-0.5">
@@ -5761,7 +5879,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                     {(worker.trueKnown ? worker.trueSupport : worker.support) < 46
                       ? (worker.trueKnown
                           ? "Nowhere near ready underneath. Asking now would be worse than not asking."
-                          : "They don't sound ready — and you can't see the number that actually decides it.")
+                          : "They don't sound ready, and you have no real read on them — the ask rolls against where they actually are, not against how they talk.")
                       : `${weightKnown ? "~" : "≈"}${pctOf(chance)}% they sign, from ${actor.name}.`}
                     {worker.askedRecently > 0 && " They were asked recently — it's a harder sell right now."}
                   </div>
@@ -5786,7 +5904,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                     {!worker.trueKnown
                       ? `You don't actually know where ${worker.name} stands — only what they say. Sit down with them properly before handing them other people's campaigns.`
                       : (worker.trueSupport ?? 0) < ACT1_RECRUIT_REQ
-                      ? `Needs ${ACT1_RECRUIT_REQ} TRUE support to take this on — they're at ${worker.trueSupport}, whatever the ${worker.support} says.`
+                      ? `Needs ${ACT1_RECRUIT_REQ} to take this on. Your read puts them at ${worker.trueSupport}, which is not close, however they talk.`
                       : `${worker.name} starts organizing too: +${ACT1_HOURS_PER_ORGANIZER} hours every week, their relationships become yours to direct, and they get better at it the more you use them. Leave them idle ${IDLE_QUIT} weeks and they walk.`}
                   </div>
                 </button>
@@ -6058,7 +6176,12 @@ function ContractPrototype({ onExit }) {
     setPhase("plan");
   }
 
-  const boardWorkers = workers.map(w => ({ ...w, support: w.commitment, organizer: w.cat, signed: w.participated }));
+  // Past recognition there is no hidden-support game left: these are your members and
+  // you know where they stand, so every read on this board is exact.
+  const boardWorkers = workers.map(w => ({
+    ...w, support: w.commitment, organizer: w.cat, signed: w.participated,
+    trueSupport: w.commitment, trueKnown: true, trueKnownWeek: 1,
+  }));
   const labels = { organizerLegend: "ON THE ACTION TEAM", signedLegend: "TURNED OUT LAST TIME" };
   const canResolve = planEntries.length > 0 || actionPlan;
   const overBudget = cat.some(o => hoursLeft(o) < 0) || totalUsed > totalHours;
@@ -6215,6 +6338,7 @@ function ContractPrototype({ onExit }) {
 
           <Act1FloorMap
             workers={boardWorkers}
+            weekNow={1}
             influence={influence}
             planEntries={planEntries}
             planLabel={(e) => (e.type === "oneOnOne" ? "1:1" : "recruit")}
