@@ -3150,14 +3150,6 @@ function tieFrom(base, a, b) {
 function tieOn(influence, a, b) {
   return tieFrom(infOn(influence, a.id, b.id), a, b);
 }
-function affinityLabel(a, b) {
-  const seen = visibleShared(a, b).length;
-  const unknownLeft = affList(a).some(t => !knownAff(a).includes(t)) || affList(b).some(t => !knownAff(b).includes(t));
-  if (seen >= 3) return "they have real common ground";
-  if (seen === 2) return "they've got things in common";
-  if (seen === 1) return "there's one thing they share";
-  return unknownLeft ? "you don't know what these two have in common yet" : "nothing in common you can work with";
-}
 
 // ---------- FULFILLMENT AS COMPLACENCY ----------
 // Fulfillment no longer decides who persuades whom. It decides how much a person
@@ -3383,37 +3375,54 @@ function LadderBadge({ worker, showLabel = true }) {
 
 // Common ground, drawn. A trait both people share lights up — that is the entire
 // "who do I send" decision, rendered without a sentence.
-function AffinityChips({ worker, actor = null, max = 6 }) {
+// Symbols, at a size you can actually read, with the name on hover. A mark shared with
+// whoever is doing the asking lights up teal, because that is the only thing on this row
+// the player is deciding on. An empty ring is something about them nobody has found yet.
+function AffinityMarks({ worker, actor = null }) {
   const known = knownAff(worker);
-  const hiddenCount = affList(worker).length - known.length;
-  if (!known.length && !hiddenCount) return null;
+  const hidden = affList(worker).length - known.length;
+  if (!known.length && !hidden) return null;
+  const shared = actor ? visibleShared(actor, worker) : [];
   return (
-    <span className="inline-flex flex-wrap items-center gap-1">
-      {known.slice(0, max).map(id => {
+    <>
+      {known.map(id => {
         const a = AFF_BY_ID[id];
-        const match = actor && affList(actor).includes(id) && knownAff(actor).includes(id);
+        const match = shared.includes(id);
+        const bought = isPoisoned(worker, id);
         return (
           <span
             key={id}
-            title={a.label + (match ? " — shared with " + actor.name : "")}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[11px] border"
+            title={bought ? `${a.label} — the company sponsors this now, so it counts for nothing`
+              : match ? `${a.label} — shared with ${actor.name}`
+              : a.label}
+            className="inline-flex items-center justify-center border"
             style={{
-              borderColor: match ? "#2dd4bf" : "#44403c",
-              color: match ? "#5eead4" : "#a8a29e",
-              backgroundColor: match ? "rgba(45,212,191,0.10)" : "transparent",
+              width: 30, height: 30,
+              borderColor: bought ? "#7f1d1d" : match ? "#2dd4bf" : "#44403c",
+              color: bought ? "#f87171" : match ? "#5eead4" : "#a8a29e",
+              backgroundColor: match ? "rgba(45,212,191,0.12)" : "transparent",
             }}
           >
-            <AffIcon id={a.id} size={13} />{a.label}
+            <AffIcon id={a.id} size={17} />
           </span>
         );
       })}
-      {Array.from({ length: hiddenCount }).map((_, i) => (
-        <span key={"h" + i} title="Not surfaced yet — a conversation would reveal it"
-          className="inline-flex items-center px-1.5 py-0.5 text-[11px] border border-dashed border-stone-700 text-stone-600">?</span>
+      {Array.from({ length: hidden }).map((_, i) => (
+        <span key={"h" + i} title="Something about them nobody has found yet — a quick chat is the cheapest way to look"
+          className="inline-flex items-center justify-center border border-dashed border-stone-700"
+          style={{ width: 30, height: 30 }}>
+          <span className="w-2 h-2 rounded-full border border-stone-700" />
+        </span>
       ))}
-    </span>
+      {shared.length > 0 && (
+        <span className="text-xs text-teal-300 ml-1">
+          {shared.length} in common with {actor.name}
+        </span>
+      )}
+    </>
   );
 }
+
 
 // ---------- SHARED BITS OF UI ----------
 function InfoDot({ children, align = "center" }) {
@@ -5562,9 +5571,6 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
   // that pair rather than a place to shop for a different organizer.
   const locked = !isSelfPanel;
 
-  const out = outgoingTies(influence, worker.id).filter(t => influenceKnown(worker, allWorkers.find(w => w.id === t.id)));
-  const inc = worker.revealed ? incomingTies(influence, worker.id) : [];
-  const nameOf = (id) => allWorkers.find(w => w.id === id)?.name || "?";
   const pctOf = (c) => Math.round(c * 20) * 5;
 
   const weight = actor && !isSelfPanel ? shownInfluence(influence, actor, worker) : 0;
@@ -5626,103 +5632,14 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
             ))}
           </div>
         )}
-        {/* COMMON GROUND — promoted to the top, because it is the decision */}
-        <div className="border border-stone-800 bg-stone-950/50 px-3 py-2 mb-3">
-          <div className="text-[11px] text-stone-500 font-bold tracking-wide mb-1.5">
-            HOW THEY MOVE PEOPLE
-          </div>
-          <div className="text-xs text-stone-400 leading-snug mb-2">{infTrait(worker).blurb}</div>
-          <div className="text-[11px] text-stone-500 font-bold tracking-wide mb-1.5">COMMON GROUND</div>
-          <AffinityChips worker={worker} actor={isSelfPanel ? null : actor} />
-          {!knownAff(worker).length && (
-            <div className="text-xs text-stone-600 italic mt-1">Nothing surfaced yet. A quick chat is the cheapest way to find out.</div>
-          )}
-        </div>
+        {/* Who they are, and what they have in common with whoever is doing the asking.
+            Everything else about this person — where they stand, how many hours they have
+            left, what the company has bought — is already on their card on the board, and
+            saying it twice made this panel longer than the decision it exists to serve. */}
+        <p className="text-sm text-stone-400 leading-relaxed mb-3">{worker.hook}</p>
 
-        <div className="border border-stone-800 bg-stone-950/50 p-3 mb-4">
-          {(() => {
-            // One row, because there is one number — and how wide the band around it is
-            // says everything about whether the campaign has earned the right to a figure.
-            const r = readOf(worker, week);
-            const hex = supportTier(r.mid).hex;
-            const headline = r.exact ? String(r.mid) : `${r.lo}\u2013${r.hi}`;
-            const label = worker.signed ? "WHERE THEY STAND"
-              : r.exact ? "WHERE THEY STAND (read this week)"
-              : r.kind === "fading" ? `WHERE THEY STAND (read ${r.age} weeks ago)`
-              : "WHERE THEY STAND (no read)";
-            const sub = worker.signed
-              ? "They signed. That is not a report on their opinion, it is a thing they did, so this number is not an estimate."
-              : r.kind === "fresh"
-                ? "Somebody on your committee sat down with them this week. This is what they'd actually do — the card ask rolls against it."
-                : r.kind === "fading"
-                  ? `The sit-down that produced this was ${r.age} weeks ago and people move. Another conversation would tighten it again.`
-                  : r.kind === "warm"
-                    ? `They talk like a ${worker.support}. That is the top of the range and nothing more: everyone in this band says the same things. Only a long conversation tells you where in it they sit.`
-                    : `Nobody has spoken to them. The only thing you have is what they say to the room, and what they say to the room is a ceiling.`;
-            return (
-              <div className="mb-2">
-                <div className="flex items-center justify-between text-xs text-stone-500 tracking-wide">
-                  <span className="flex items-center">{label}<InfoDot align="left">{STAT_INFO.support}</InfoDot></span>
-                  <span className="font-mono text-lg font-bold" style={{ color: hex }}>{headline}</span>
-                </div>
-                {/* The same band as the card, at a size you can actually read. */}
-                <div className="relative h-2 bg-stone-800 rounded-full mt-1.5 overflow-hidden">
-                  <div className="absolute inset-y-0 rounded-full" style={{
-                    left: `${r.lo}%`, width: `${Math.max(1.5, r.hi - r.lo)}%`,
-                    backgroundColor: hex, opacity: r.exact ? 0.95 : r.kind === "cold" ? 0.3 : 0.5,
-                  }} />
-                  {r.exact
-                    ? <div className="absolute inset-y-0 w-0.5" style={{ left: `${r.mid}%`, backgroundColor: hex }} />
-                    : <div className="absolute -inset-y-0.5 w-0.5" style={{ left: `${r.hi}%`, backgroundColor: hex, opacity: 0.8 }} />}
-                </div>
-                <div className="text-xs text-stone-500 italic mt-1.5 leading-snug">{sub}</div>
-              </div>
-            );
-          })()}
-          <StatRow
-            label="WHAT THEY'D BE RISKING"
-            value={worker.fulfillment}
-            hex={FULFILL_HEX}
-            info={STAT_INFO.fulfillment}
-            align="left"
-            sub={`${fulfillmentLabel(worker.fulfillment)} — card ask lands at ${Math.round(complacencyMult(worker) * 100)}% strength. The better the job feels, the more there is to lose.`}
-          />
-          <div className="mb-1">
-            <div className="flex items-center justify-between text-xs text-stone-500 tracking-wide">
-              <span className="flex items-center">INFLUENCE<InfoDot align="left">{STAT_INFO.influence}</InfoDot></span>
-              <span className="font-bold text-stone-200">{out.length ? `${out.length} mapped relationship${out.length === 1 ? "" : "s"}` : "none mapped"}</span>
-            </div>
-            <div className="text-xs text-stone-400 mt-1 leading-relaxed">
-              {out.length > 0 ? (
-                <span>Moves <span className="text-amber-400">{out.map(t => `${nameOf(t.id)} (${t.weight})`).join(", ")}</span>.</span>
-              ) : (
-                <span className="text-stone-600 italic">No mapped influence on anyone yet.</span>
-              )}
-              <br />
-              {worker.revealed ? (
-                <span>Moved by <span className="text-stone-300">{inc.length ? inc.map(t => `${nameOf(t.id)} (${t.weight})`).join(", ") : "nobody in particular — they make up their own mind"}</span>.</span>
-              ) : (
-                <span className="text-stone-600 italic">Who moves them is unmapped — every number below is an estimate until you find out.</span>
-              )}
-            </div>
-            {consultantActive && !worker.signed && !worker.burned && (() => {
-              // What actually protects someone from the consultant: signed coworkers who
-              // carry weight with them. Show it where the player is choosing who to work on.
-              const backing = signedBacking(influence, allWorkers, worker.id);
-              const shield = backing >= 90 ? "well covered" : backing >= 45 ? "partly covered" : "exposed";
-              return (
-                <div className={`text-xs mt-1.5 border-t border-stone-800 pt-1.5 ${backing >= 45 ? "text-stone-400" : "text-red-400"}`}>
-                  Against {CONSULTANT_NAME}: <span className="font-bold">{shield}</span> — {backing} points of influence on them comes from people who've already signed.
-                  {worker.pressuredCount > 0 && ` ${CONSULTANT_NAME} has worked on them ${worker.pressuredCount === 1 ? "once" : `${worker.pressuredCount} times`} so far.`}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-
-        <div className="mb-3 border-t border-stone-800 pt-3">
-          <div className="text-[11px] text-stone-600 font-bold mb-1 tracking-wide">WHO THEY ARE</div>
-          <p className="text-sm text-stone-400">{worker.hook}</p>
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          <AffinityMarks worker={worker} actor={isSelfPanel ? null : actor} />
         </div>
 
         {worker.history.length > 0 && (
@@ -5838,29 +5755,28 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
             </div>
             {actor && (
               <div className="text-xs text-stone-400 border border-stone-800 bg-stone-950/50 px-2.5 py-2 mb-3 leading-relaxed">
-                {/* One number for the relationship, shown as what it is made of: what
-                    they had before anyone found anything, plus what the common ground
-                    you surfaced is worth on top of it. */}
+                {/* One line: the tie, and how much of it is common ground you surfaced.
+                    The symbols above already say WHICH things they share, so this does
+                    not repeat them. */}
                 {weightKnown ? (
                   <>
-                    <span className="text-stone-300 font-bold">{actor.name} → {worker.name}: {tie}.</span>{" "}
-                    {tie >= 55 ? "Real standing — this is who should be doing it." : tie >= 25 ? "Some standing. It'll land, but not hard." : "Almost none. Whatever they say bounces off."}
+                    <span className="text-stone-300 font-bold">{actor.name} {"\u2192"} {worker.name}: {tie}</span>
+                    {tieBonus(actor, worker) > 0 && (
+                      <span className="text-teal-300"> ({weight} + {tie - weight} from what they share)</span>
+                    )}
+                    <span className="text-stone-500">
+                      {" \u00b7 "}
+                      {tie >= 55 ? "this is who should be doing it"
+                        : tie >= 25 ? "it'll land, but not hard"
+                        : "whatever they say bounces off"}
+                    </span>
                   </>
                 ) : (
-                  <><span className="text-stone-300 font-bold">Unmapped.</span> Numbers below assume an average relationship — map {worker.name} to see the real one.</>
-                )}
-                <br />
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  <span className="text-stone-500">COMMON GROUND</span>
-                  <Pips filled={tieBonus(actor, worker)} total={3} hex="#2dd4bf" size={7} gap={2.5} />
-                  <span className="font-bold" style={{ color: tieBonus(actor, worker) ? "#5eead4" : "#a8a29e" }}>
-                    {tieBonus(actor, worker)
-                      ? `${weight} + ${tie - weight} from what they share`
-                      : "nothing on this tie yet"}
+                  <span className="text-stone-500">
+                    <span className="text-stone-300 font-bold">Unmapped.</span> Numbers below assume an average relationship.
                   </span>
-                </div>
-                <span className="text-stone-500">{affinityLabel(actor, worker)}.</span>
-                {hoursLeftFor(actor) <= 0 && (
+                )}
+                                {hoursLeftFor(actor) <= 0 && (
                   <><br /><span className="text-red-400">{actor.name} has no hours left this week — pick someone else, or free up an hour in the plan below.</span></>
                 )}
               </div>
@@ -5901,12 +5817,14 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                   </div>
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">
                     {type === "deep"
-                      ? <>Moves where they actually stand by <span className="text-teal-400 font-bold">{weightKnown ? "+" : "\u2248+"}{gains.deepTrue}</span>, and tells you the number afterwards. Surfaces 3-4 things about them.</>
-                      : <>Moves what they'll say by {weightKnown ? "+" : "\u2248+"}{gains.quick}, and where they stand by <span className="text-teal-400">{weightKnown ? "+" : "\u2248+"}{gains.quickTrue}</span>. Narrows your read without giving you a number. Surfaces 1-3 things about them.</>}
+                      ? <><span className="text-teal-400 font-bold">{weightKnown ? "+" : "\u2248+"}{gains.deepTrue}</span> where they stand, and you learn the number. Surfaces 3-4.</>
+                      : <><span className="text-teal-400">{weightKnown ? "+" : "\u2248+"}{gains.quickTrue}</span> where they stand, and your read narrows. Surfaces 1-3.</>}
                   </div>
                   {type === "deep" && misfireChance(actor, worker) > 0 && (
                     <div className="text-xs text-red-400 leading-snug mt-0.5">
-                      {Math.round(misfireChance(actor, worker) * 100)}% it misfires — you don't know a single thing {actor.name} and {worker.name} share, so the sit-down lands as a pitch. Quick chat first.
+                      {Math.round(misfireChance(actor, worker) * 100)}% it misfires — {affList(worker).some(t => !knownAff(worker).includes(t))
+                        ? "nothing found in common yet, so it lands as a pitch. Quick chat first."
+                        : "these two have nothing to build on, so it lands as a pitch."}
                     </div>
                   )}
                 </button>
@@ -5925,15 +5843,12 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">
                     {(worker.trueKnown ? worker.trueSupport : worker.support) < 46
                       ? (worker.trueKnown
-                          ? "Nowhere near ready underneath. Asking now would be worse than not asking."
-                          : "They don't sound ready, and you have no real read on them — the ask rolls against where they actually are, not against how they talk.")
+                          ? "Nowhere near ready underneath — asking now is worse than not asking."
+                          : "They don't sound ready, and you have no real read on them.")
                       : `${weightKnown ? "~" : "≈"}${pctOf(chance)}% they sign, from ${actor.name}.`}
-                    {worker.askedRecently > 0 && " They were asked recently — it's a harder sell right now."}
+                    {worker.askedRecently > 0 && " Asked recently — harder right now."}
+                    <span className="text-red-400"> A no costs 5 and makes the next ask harder.</span>
                   </div>
-                  <div className="text-xs text-stone-500 leading-snug mt-0.5">
-                    Odds are read off their support before this week's conversations land — talk to them first and the ask gets easier.
-                  </div>
-                  <div className="text-xs text-red-400 leading-snug mt-0.5">If they say no: −5 support, and the next ask is harder.</div>
                 </button>
               )}
 
