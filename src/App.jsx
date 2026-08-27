@@ -3634,22 +3634,13 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
       <div className="flex items-center justify-between px-3 pt-2 flex-wrap gap-y-1">
         <div className="font-stencil text-lg tracking-wide text-stone-200">THE FLOOR</div>
       </div>
-      {/* Two rows, because a line carries two different kinds of fact: what the
-          relationship is, and — once you have picked somebody to act — what you can
-          safely do along it. The second row is the one that was missing. */}
-      <div className="text-[11px] text-stone-500 px-3 pb-1 space-y-0.5">
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-stone-600 tracking-wide">LINES, THICKER = MOVES THEM HARDER:</span>
-          <LineKey hex={EDGE_SAME_TEAM} h={2}>SAME TEAM</LineKey>
-          <LineKey hex={EDGE_CROSS_TEAM} h={2}>ACROSS TEAMS</LineKey>
-          <LineKey hex={EDGE_COMMON_GROUND} h={3}>COMMON GROUND FOUND</LineKey>
-          <LineKey hex="#a8a29e" h={3}>BRIGHT: YOURS THIS WEEK</LineKey>
-        </div>
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-stone-600 tracking-wide">ONCE YOU PICK SOMEONE:</span>
-          <LineKey hex={EDGE_COMMON_GROUND} h={3}>SOLID: SOMETHING TO OPEN ON</LineKey>
-          <LineKey hex="#fbbf24" h={3} dashed>DASHED: A LONG TALK MISFIRES</LineKey>
-        </div>
+      {/* Only the fact the board cannot show on its own. What a line's colour and
+          thickness mean is legible from the board itself; whether a sit-down along it
+          will land is not, so that is the one thing the key is for. */}
+      <div className="flex items-center gap-3 text-[11px] text-stone-500 flex-wrap px-3 pb-1">
+        <span className="text-stone-600 tracking-wide">ONCE YOU PICK SOMEONE:</span>
+        <LineKey hex={EDGE_COMMON_GROUND} h={3}>SOLID: SOMETHING TO OPEN ON</LineKey>
+        <LineKey hex="#fbbf24" h={3} dashed>DASHED: A LONG TALK MISFIRES</LineKey>
       </div>
 
       {/* THE LADDER. Left to right is the whole campaign. */}
