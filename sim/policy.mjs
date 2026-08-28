@@ -76,7 +76,5 @@ export function planWeek(G, opts = {}) {
     const a = bestActor(t, 1);
     if (a) { take(a, 'quick', t.id); busy.add(t.id); }
   }
-  // 7. Anything still unspent goes into mapping.
-  orgs.forEach(o => { while (spent(o.id) >= 2) take(o, 'map', null); });
   return plan;
 }

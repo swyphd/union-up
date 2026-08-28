@@ -37,13 +37,6 @@ export function resolveWeek(G, plan) {
     touched.add(x.id);
   };
 
-  // --- MAPPING ---
-  for (let i = 0; i < plan.filter(e => e.type === 'map').length; i++) {
-    const hidden = w.filter(x => !x.revealed && !x.burned);
-    if (!hidden.length) break;
-    [...hidden].sort(() => Math.random() - 0.5).slice(0, 3).forEach(x => { x.revealed = true; });
-  }
-
   // --- CONVERSATIONS ---
   plan.filter(e => e.type === 'quick' || e.type === 'deep').forEach(e => {
     const actor = byId(e.actorId), target = byId(e.targetId);

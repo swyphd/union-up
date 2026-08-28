@@ -2111,7 +2111,7 @@ function act1Stars(week) {
 
 const TRAIT_LABEL = { legal: "legal grievances", antiunion: "countering anti-union pressure", committee: "building shop committees", morale: "keeping morale up" };
 // Teams are public knowledge from day one — unlike the influence map, you don't need to
-// map the floor to know who works where. They bias who ends up carrying weight with whom.
+// know who works where without being told. They bias who carries weight with whom.
 const TEAM_LABEL = { engineering: "ENGINEERING", qa: "QA", production: "PRODUCTION" };
 const TEAM_HEX = { engineering: "#38bdf8", qa: "#a78bfa", production: "#fb7185" };
 
@@ -2429,7 +2429,7 @@ function IntroRosterVisual({ leaders }) {
 
 // ---------- THE OPENING ----------
 // One beat per click, never more than two lines. Everything that the game teaches in
-// context later — mapping, public actions, recruiting, how filing works — is deliberately
+// context later — public actions, recruiting, how filing works — is deliberately
 // not here. The intro carries the situation and exactly one rule: you direct your people.
 const ACT1_INTRO_BEATS = [
   {
@@ -2757,7 +2757,7 @@ function act1Winnability(workers, stage, week = 1) {
 // ---------- THE INFLUENCE MAP ----------
 // Directed and weighted: influence[a][b] is how much A moves B, which is not the same as
 // how much B moves A. Same-team coworkers talk more, so ties cluster there, but the whole
-// point of mapping the floor is that team is a hint, not the answer.
+// point is that team is a hint about who talks to whom, not the answer.
 function generateInfluence(seed) {
   const inf = {};
   seed.forEach(w => { inf[w.id] = {}; });
@@ -3164,7 +3164,7 @@ function complacencyMult(target) {
 
 // You know the reach of your own people — they can tell you who'd take their call.
 // What you can't see is the rest of the floor's web: who moves the people you haven't
-// worked yet. That's what mapping buys, and it's what tells you who's worth recruiting.
+// worked yet. That is what a conversation buys, and it is what tells you who is worth recruiting.
 const ASSUMED_INFLUENCE = 35;
 function influenceKnown(actor, target) {
   return !!(actor?.revealed || target?.revealed);
@@ -3255,7 +3255,6 @@ const ACT1_ACTION = {
   small: { label: "Small public action", hours: 1, short: "small action" },
   medium: { label: "Medium public action", hours: 2, short: "medium action" },
   large: { label: "Big public action", hours: 3, short: "big action" },
-  map: { label: "Map the floor", hours: 2, short: "mapping" },   // draws lines; never surfaces common ground
   checkin: { label: "Check in with them", hours: 1, short: "check-in" },
 };
 
@@ -3599,7 +3598,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
   const armed = focusId != null ? workers.find(x => x.id === focusId && x.organizer && !x.burned) : null;
 
   // An influence line is visible once either end is known to you — you can see your own
-  // people's reach from day one, and mapping the floor reveals everyone else's.
+  // people's reach from day one, and sitting down with somebody reveals theirs.
   // Kept as a stat rather than a picture: how much of the floor's real structure you have
   // found, and how much of it the org chart would never have told you.
   const mapped = (() => {
@@ -4043,7 +4042,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
             <div>
               {anyRevealed
                 ? "The boxes are the company's chart, and it is not the map you organize on. Pick one of your people: the marks they share light up across the floor, and hovering anyone says who moves them and how hard."
-                : "The boxes are the company's chart, and it is not the map you organize on. Pick one of your people: the marks they share light up across the floor. Who moves whom stays hidden until you map it."}
+                : "The boxes are the company's chart, and it is not the map you organize on. Pick one of your people: the marks they share light up across the floor. Who moves whom you learn by sitting down with people."}
             </div>
             {mapped.total > 0 && (
               <div className="text-stone-500 not-italic mt-0.5">
@@ -4110,9 +4109,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
   // Progressive unlocks — a mechanic introduces itself the week it first matters.
   // Public actions stay locked for the first three weeks: the opening of a drive is
   // one-on-one work, and handing over the visible options early lets a player skip it.
-  const unlockMapping = week >= 2;
   const unlockPublic = week >= ACT1_PUBLIC_UNLOCK_WEEK;
-  const anyRevealedBeyondStart = workers.some(w => w.revealed && !w.organizer);
   const anyPublicDone = workers.some(w => w.history.some(h => h.includes("public")));
   const anyRecruitable = workers.some(w => w.signed && !w.organizer && !w.burned && w.trueKnown && (w.trueSupport ?? 0) >= ACT1_RECRUIT_REQ);
 
@@ -4183,20 +4180,6 @@ function ActOneGame({ onGraduate, onPrototype }) {
 
     steps.push({ label: "WEEK START", sub: `${organizers.length} organizer${organizers.length === 1 ? "" : "s"} on the floor, ${totalUsed} of ${totalHours} hours committed.`, workers: w.map(x => ({ ...x })), lines: [] });
 
-    // --- MAPPING (resolves first: everything after is easier to read once it's known) ---
-    const mapCount = planEntries.filter(e => e.type === "map").length;
-    if (mapCount > 0) {
-      const mapLines = [];
-      for (let i = 0; i < mapCount; i++) {
-        const hidden = w.filter(x => !x.revealed && !x.burned);
-        if (!hidden.length) { mapLines.push("Everyone worth mapping is already mapped."); break; }
-        const picked = [...hidden].sort(() => Math.random() - 0.5).slice(0, 3);
-        picked.forEach(x => { x.revealed = true; });
-        mapLines.push(`Quiet weeks of listening pay off \u2014 the lines into ${picked.map(x => x.name).join(", ")} are on your map now. What any of them have in common with your committee is still a conversation away.`);
-      }
-      steps.push({ label: "MAPPING THE FLOOR", sub: "Who listens to whom, and how hard \u2014 the lines, not the people.", workers: w.map(x => ({ ...x })), lines: mapLines });
-    }
-
     // --- CONVERSATIONS ---
     const convoLines = [];
     const convoPulses = [];
@@ -4209,7 +4192,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
       const g = convoGain(actor, target, tie);
       const before = target.support;
       target.revealed = true; // you learn who they listen to by sitting down with them
-      target.spokenTo = true; // and, unlike mapping, you learn something about where they are
+      target.spokenTo = true; // and you learn something about where they actually are
 
       // Surface what they have in common. This is the payload of the quick chat.
       const found = revealAffinities(target, revealCount(e.type, actor, target));
@@ -5143,12 +5126,6 @@ function ActOneGame({ onGraduate, onPrototype }) {
 
       {phase === "plan" && (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
-          {unlockMapping && !anyRevealedBeyondStart && (
-            <div className="mb-4 flex items-start gap-2 text-amber-300 text-sm border border-amber-700 bg-amber-950/30 px-3 py-2">
-              <Radio size={14} className="shrink-0 mt-0.5" />
-              <span><span className="font-bold text-amber-400">NEW — MAP THE FLOOR.</span> Influence is relationship-specific, and most of it is invisible. Spend 2 hours mapping to find out who actually moves whom — including relationships your own people don't have.</span>
-            </div>
-          )}
           {unlockPublic && !anyPublicDone && (
             <div className="mb-4 flex items-start gap-2 text-teal-300 text-sm border border-teal-700 bg-teal-950/30 px-3 py-2">
               <Megaphone size={14} className="shrink-0 mt-0.5" />
@@ -5487,7 +5464,6 @@ function ActOneGame({ onGraduate, onPrototype }) {
           plannedFor={planEntries.filter(e => e.targetId === selectedWorker.id || (e.actorId === selectedWorker.id && !e.targetId))}
           onCancelPlans={(key) => setPlanEntries(es => es.filter(e => e.key !== key))}
           unlockPublic={unlockPublic}
-          unlockMapping={unlockMapping}
           consultantActive={consultant.active}
           onPlan={(actorId, type, targetId) => { addPlan(actorId, type, targetId); setSelectedWorker(null); setFocusActorId(actorId); }}
           onClose={() => setSelectedWorker(null)}
@@ -5557,7 +5533,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
   );
 }
 
-function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, unlockPublic, unlockMapping, consultantActive = false, onPlan, onClose }) {
+function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, unlockPublic, consultantActive = false, onPlan, onClose }) {
   const others = organizers.filter(o => o.id !== worker.id);
   const [actorId, setActorId] = useState(() => {
     if (preferActorId && preferActorId !== worker.id && others.some(o => o.id === preferActorId)) return preferActorId;
@@ -5746,16 +5722,6 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                 </button>
               );
             })}
-            {unlockMapping && (
-              <button
-                disabled={hoursLeftFor(worker) < ACT1_ACTION.map.hours}
-                onClick={() => onPlan(worker.id, "map")}
-                className={`w-full text-left border-2 px-3 py-2 transition-colors ${hoursLeftFor(worker) >= ACT1_ACTION.map.hours ? "border-stone-700 hover:bg-stone-800/60" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
-              >
-                <div className="text-sm text-stone-100 flex justify-between"><span>{ACT1_ACTION.map.label}</span><CostPips hours={ACT1_ACTION.map.hours} affordable={hoursLeftFor(worker) >= ACT1_ACTION.map.hours} /></div>
-                <div className="text-xs text-stone-400 leading-snug mt-0.5">Spend the week listening instead of talking. Draws the lines into three more people \u2014 who moves them, and how hard. It tells you nothing about what those people have in common with anyone: only a conversation does that.</div>
-              </button>
-            )}
           </div>
         ) : others.length === 0 ? (
           <div className="text-sm text-stone-500">Nobody on the committee is free to work on {worker.name} right now.</div>
