@@ -5,7 +5,6 @@ const { BLOCS, DEMANDS, DEMAND_BY_ID, LOC_COMPOSITION, PLATFORM_SLOTS, DEFECT_TH
   COMMITTEE_MORALE_REQ, COMMITTEE_RECRUIT_PCT_REQ, TOTAL_TURNS } = C;
 
 const TIERS = [6, 4, 2, 1, 0];
-const BUDGET = 10;
 
 // Site preference: sympathetic manager first, hostile last, bigger units break ties.
 export function rankSites(locs) {
@@ -42,7 +41,7 @@ export function planTurn(G, opts = {}) {
   const campaigns = G.locations.filter(l => l.status === 'campaign');
   const ranked = rankSites(organizing);
   const resp = {}, alloc = {};
-  let left = BUDGET;
+  let left = G.budget;
 
   // 1. Responses at every organizing site, most valuable first.
   organizing.forEach(l => {
@@ -85,8 +84,8 @@ export function planTurn(G, opts = {}) {
 
 // Between turns: which sites to file, and what platform to adopt.
 export function decideFiling(G, opts = {}) {
-  const lastFileTurn = TOTAL_TURNS - 5;
-  const eligible = G.locations.filter(fileEligible);
+  const lastFileTurn = C.ACT2_LAST_FILING_TURN;
+  const eligible = G.locations.filter(l => fileEligible(l, G.turn));
   const wantsCommittee = (opts.fileMode ?? 'now') === 'committee';
   return eligible.filter(l => !wantsCommittee || l.committee?.active || G.turn >= lastFileTurn - (opts.committeeSlack ?? 1)).map(l => l.id);
 }

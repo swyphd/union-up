@@ -180,7 +180,16 @@ The true-support "hollow dots" and the dashed ghost line show the same fact twic
 
 ### 3.3 Fixes, in the order I'd do them
 
-**Wiring (an afternoon, no design decisions):**
+**Wiring (an afternoon, no design decisions) — DONE, commit after `bde0b94`:**
+Items 1–6 below are in. Verified by compiling, by the Act Two sim (false-"alive" turns went
+from 41% of games to 0%; four carried leaders now move the win rate from 54% to 88%, which is
+strong and worth revisiting once the election roll is fixed), and by driving the built app in
+Chromium: listening action visible on QA's panel, the escalation prompt shown once with four
+gates, the standing banner and the panel FILE control both reaching the platform screen, and
+the site landing at the vote. Two extra bugs surfaced on the way and are fixed too: filing from
+the site panel opened the platform screen *underneath* the panel, and fifteen `\u2014` escapes
+written inside JSX text rendered literally. The filing gates now live in one `filingGates()`
+used by the prompt, the banner, the panel and the filing itself, with the clock as a fourth gate.
 1. Pass `priorities={blocPriorities}` and `remaining={remaining}` to `LocationActionModal`.
 2. Derive the lead from the filing rule: `ELECTION_LEAD_TURNS = 5` (or a shared constant used by
    `commitFiling`), and put "last turn you can still file: N" on the objective bar.

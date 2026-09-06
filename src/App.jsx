@@ -28,6 +28,12 @@ const GlobalStyle = () => (
 
 // ---------- CONSTANTS ----------
 const TOTAL_TURNS = 12;
+// Filing at turn T puts the vote at T + ACT2_FILING_LEAD. One constant for the filing
+// itself, the unwinnable check and the copy, so they cannot drift apart again.
+const ACT2_FILING_LEAD = 5;
+const ACT2_LAST_FILING_TURN = TOTAL_TURNS - ACT2_FILING_LEAD;
+// The organizer's week. Every leader who came up from Act One adds one action to it.
+const ACT2_BASE_ACTIONS = 10;
 const START_LOCATIONS = [
   { id: "downtown", name: "CORE STUDIO", workers: 12, manager: "hostile", morale: 40, trueSupport: 32, visibility: 5, recruited: 0, legalRisk: 0, fear: 0, status: "organizing", abandonedTurns: 0, electionTurn: null, grievance: null, antiUnion: { active: false, turnsLeft: 0 }, buyOff: { active: false, turnsLeft: 0 }, committee: { active: false, strikes: 0 } },
   { id: "suburban", name: "QA DIVISION", workers: 10, manager: "sympathetic", morale: 40, trueSupport: 34, visibility: 5, recruited: 0, legalRisk: 0, fear: 0, status: "organizing", abandonedTurns: 0, electionTurn: null, grievance: null, antiUnion: { active: false, turnsLeft: 0 }, buyOff: { active: false, turnsLeft: 0 }, committee: { active: false, strikes: 0 } },
@@ -121,14 +127,14 @@ const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
 const rand = (n) => Math.floor(Math.random() * n);
 
 // ---------- BLOCS AND THE DEMAND PLATFORM ----------
-// You cannot make everyone happy. Winning recognition is a unifying fight \u2014 everybody
+// You cannot make everyone happy. Winning recognition is a unifying fight — everybody
 // wants A union. Deciding what the union will ASK FOR is where a shop fractures, because
 // bargaining capital is finite and every demand you win trades against one you didn't.
 //
 // The blocs deliberately CROSS-CUT the org chart. If they were just departments the
 // problem would be one-dimensional and solvable with arithmetic. Because status and
 // tenure run at right angles to each other, a platform that splits salaried from
-// contract may unite QA across tenure \u2014 and navigating that is the actual game.
+// contract may unite QA across tenure — and navigating that is the actual game.
 const BLOCS = [
   { id: "salaried", axis: "status", label: "SALARIED", hex: "#38bdf8", blurb: "On staff, on payroll, on the org chart." },
   { id: "contract", axis: "status", label: "CONTRACT", hex: "#fb7185", blurb: "Renewed every six months. The industry's actual two-tier." },
@@ -145,7 +151,7 @@ const LOC_COMPOSITION = {
   university: { salaried: 0.45, contract: 0.55, veteran: 0.35, new: 0.65 },
 };
 
-// The pool. Two pairs are genuinely opposed \u2014 there is no compromise between them that
+// The pool. Two pairs are genuinely opposed — there is no compromise between them that
 // isn't itself a position. The universals are safe and cheap and win you nothing.
 const DEMANDS = [
   { id: "flatraise", label: "FLAT-DOLLAR RAISE", kind: "contested",
@@ -198,7 +204,7 @@ function rollBlocPriorities() {
 
 // Satisfaction is what the platform does TO a bloc, plus whether you served the thing
 // they actually cared about most. A solidarity pledge softens the miss without buying
-// enthusiasm \u2014 you promised them next time, and they have heard that before.
+// enthusiasm — you promised them next time, and they have heard that before.
 function blocSatisfaction(blocId, platform, priorities) {
   const pr = priorities[blocId] || { intensity: 2, top: null, pledged: false };
   let score = 50;
@@ -313,7 +319,9 @@ const ACT2_LAYOUT = {
 };
 
 function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
-  const teamStaminaBonus = recruitedLeaders.length * 15;
+  // Each leader who came up from Act One is another pair of hands: one more action a
+  // week. (The old +15 stamina per leader was clamped back to 100 on the first decay.)
+  const weeklyBudget = ACT2_BASE_ACTIONS + recruitedLeaders.length;
   // Deployment: where each leader (by index into recruitedLeaders) is stationed.
   // Their trait bonus only applies at that specific site now, not company-wide.
   const [leaderDeployment, setLeaderDeployment] = useState({});
@@ -353,7 +361,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   const [locations, setLocations] = useState(START_LOCATIONS.map(l => ({ ...l })));
   const [allocations, setAllocations] = useState({ downtown: 0, suburban: 0, airport: 0, university: 0 });
   const [responses, setResponses] = useState({ downtown: {}, suburban: {}, airport: {}, university: {} });
-  const [organizer, setOrganizer] = useState({ stamina: 100 + teamStaminaBonus, breaksTaken: 0, onBreak: 0 });
+  const [organizer, setOrganizer] = useState({ stamina: 100, breaksTaken: 0, onBreak: 0 });
   // The demand platform is set once, company-wide, the first time you file. Bloc
   // priorities are rolled at the start and stay hidden until somebody listens.
   const [platform, setPlatform] = useState([]);
@@ -364,9 +372,10 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   const [employerSophistication, setEmployerSophistication] = useState(0); // 0-3, rises when firing fails to crush a location
   const [employerEmboldened, setEmployerEmboldened] = useState(false);
   const [escalationTarget, setEscalationTarget] = useState(null);
-  // Last site the escalation prompt showed — lets it round-robin through every ready
-  // site turn to turn instead of always re-picking the first one in array order.
-  const [lastEscalationId, setLastEscalationId] = useState(null);
+  // Sites that have already had the escalation prompt. It shows once, the first turn a
+  // site is ready; after that the FILE control lives on the site's own panel and in the
+  // banner above the map, so nobody is asked the same question every week.
+  const [escalationSeen, setEscalationSeen] = useState([]);
   const [resolutionSteps, setResolutionSteps] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedLoc, setSelectedLoc] = useState(null);
@@ -392,7 +401,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   const totalAllocated = Object.values(allocations).reduce((a, b) => a + b, 0) + totalResponseCost;
 
   function updateAlloc(id, val) {
-    val = Math.max(0, Math.min(10, val));
+    val = Math.max(0, Math.min(weeklyBudget, val));
     setAllocations(prev => ({ ...prev, [id]: val }));
   }
 
@@ -871,7 +880,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     // --- THE SIDE OFFER ---
     // He reads your platform and goes straight to whoever you left out. Whether they
     // take it depends on their hidden intensity, which you can only have learned by
-    // listening \u2014 and on whether that bloc has a shop committee anywhere it is thick,
+    // listening — and on whether that bloc has a shop committee anywhere it is thick,
     // because a bloc with representation has somewhere to take the offer and argue.
     const blocLines = [];
     if (platform.length >= PLATFORM_SLOTS) {
@@ -979,26 +988,20 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       setPhase("gameover-loss");
       return;
     }
-    // Don't make anyone play out a campaign that arithmetic has already decided.
-    const winnable = act2Winnability(workingLocs, turn);
+    // Don't make anyone play out a campaign that arithmetic has already decided. The
+    // next turn the player can act on is turn + 1, and that is what the check reads.
+    const winnable = act2Winnability(workingLocs, turn + 1);
     if (!winnable.alive) {
       setDeadReason(winnable.reason);
       setPhase("gameover-loss");
       return;
     }
 
-    // Round-robin through every ready site instead of always re-picking the first one
-    // in array order — advance past whichever site was shown last time.
-    const readyLocs = workingLocs.filter(l => l.status === "organizing" && l.morale >= 70);
-    let escalationReady = null;
-    if (readyLocs.length) {
-      const lastIdx = readyLocs.findIndex(l => l.id === lastEscalationId);
-      escalationReady = readyLocs[(lastIdx + 1) % readyLocs.length];
-    }
+    const escalationReady = workingLocs.find(l => l.status === "organizing" && l.morale >= 70 && !escalationSeen.includes(l.id)) || null;
     setTurn(t => t + 1);
     if (escalationReady) {
       setEscalationTarget(escalationReady.id);
-      setLastEscalationId(escalationReady.id);
+      setEscalationSeen(seen => [...seen, escalationReady.id]);
       setPhase("escalation");
     } else {
       setPhase("allocate");
@@ -1011,6 +1014,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     if (platform.length < PLATFORM_SLOTS) {
       setPendingFileLoc(locId);
       setEscalationTarget(null);
+      setSelectedLoc(null); // the site panel would otherwise sit on top of the platform screen
       setPhase("platform");
       return;
     }
@@ -1019,13 +1023,12 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   function commitFiling(locId) {
     setLocations(prev => prev.map(l => {
       if (l.id !== locId) return l;
-      const recruitedPct = l.recruited / l.workers;
-      const eligible = l.morale >= 70 && recruitedPct >= 0.3 && l.legalRisk < 75;
-      if (!eligible) return l; // guarded in UI, shouldn't happen
-      return { ...l, status: "campaign", electionTurn: turn + 5, fear: 35 + rand(15) };
+      if (!filingGates(l, turn).every(g => g.pass)) return l; // guarded in UI, shouldn't happen
+      return { ...l, status: "campaign", electionTurn: turn + ACT2_FILING_LEAD, fear: 35 + rand(15) };
     }));
     setEscalationTarget(null);
     setPendingFileLoc(null);
+    setSelectedLoc(null);
     setPhase("allocate");
   }
   function adoptPlatform(chosen) {
@@ -1048,19 +1051,24 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     setLocations(START_LOCATIONS.map(l => ({ ...l })));
     setAllocations({ downtown: 0, suburban: 0, airport: 0, university: 0 });
     setResponses({ downtown: {}, suburban: {}, airport: {}, university: {} });
-    setOrganizer({ stamina: 100 + teamStaminaBonus, breaksTaken: 0, onBreak: 0 });
+    setOrganizer({ stamina: 100, breaksTaken: 0, onBreak: 0 });
     setMoraleClimate({ tone: "neutral", turnsLeft: 0 });
     setLegalClimate({ tone: "neutral", turnsLeft: 0 });
     setEmployerSophistication(0);
     setEmployerEmboldened(false);
     setEscalationTarget(null);
-    setLastEscalationId(null);
+    setEscalationSeen([]);
+    setPlatform([]);
+    setBlocPriorities(rollBlocPriorities());
+    setPendingFileLoc(null);
+    setDeadReason(null);
+    setSelectedLoc(null);
     setLeaderDeployment({});
     setArmedLeader(null);
     setPhase("allocate");
   }
 
-  const remaining = 10 - totalAllocated;
+  const remaining = weeklyBudget - totalAllocated;
   const locByStatus = (s) => locations.filter(l => l.status === s);
   const escLoc = locations.find(l => l.id === escalationTarget);
 
@@ -1151,6 +1159,11 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
               <span className="font-bold">{Math.max(0, TOTAL_TURNS - turn)}</span>
               {atVote.length > 0 && <span className="text-amber-400"> — {atVote.length} shop{atVote.length === 1 ? "" : "s"} already at the vote</span>}
             </span>
+            <span className={turn > ACT2_LAST_FILING_TURN ? "text-red-400" : turn === ACT2_LAST_FILING_TURN ? "text-amber-400 font-bold" : "text-stone-400"}>
+              <span className="text-stone-500">LAST WEEK TO FILE</span>{" "}
+              <span className="font-bold">{ACT2_LAST_FILING_TURN}</span>
+              <span className="text-stone-500"> — a vote lands {ACT2_FILING_LEAD} weeks after the petition</span>
+            </span>
             {!win.alive && <span className="text-red-400 font-bold">NO LONGER WINNABLE</span>}
           </div>
         );
@@ -1213,6 +1226,33 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
               <Vote size={14} /> You need 2 locations won, not 1 — keep organizing your other sites while this election plays out.
             </div>
           )}
+          {(() => {
+            const ready = locations.filter(l => l.status === "organizing" && filingGates(l, turn).every(g => g.pass));
+            if (!ready.length) return null;
+            return (
+              <div className="mb-4 border-2 border-teal-700 bg-teal-950/20 px-3 py-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-[16rem]">
+                    <div className="font-stencil text-lg tracking-wide text-teal-400">
+                      {ready.length === 1 ? `${ready[0].name} CAN FILE TODAY` : `${ready.length} SHOPS CAN FILE TODAY`}
+                    </div>
+                    <div className="text-xs text-stone-400 leading-relaxed mt-1">
+                      Every gate is green. Filing starts a {ACT2_FILING_LEAD}-week clock you cannot stop, and the vote rolls on true support, not morale
+                      {ready.some(l => !l.committee?.active) ? " — which, without a shop committee, you cannot see" : ""}. The last week to file is {ACT2_LAST_FILING_TURN}.
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1.5 shrink-0">
+                    {ready.map(l => (
+                      <button key={l.id} onClick={() => fileForElection(l.id)}
+                        className="font-stencil text-base bg-teal-600 hover:bg-teal-500 text-stone-950 px-5 py-2 tracking-wide transition-colors">
+                        FILE — {l.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           {moraleClimate.turnsLeft > 0 && (
             <div className={`mb-4 flex items-center gap-2 text-sm border px-3 py-2 ${moraleClimate.tone === "positive" ? "text-teal-400 border-teal-900 bg-teal-950/30" : moraleClimate.tone === "negative" ? "text-red-400 border-red-900 bg-red-950/40" : "text-amber-400 border-amber-900 bg-amber-950/30"}`}>
               <Radio size={14} /> National mood {moraleClimate.tone === "positive" ? "is energizing organizing everywhere" : moraleClimate.tone === "negative" ? "has knocked morale down everywhere" : "has workers both angrier and more anxious"} ({moraleClimate.turnsLeft} week{moraleClimate.turnsLeft === 1 ? "" : "s"} left).
@@ -1278,10 +1318,10 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
               <div className="flex items-center gap-2 flex-wrap">
                 <HourPie
                   left={Math.max(0, remaining)}
-                  total={10}
+                  total={weeklyBudget}
                   hex={remaining < 0 ? "#f87171" : remaining === 0 ? "#2dd4bf" : "#fbbf24"}
                   size={22}
-                  label={`${Math.max(0, remaining)} of 10 actions left this week`}
+                  label={`${Math.max(0, remaining)} of ${weeklyBudget} actions left this week`}
                 />
                 <span className={`text-xs font-bold ${remaining < 0 ? "text-red-500" : remaining === 0 ? "text-teal-400" : "text-stone-500"}`}>
                   {remaining < 0 ? `${Math.abs(remaining)} OVER` : remaining === 0 ? "ALL SPENT" : `${remaining} LEFT`}
@@ -1291,10 +1331,10 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
             <p className="text-xs text-stone-500 mb-3">Click a location above to choose what the organizer does there this week. Tap it again to change the plan. Unassigned actions count as rest — they help the organizer recover stamina but do nothing for the campaign.</p>
             <button
               onClick={resolveTurn}
-              disabled={totalAllocated > 10}
-              className={`w-full font-stencil text-lg py-2.5 tracking-wide transition-colors ${totalAllocated > 10 ? "bg-stone-800 text-stone-600 cursor-not-allowed" : "bg-amber-500 hover:bg-amber-400 text-stone-950"}`}
+              disabled={totalAllocated > weeklyBudget}
+              className={`w-full font-stencil text-lg py-2.5 tracking-wide transition-colors ${totalAllocated > weeklyBudget ? "bg-stone-800 text-stone-600 cursor-not-allowed" : "bg-amber-500 hover:bg-amber-400 text-stone-950"}`}
             >
-              {totalAllocated > 10 ? "OVER BUDGET — REDUCE ALLOCATION" : `RESOLVE WEEK ${turn}`}
+              {totalAllocated > weeklyBudget ? "OVER BUDGET — REDUCE ALLOCATION" : `RESOLVE WEEK ${turn}`}
             </button>
           </div>
         </div>
@@ -1336,6 +1376,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       {phase === "escalation" && escLoc && (
         <EscalationModal
           loc={escLoc}
+          turn={turn}
           onFile={() => fileForElection(escLoc.id)}
           onConsolidate={consolidate}
           onPivot={() => pivotAway(escLoc.id)}
@@ -1346,16 +1387,16 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       {(phase === "gameover-win" || phase === "gameover-loss") && (
         <div className="max-w-xl mx-auto px-6 py-20 text-center anim-rise">
           <div className={`font-stencil text-5xl mb-4 ${phase === "gameover-win" ? "text-teal-400" : "text-red-500"}`}>
-            {phase === "gameover-win" ? "CONTRACT WON" : "CAMPAIGN OVER"}
+            {phase === "gameover-win" ? "TWO SHOPS CERTIFIED" : "CAMPAIGN OVER"}
           </div>
           <p className="text-stone-400 mb-6 leading-relaxed">
             {phase === "gameover-win"
-              ? `Two or more studios voted to unionize. Workers have a contract to negotiate — and leverage they didn't have twelve weeks ago.`
+              ? `Two studios voted to unionize, and the labor board certifies both. Certification obliges the company to bargain, not to agree — the first contract is the next fight, and the committees you built are what win it.`
               : organizer.breaksTaken >= 2
                 ? `The organizer burned out for a second time and left the campaign. There was no one left to carry it forward.`
                 : deadReason
                   ? deadReason
-                  : `Twelve weeks came and went without enough studios reaching a contract. The campaign didn't build the power it needed in time.`}
+                  : `Twelve weeks came and went without enough studios reaching a certified vote. The campaign didn't build the power it needed in time.`}
           </p>
           {phase === "gameover-loss" && deadReason && turn < TOTAL_TURNS && (
             <p className="text-red-400/80 text-sm mb-6 leading-relaxed border border-red-900/60 bg-red-950/20 px-4 py-3">
@@ -1389,6 +1430,9 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
           turn={turn}
           allocation={allocations[selectedLoc.id] || 0}
           response={responses[selectedLoc.id] || {}}
+          priorities={blocPriorities}
+          remaining={remaining}
+          onFile={() => fileForElection(selectedLoc.id)}
           onSetUnits={(units) => updateAlloc(selectedLoc.id, units)}
           onToggleResponse={(key) => toggleResponse(selectedLoc.id, key)}
           onClose={() => setSelectedLoc(null)}
@@ -1402,17 +1446,28 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
 // Permadeath means the game owes you the truth the moment it stops being winnable,
 // and it owes you the specific reason. No quietly playing out a dead campaign.
 const ACT2_SITES_NEEDED = 2;
-const ELECTION_LEAD_TURNS = 2; // filing, then the vote
+// The four gates on a petition. Each one passes or it doesn't — the escalation prompt,
+// the site panel, the banner and the filing itself all read this one list.
+function filingGates(loc, turn) {
+  const recruitedPct = loc.recruited / loc.workers;
+  return [
+    { id: "morale", label: "MORALE", val: loc.morale, pass: loc.morale >= 70, req: "\u2265 70" },
+    { id: "recruited", label: "RECRUITED", val: `${Math.round(recruitedPct * 100)}%`, pass: recruitedPct >= 0.3, req: "\u2265 30%" },
+    { id: "legal", label: "LEGAL RISK", val: loc.legalRisk, pass: loc.legalRisk < 75, req: "< 75" },
+    { id: "clock", label: "WEEK", val: turn, pass: turn <= ACT2_LAST_FILING_TURN, req: `\u2264 ${ACT2_LAST_FILING_TURN}` },
+  ];
+}
+// `turn` is the next turn the player can act on: a site still organizing can only
+// deliver if a petition filed that turn reaches its vote by the end of the calendar.
 function act2Winnability(locations, turn) {
   const won = locations.filter(l => l.status === "won").length;
   const needed = ACT2_SITES_NEEDED - won;
   if (needed <= 0) return { alive: true, won, needed: 0, salvageable: [], reason: null };
-  const turnsLeft = TOTAL_TURNS - turn;
   // A site can still deliver if it's already at the vote, or has room to file and vote.
   const salvageable = locations.filter(l => {
     if (l.status === "won" || l.status === "lost") return false;
     if (l.status === "campaign") return l.electionTurn <= TOTAL_TURNS;
-    return turnsLeft >= ELECTION_LEAD_TURNS;
+    return turn <= ACT2_LAST_FILING_TURN;
   });
   if (salvageable.length < needed) {
     const dead = locations.filter(l => l.status === "lost").length;
@@ -1423,7 +1478,7 @@ function act2Winnability(locations, turn) {
     return {
       alive: false, won, needed, salvageable,
       reason: blockedByClock > 0
-        ? `${blockedByClock} shop${blockedByClock === 1 ? " is" : "s are"} still organizing, but none can file and reach a vote before week ${TOTAL_TURNS}. You needed ${needed} more.`
+        ? `${blockedByClock} shop${blockedByClock === 1 ? " is" : "s are"} still organizing, but none can file and reach a vote before week ${TOTAL_TURNS} — the last week to file was ${ACT2_LAST_FILING_TURN}. You needed ${needed} more.`
         : `${dead} election${dead === 1 ? " has" : "s have"} already come back NO. There aren't enough shops left standing to reach ${ACT2_SITES_NEEDED}.`,
     };
   }
@@ -1540,7 +1595,7 @@ function FeedbackControls({ loc, response, priorities = null, onToggle }) {
             <UsersRound size={12} />
             <span className="flex-1">
               <span className="font-bold">{target.label} are {Math.round((comp[target.id] || 0) * 100)}% of this shop.</span>{" "}
-              Sit down and hear them out \u2014 reveals what they actually want and how hard
+              Sit down and hear them out — reveals what they actually want and how hard
             </span>
             <CostPips hours={2} />
           </label>
@@ -1550,7 +1605,7 @@ function FeedbackControls({ loc, response, priorities = null, onToggle }) {
         <label className="flex items-center gap-2 text-xs border border-amber-600 text-amber-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.formCommittee} onChange={() => onToggle("formCommittee")} className="accent-amber-500" />
           <UsersRound size={12} />
-          <span className="flex-1"><span className="font-bold">Ready for a shop committee.</span> Help workers form one \u2014 unlocks the true-support read here</span><CostPips hours={COMMITTEE_COST} />
+          <span className="flex-1"><span className="font-bold">Ready for a shop committee.</span> Help workers form one — unlocks the true-support read here</span><CostPips hours={COMMITTEE_COST} />
         </label>
       )}
     </div>
@@ -1740,7 +1795,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
   );
 }
 
-function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, onSetUnits, onToggleResponse, onClose }) {
+function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, onFile = null, onSetUnits, onToggleResponse, onClose }) {
   const meta = statusMeta[loc.status];
   const isCampaign = loc.status === "campaign";
   const isOrganizing = loc.status === "organizing";
@@ -1856,6 +1911,26 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
             {isOrganizing && (
               <FeedbackControls loc={loc} response={response} priorities={priorities} onToggle={onToggleResponse} />
             )}
+            {isOrganizing && onFile && loc.morale >= 70 && (() => {
+              // The standing FILE control. The escalation prompt asks once; this is where
+              // the answer lives every week after that.
+              const gates = filingGates(loc, turn);
+              const blocked = gates.filter(g => !g.pass);
+              return (
+                <button
+                  onClick={onFile}
+                  disabled={blocked.length > 0}
+                  className={`mt-3 w-full text-left border-2 px-3 py-2 transition-colors ${blocked.length ? "border-stone-800 opacity-50 cursor-not-allowed" : "border-teal-600 hover:bg-teal-950/40"}`}
+                >
+                  <div className="font-stencil text-base text-teal-400">FILE FOR UNION ELECTION</div>
+                  <div className="text-xs text-stone-400">
+                    {blocked.length
+                      ? `Blocked: ${blocked.map(g => `${g.label.toLowerCase()} ${g.val} (needs ${g.req})`).join(", ")}.`
+                      : `Vote lands in ${ACT2_FILING_LEAD} weeks. The employer campaigns against you every week of it.`}
+                  </div>
+                </button>
+              );
+            })()}
           </>
         ) : (
           <div className="text-sm text-stone-500 italic">This site is no longer active — nothing left to organize here.</div>
@@ -1984,9 +2059,9 @@ function PlatformModal({ priorities, locations, onAdopt, onPledge }) {
   );
 }
 
-function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
-  const recruitedPct = loc.recruited / loc.workers;
-  const eligible = loc.morale >= 70 && recruitedPct >= 0.3 && loc.legalRisk < 75;
+function EscalationModal({ loc, turn, onFile, onConsolidate, onPivot }) {
+  const gates = filingGates(loc, turn);
+  const eligible = gates.every(g => g.pass);
   const gap = loc.morale - (loc.trueSupport ?? loc.morale);
   return (
     <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-50 px-4">
@@ -1995,15 +2070,11 @@ function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
           <Vote size={18} className="text-amber-400" />
           <div className="font-stencil text-xl text-amber-400 tracking-wide">ESCALATION DECISION: {loc.name}</div>
         </div>
-        <p className="text-sm text-stone-400 mb-4">Morale has crossed 70. Workers are ready to move — the question is whether you are.</p>
+        <p className="text-sm text-stone-400 mb-4">Morale has crossed 70. Workers are ready to move — the question is whether you are. You will only be asked this once; after today the FILE control lives on the shop's own panel.</p>
 
-        {/* Three gates. Each one passes or it doesn't \u2014 no interpreting a number. */}
-        <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
-          {[
-            { label: "MORALE", val: loc.morale, pass: loc.morale >= 70, req: "\u2265 70" },
-            { label: "RECRUITED", val: `${Math.round(recruitedPct * 100)}%`, pass: recruitedPct >= 0.3, req: "\u2265 30%" },
-            { label: "LEGAL RISK", val: loc.legalRisk, pass: loc.legalRisk < 75, req: "< 75" },
-          ].map(g => (
+        {/* The gates. Each one passes or it doesn't \u2014 no interpreting a number. */}
+        <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
+          {gates.map(g => (
             <div key={g.label} className={`border p-2 text-center ${g.pass ? "border-teal-800 bg-teal-950/20" : "border-red-900 bg-red-950/20"}`}>
               <div className="text-stone-500">{g.label}</div>
               <div className={`font-bold text-base ${g.pass ? "text-teal-400" : "text-red-400"}`}>
@@ -2018,7 +2089,7 @@ function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
         <div className="mb-3 text-xs border border-stone-800 bg-stone-950/50 px-3 py-2">
           <div className="text-stone-500 font-bold tracking-wide mb-1">IF YOU FILE TODAY</div>
           <div className="text-stone-400 leading-relaxed">
-            Vote lands in <span className="text-stone-200 font-bold">5 weeks</span>. Win chance is
+            Vote lands in <span className="text-stone-200 font-bold">{ACT2_FILING_LEAD} weeks</span>. Win chance is
             {" "}<span className="text-stone-200 font-bold">60% of true support + 40% of whatever fear isn't</span>.
             {loc.committee?.active
               ? <> At {loc.trueSupport} true support and {loc.fear} fear, that reads
@@ -2046,11 +2117,11 @@ function EscalationModal({ loc, onFile, onConsolidate, onPivot }) {
             className={`w-full text-left border-2 p-3 transition-colors ${eligible ? "border-teal-600 hover:bg-teal-950/40" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
           >
             <div className="font-stencil text-base text-teal-400">FILE FOR UNION ELECTION</div>
-            <div className="text-xs text-stone-400">Go for the win now. Triggers a 5-week NLRB and campaign period, during which the employer campaigns against you every week. {!eligible && "Blocked: one of the three gates above is red."}</div>
+            <div className="text-xs text-stone-400">Go for the win now. Triggers a {ACT2_FILING_LEAD}-week NLRB and campaign period, during which the employer campaigns against you every week. {!eligible && "Blocked: one of the gates above is red."}</div>
           </button>
           <button onClick={onConsolidate} className="w-full text-left border-2 border-amber-700 hover:bg-amber-950/40 p-3 transition-colors">
             <div className="font-stencil text-base text-amber-400">CONSOLIDATE & KEEP ORGANIZING</div>
-            <div className="text-xs text-stone-400">Hold here, build strength at other sites, escalate multiple locations together. Morale here will decay slowly if neglected.</div>
+            <div className="text-xs text-stone-400">Hold here, build strength at other sites, escalate multiple locations together. Morale here will decay slowly if neglected. You can file from the shop's panel any later week.</div>
           </button>
           <button onClick={onPivot} className="w-full text-left border-2 border-stone-700 hover:bg-stone-800/60 p-3 transition-colors">
             <div className="font-stencil text-base text-stone-300">PIVOT AWAY</div>
@@ -2075,8 +2146,8 @@ const ACT1_STAR_WEEKS = { three: 16, two: 21 };
 // ---------- THE WINDOW CLOSES ----------
 // Two deadlines, neither of them a bare countdown.
 //
-// 1. Cards go stale. This is real NLRB practice \u2014 old authorization cards get
-//    challenged as unreliable evidence of CURRENT support \u2014 and it is the right shape
+// 1. Cards go stale. This is real NLRB practice — old authorization cards get
+//    challenged as unreliable evidence of CURRENT support — and it is the right shape
 //    here because it isn't a timer, it's decay. A stale card drops that worker back
 //    down the ladder and takes true support with it. It never touches a fast run: your
 //    first card lands around week 6, so a 3-star campaign never loses one. A grind
@@ -2086,7 +2157,7 @@ const CARD_STALE_WARNING = 3; // weeks of notice on the worker card
 
 // 2. The studio ships. The most honest death available in this setting: the window
 //    closes because the business cycle does not wait for the campaign. Visible from
-//    week one \u2014 a cap you discover is a cheap shot, a cap you plan against is strategy.
+//    week one — a cap you discover is a cheap shot, a cap you plan against is strategy.
 const ACT1_SHIP_WEEK = 26;
 const ACT1_CRUNCH_WEEKS = 4; // flagged off by default; see ACT1_CRUNCH_ENABLED
 const ACT1_CRUNCH_ENABLED = false;
@@ -2388,7 +2459,7 @@ function act2IntroBeats(leaders) {
       title: "YOU'RE NOT IN THE ROOM ANYMORE",
       lines: [
         "You're one organizer with four sites and one calendar.",
-        "Every week you decide where your ten actions of time go — and where they don't.",
+        `Every week you decide where your ${ACT2_BASE_ACTIONS} actions of time go — and where they don't.`,
       ],
     },
   ];
@@ -2398,7 +2469,7 @@ function act2IntroBeats(leaders) {
       title: "THE SHOP FLOOR CAME WITH YOU",
       lines: [
         `${["Nobody", "One person", "Two people", "Three people", "Four people"][leaders.length] || `${leaders.length} people`} who proved themselves in the first campaign came with you.`,
-        "Station each of them at a site — their strength only helps where you post them.",
+        "Station each of them at a site — their strength only helps where you post them. And each of them is one more action every week.",
       ],
       visual: "roster",
     });
@@ -2690,7 +2761,7 @@ const ACT1_CARDS_NEEDED = Math.ceil(ACT1_TOTAL_WORKERS * ACT1_CARD_THRESHOLD);
 // signed coworkers a person actually trusts is what blunts it.
 //
 // The player works the opposite map. Kirkman only finds it when the campaign gets loud
-// enough to show him \u2014 which makes your own visibility the thing that teaches him.
+// enough to show him — which makes your own visibility the thing that teaches him.
 const KIRKMAN_SIGHT = 55; // heat above which he stops guessing from the org chart
 
 // An org-chart hit is absorbed in proportion to how much signed influence surrounds
@@ -4071,7 +4142,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedWorker, setSelectedWorker] = useState(null);
   // Actor-first selection: pick who acts on the shelf, then pick who they go to.
-  // Target-first still works \u2014 both entry points reach the same panel.
+  // Target-first still works — both entry points reach the same panel.
   const [focusActorId, setFocusActorId] = useState(null);
   // Escape clears the armed organizer, since clicking their card again is now a public
   // action rather than a way out of the selection.
@@ -4426,7 +4497,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
       });
     });
     // Committee neglect. Two weeks of grace, then their hours start shrinking, then
-    // they step back off entirely. Nothing here resets \u2014 re-recruiting costs the full
+    // they step back off entirely. Nothing here resets — re-recruiting costs the full
     // three hours again, against a person whose commitment has already slipped.
     const quitLines = [];
     const quitNotes = {};
@@ -4536,7 +4607,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
       }
 
       // VANTAGE PARTNERS. Ownership does not persuade. It threatens the whole studio,
-      // which raises fulfillment-as-risk across the board \u2014 everyone has more to lose.
+      // which raises fulfillment-as-risk across the board — everyone has more to lose.
       if (outsidersNext.includes("corporate") && Math.random() < 0.45) {
         const teams = ["engineering", "qa", "production"];
         const t = teams[rand(teams.length)];
@@ -4673,7 +4744,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
       const inCampaign = stage === "campaign";
       // Below the sight threshold he is picking names off an org chart: whoever looks
       // wobbly on paper, by department. Above it, the campaign has been loud enough
-      // that he can see who is actually isolated \u2014 and that is when he gets dangerous.
+      // that he can see who is actually isolated — and that is when he gets dangerous.
       const seesNetwork = heat >= KIRKMAN_SIGHT || inCampaign;
       const marks = w
         .filter(x => !x.burned && x.support >= 30 && (inCampaign || !x.signed))

@@ -6,14 +6,15 @@ import * as C from './core2.mjs';
 const { clamp, rand, TOTAL_TURNS, START_LOCATIONS, COMMITTEE_COST, COMMITTEE_MORALE_REQ,
   COMMITTEE_RECRUIT_PCT_REQ, GRIEVANCE_META, EXTERNAL_EVENTS, BLOCS, LOC_COMPOSITION, DEMAND_BY_ID,
   PLATFORM_SLOTS, DEFECT_THRESHOLD, rollBlocPriorities, blocSatisfaction, locBlocFactor,
-  computeSolidarityScore, baseGain, baseVis, ACT2_SITES_NEEDED, act2Winnability } = C;
+  computeSolidarityScore, baseGain, baseVis, ACT2_SITES_NEEDED, ACT2_FILING_LEAD, ACT2_LAST_FILING_TURN, ACT2_BASE_ACTIONS, filingGates, act2Winnability } = C;
 const roll100 = () => rand(100) + 1;
 
 export function newGame(leaders = []) {
   return {
     turn: 1,
     locations: START_LOCATIONS.map(l => ({ ...l })),
-    organizer: { stamina: 100 + leaders.length * 15, breaksTaken: 0, onBreak: 0 },
+    organizer: { stamina: 100, breaksTaken: 0, onBreak: 0 },
+    budget: ACT2_BASE_ACTIONS + leaders.length,
     platform: [],
     priorities: rollBlocPriorities(),
     moraleClimate: { tone: 'neutral', turnsLeft: 0 },
@@ -38,14 +39,14 @@ export function responseCostFor(loc, r) {
   return cost;
 }
 
-export function fileEligible(l) {
-  return l.status === 'organizing' && l.morale >= 70 && l.recruited / l.workers >= 0.3 && l.legalRisk < 75;
+export function fileEligible(l, turn) {
+  return l.status === 'organizing' && filingGates(l, turn).every(g => g.pass);
 }
 
 // Filing happens between turns, at the escalation prompt. Mirrors commitFiling.
 export function file(G, locId) {
-  return { ...G, locations: G.locations.map(l => l.id !== locId || !fileEligible(l) ? l
-    : { ...l, status: 'campaign', electionTurn: G.turn + 5, fear: 35 + rand(15) }) };
+  return { ...G, locations: G.locations.map(l => l.id !== locId || !fileEligible(l, G.turn) ? l
+    : { ...l, status: 'campaign', electionTurn: G.turn + ACT2_FILING_LEAD, fear: 35 + rand(15) }) };
 }
 
 // One turn. alloc: {locId: units}, resp: {locId: {grievance,document,counter,reframe,formCommittee,bargain}}
@@ -339,14 +340,14 @@ export function resolveTurn(G, alloc, resp) {
   if (breaksTaken >= 2) return { ...next, over: 'burnout' };
   if (wonCount >= ACT2_SITES_NEEDED) return { ...next, over: 'win' };
   if (turn >= TOTAL_TURNS) return { ...next, over: 'clock' };
-  const winnable = act2Winnability(workingLocs, turn);
+  const winnable = act2Winnability(workingLocs, turn + 1);
   if (!winnable.alive) return { ...next, over: 'called', deadReason: winnable.reason };
-  // The shipped check uses ELECTION_LEAD_TURNS = 2, but filing at turn T votes at T+5.
-  // Count the turns where the game says "alive" and the arithmetic says otherwise.
+  // Cross-check the shipped detector against the arithmetic: filing at turn T votes at
+  // T + ACT2_FILING_LEAD. Any turn counted here is a turn the game called alive wrongly.
   const trulyAlive = (() => {
     const nextTurn = turn + 1;
     const canFinish = workingLocs.filter(l => (l.status === 'campaign' && l.electionTurn <= TOTAL_TURNS)
-      || (l.status === 'organizing' && nextTurn + 5 <= TOTAL_TURNS));
+      || (l.status === 'organizing' && nextTurn + ACT2_FILING_LEAD <= TOTAL_TURNS));
     return wonCount + canFinish.length >= ACT2_SITES_NEEDED;
   })();
   if (!trulyAlive) L.falseAlive++;
