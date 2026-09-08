@@ -6294,6 +6294,51 @@ const LEVERAGE_COOLING = 0.8;
 const CAT_HOURS = 3;
 const CAT_JOIN_REQ = 70;
 
+// ---------- REPETITION IS NOT A STRUCTURE TEST ----------
+// The second sticker day tells the company nothing the first one didn't. A test only
+// tests something the last one left open, so a rung you have already run pays a
+// fraction of what it paid — and escalating is the only thing that keeps paying. This is
+// the same curve Act One uses on repeated public actions.
+const CONTRACT_FATIGUE = 0.6;
+function rungFatigue(uses) { return 1 / (1 + CONTRACT_FATIGUE * uses); }
+
+// ---------- SURFACE BARGAINING ----------
+// The employer never says no. They say not yet, and they say it for a year. Every month
+// you cannot make that expensive, the price of everything you still want goes up — which
+// is the actual mechanism by which most first contracts die.
+const STALL_STEP = 0.15;
+const STALL_MAX = 4;
+const stalledCost = (base, stall) => Math.round(base * (1 + STALL_STEP * stall));
+
+// ---------- THE CALENDAR ----------
+// Withholding labour three weeks from a ship date is a different act from withholding it
+// in a quiet month. Visible from month one, because a cap you plan against is strategy.
+const CONTRACT_MILESTONES = { 4: "VERTICAL SLICE DUE", 8: "PUBLISHER MILESTONE", 11: "GOLD MASTER" };
+const MILESTONE_MULT = 1.8;
+const OFFPEAK_MULT = 0.65;
+// Only the rungs that actually withhold something care what month it is.
+const timingMult = (tier, month) =>
+  tier.rank < 4 ? 1 : (CONTRACT_MILESTONES[month] ? MILESTONE_MULT : OFFPEAK_MULT);
+
+// A team nobody asks to do anything stops being a team.
+const CAT_IDLE_QUIT = 4;
+
+// ---------- WHAT YOU KNOW ABOUT YOUR OWN MEMBERS ----------
+// Act One's lesson, one act later: commitment is not on the board, it is a read on the
+// board. Sitting down with somebody gives you a number for a couple of months. An action
+// gives you a number for everybody who TURNED UP — and tells you nothing about the people
+// who stayed home, which are exactly the people you needed to know about. That is what a
+// structure test is for, and it is why the projection is a range and not an answer.
+const CONTRACT_READ_FRESH = 2;
+const CONTRACT_READ_STEP = 5;
+const CONTRACT_READ_MAX = 24;
+function contractRead(w, month) {
+  const age = month - (w.spokenMonth ?? -99);
+  if (age <= CONTRACT_READ_FRESH) return { lo: w.commitment, hi: w.commitment, mid: w.commitment, exact: true, age };
+  const half = Math.min(CONTRACT_READ_MAX, CONTRACT_READ_STEP * (age - CONTRACT_READ_FRESH));
+  return { lo: clamp(w.commitment - half), hi: clamp(w.commitment + half), mid: w.commitment, exact: false, age };
+}
+
 // The escalation ladder. Each rung is a structure test: it costs prep, it produces a
 // measured turnout, and that number is the only thing the company actually responds to.
 const ACTION_LADDER = [
@@ -6304,18 +6349,23 @@ const ACTION_LADDER = [
   },
   {
     key: "stickers", rank: 2, label: "Sticker day", hours: 2,
-    floor: 32, span: 55, threshold: 0.6, payout: 24,
+    floor: 32, span: 55, threshold: 0.6, payout: 30,
     blurb: "One day, everyone wears it. Management counts stickers walking down the hall.",
   },
   {
     key: "march", rank: 3, label: "March on the boss", hours: 3,
-    floor: 48, span: 52, threshold: 0.5, payout: 42,
+    floor: 48, span: 52, threshold: 0.5, payout: 58,
     blurb: "A delegation walks into the studio head's office, unannounced, with a demand.",
   },
   {
     key: "worktorule", rank: 4, label: "No voluntary overtime", hours: 4,
-    floor: 58, span: 48, threshold: 0.5, payout: 64,
+    floor: 58, span: 48, threshold: 0.5, payout: 90,
     blurb: "Nobody stays past their hours. Three weeks from a milestone, that is a loaded gun.",
+  },
+  {
+    key: "strike", rank: 5, label: "One-day stoppage", hours: 5,
+    floor: 70, span: 42, threshold: 0.75, payout: 160,
+    blurb: "For one day nobody works. The only thing that costs the company money — and the only thing that costs the floor a day's pay to say.",
   },
 ];
 
@@ -6353,6 +6403,10 @@ function makeContractWorkers(act1Workers = null) {
       participated: false,
       revealed: true,
       history: [],
+      spokenMonth: w.organizer ? 1 : -99,
+      monthsIdle: 0,
+      bought: 0,
+      thinRuns: 0,
     }));
   }
   // The real entrance. These are the same twenty people a week after the vote, and
@@ -6375,6 +6429,12 @@ function makeContractWorkers(act1Workers = null) {
       poisoned: [],
       participated: false,
       revealed: true,
+      // A deep conversation in Act One is still a fresh read here; anyone the campaign
+      // never actually sat down with arrives as a question mark, same as they were.
+      spokenMonth: w.trueKnown ? 1 : -99,
+      monthsIdle: 0,
+      bought: 0,
+      thinRuns: 0,
     };
   });
 }
@@ -6392,12 +6452,30 @@ function participationChance(w, tier, backing) {
   const ready = Math.max(0, Math.min(1, (w.commitment - tier.floor) / tier.span));
   const drag = (w.fulfillment / 100) * (tier.rank >= 3 ? 0.42 : 0.10);
   const pull = Math.min(0.22, backing / 420);
-  return Math.max(0, Math.min(0.97, ready * (1 - drag) + pull));
+  // Somebody the company has just bought does not walk out with you, whatever they said
+  // last month. It wears off; the fact that it worked on them does not.
+  const bought = (w.bought || 0) > 0 ? 0.3 : 1;
+  return Math.max(0, Math.min(0.97, (ready * (1 - drag) + pull) * bought));
 }
 
+// The truth, used to resolve an action. The player never sees this one.
 function projectedTurnout(workers, influence, tier) {
   if (!tier) return 0;
   return workers.reduce((n, w) => n + participationChance(w, tier, catBacking(influence, workers, w.id)), 0);
+}
+// What the player can actually work out, which is a range. Wide wherever nobody has
+// spoken to anybody in a while.
+function projectedTurnoutBand(workers, influence, tier, month) {
+  if (!tier) return { lo: 0, hi: 0, exact: true };
+  let lo = 0, hi = 0, exact = true;
+  workers.forEach(w => {
+    const r = contractRead(w, month);
+    if (!r.exact) exact = false;
+    const backing = catBacking(influence, workers, w.id);
+    lo += participationChance({ ...w, commitment: r.lo }, tier, backing);
+    hi += participationChance({ ...w, commitment: r.hi }, tier, backing);
+  });
+  return { lo: Math.round(lo), hi: Math.round(hi), exact };
 }
 
 const contractTierSum = (issues) => issues.reduce((n, i) => n + i.tier, 0);
@@ -6410,10 +6488,12 @@ function ratifyYesChance(w, issues) {
 
 // After the certification year, the question stops being what's in the contract and
 // becomes whether there's still a union at all. Nothing to show for a year of bargaining
-// is exactly how a unit gets decertified.
+// is exactly how a unit gets decertified — so this leans on what was actually WON, not
+// on how warm the floor feels. A year of pleasant meetings and an empty contract is the
+// most common way a first unit dies, and it should read that way here.
 function keepUnionChance(w, issues) {
   const won = contractTierSum(issues) / CONTRACT_MAX_TIERS;
-  return Math.max(0.03, Math.min(0.97, 0.26 + won * 0.36 + (w.commitment - 45) / 165));
+  return Math.max(0.03, Math.min(0.97, 0.14 + won * 0.55 + (w.commitment - 45) / 220));
 }
 
 function ContractPrototype({ carry = null, onComplete = null, onExit }) {
@@ -6431,6 +6511,11 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
   const [result, setResult] = useState(null);
   const [ratification, setRatification] = useState(null);
   const [decert, setDecert] = useState(null);
+  // How many times each rung has been run, so repeating one pays what repeating is worth.
+  const [rungUses, setRungUses] = useState({});
+  // Months of "not yet" the company has banked, priced into everything you still want.
+  const [stall, setStall] = useState(0);
+  const [dead, setDead] = useState(null);
   const [selected, setSelected] = useState(null);
   const planKey = useRef(0);
 
@@ -6448,7 +6533,10 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
   const totalUsed = cat.reduce((n, o) => n + hoursUsed(o.id), 0) + actionHours;
 
   const tier = actionPlan ? ACTION_LADDER.find(t => t.key === actionPlan.tierKey) : null;
-  const projection = tier ? projectedTurnout(workers, influence, tier) : 0;
+  // The player gets the range, never the number. The exact one is only ever used to
+  // resolve the action itself.
+  const projection = tier ? projectedTurnoutBand(workers, influence, tier, turn) : { lo: 0, hi: 0, exact: true };
+  const unread = workers.filter(x => !contractRead(x, turn).exact).length;
   const issueDef = (id) => CONTRACT_ISSUES.find(i => i.id === id);
   const ratifyProjection = workers.reduce((n, w) => n + ratifyYesChance(w, issues), 0);
   const cooled = Math.floor(leverage * LEVERAGE_COOLING);
@@ -6463,7 +6551,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
   }
   function advanceIssue(id) {
     const cur = issues.find(i => i.id === id);
-    const cost = issueDef(id).costs[cur.tier + 1];
+    const cost = stalledCost(issueDef(id).costs[cur.tier + 1], stall);
     if (cur.tier >= 2 || leverage < cost) return;
     setLeverage(l => l - cost);
     setIssues(list => list.map(i => (i.id === id ? { ...i, tier: i.tier + 1 } : i)));
@@ -6475,24 +6563,30 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
     const lines = [];
     const notes = {};
     let gained = 0;
+    let stallNext = stall;
+    const usesNext = { ...rungUses };
 
     planEntries.filter(e => e.type === "oneOnOne").forEach(e => {
       const a = byId(e.actorId), t = byId(e.targetId);
       if (!a || !t) return;
       const tie = tieOn(influence, a, t);
-      const gain = Math.max(1, Math.round(11 * (0.45 + 0.85 * (tie / 100))));
+      // Somebody who loves this job is harder to move toward doing something about it.
+      const drag = 1 - 0.35 * (t.fulfillment / 100);
+      const gain = Math.max(1, Math.round(11 * (0.45 + 0.85 * (tie / 100)) * drag));
       const before = t.commitment;
       t.commitment = clamp(t.commitment + gain);
+      t.spokenMonth = turn; // and now you know where they are, for a couple of months
       notes[t.id] = `${a.name} +${t.commitment - before}`;
-      lines.push(`${a.name} sits down with ${t.name}. Commitment ${before} → ${t.commitment}.`);
+      lines.push(`${a.name} sits down with ${t.name}. Commitment ${before} \u2192 ${t.commitment}, and it is a number rather than a range for the next ${CONTRACT_READ_FRESH} months.`);
     });
 
     planEntries.filter(e => e.type === "recruit").forEach(e => {
       const t = byId(e.targetId);
       if (!t || t.cat || t.commitment < CAT_JOIN_REQ) return;
       t.cat = true;
+      t.monthsIdle = 0;
       notes[t.id] = "JOINS THE CAT";
-      lines.push(`${t.name} joins the contract action team — ${CAT_HOURS} more hours a week, and everyone they can turn out.`);
+      lines.push(`${t.name} joins the contract action team \u2014 ${catHours(t)} more hours a month, and everyone they can turn out.`);
     });
 
     let actionResult = null;
@@ -6507,28 +6601,123 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
       });
       const share = showed.length / w.length;
       const strong = share >= tier.threshold;
-      const payout = strong
-        ? Math.round(tier.payout * Math.min(1.35, share / tier.threshold))
-        : Math.round(tier.payout * 0.25 * (share / tier.threshold));
+      const uses = rungUses[tier.key] || 0;
+      const fatigue = rungFatigue(uses);
+      const timing = timingMult(tier, turn);
+      usesNext[tier.key] = uses + 1;
+      const raw = strong
+        ? tier.payout * Math.min(1.35, share / tier.threshold)
+        : tier.payout * 0.25 * (share / tier.threshold);
+      const payout = Math.round(raw * fatigue * timing);
       gained = payout;
-      // No note per participant — the card already rings teal and says TURNED OUT.
-      // Sixteen floating labels at once buries the board they're drawn on.
+      // Everyone who turned up, you now know about. The people who stayed home you do
+      // not — and they are exactly the people the next month has to be spent on.
+      showed.forEach(x => { x.spokenMonth = turn; });
       if (strong) {
-        showed.forEach(x => { x.commitment = clamp(x.commitment + 4); });
-        lines.push(`${showed.length} of ${w.length} took part. The company's negotiator noticed, and the room changed. +${payout} leverage.`);
+        // Fatigue is what the COMPANY stops noticing. It is not what standing next to
+        // each other does for the people who turned up, so the floor still builds.
+        const bump = 4;
+        showed.forEach(x => { x.commitment = clamp(x.commitment + bump); x.thinRuns = 0; });
+        stallNext = Math.max(0, stall - 1);
+        lines.push(`${showed.length} of ${w.length} took part. The company's negotiator noticed, and the room changed. +${payout} leverage, +${bump} commitment to everyone who turned up, and a month comes off what they have banked.`);
       } else {
-        w.forEach(x => { x.commitment = clamp(x.commitment - 3); });
-        lines.push(`Only ${showed.length} of ${w.length} took part. A thin turnout is worse than none — it shows them exactly how little you can move. +${payout} leverage.`);
+        w.forEach(x => { x.commitment = clamp(x.commitment - 3); if (x.cat) x.thinRuns = (x.thinRuns || 0) + 1; });
+        stallNext = Math.min(STALL_MAX, stall + 1);
+        lines.push(`Only ${showed.length} of ${w.length} took part, against the ${Math.round(tier.threshold * w.length)} this needed. A thin turnout is worse than none \u2014 it shows them exactly how little you can move. +${payout} leverage, \u22123 commitment across the floor.`);
       }
-      actionResult = { tier, showed: showed.length, sat: sat.length, total: w.length, share, strong, payout, names: showed.map(x => x.name) };
+      if (uses > 0) lines.push(`AND THEY HAVE SEEN IT ${uses === 1 ? "ONCE" : `${uses} TIMES`} BEFORE \u2014 this rung pays ${Math.round(fatigue * 100)}% of what it paid the first time. A test only tests what the last one left open. Climbing is the only thing that keeps paying.`);
+      if (timing !== 1) lines.push(timing > 1
+        ? `AND THE TIMING IS THE WHOLE POINT \u2014 ${CONTRACT_MILESTONES[turn]} this month, so withholding labour is worth ${Math.round(timing * 100)}% of normal. This is the month they cannot afford you.`
+        : `AND THE TIMING IS WRONG \u2014 no milestone this month, so withholding labour is worth ${Math.round(timing * 100)}% of normal. Nobody upstairs is counting the hours in a quiet month.`);
+      actionResult = { tier, showed: showed.length, sat: sat.length, total: w.length, share, strong, payout, uses, fatigue, timing };
     } else {
       // A quiet month is not neutral. This is how units die.
       w.forEach(x => { if (!x.cat) x.commitment = clamp(x.commitment - 3); });
+      stallNext = Math.min(STALL_MAX, stall + 1);
       lines.push("No action this month. Bargaining happened in a room nobody saw, and the floor drifted.");
     }
 
+    // --- THE OTHER SIDE OF THE TABLE ---
+    // They never have to agree. They have to outlast you, and they have three ways of
+    // going about it. Each states its own numbers, the way every set piece in this game
+    // does, because a cost you cannot see teaches nothing.
+    if (stallNext > stall) {
+      lines.push(
+        `SURFACE BARGAINING \u2014 nothing moved them this month, so every tier you have not won gets ${Math.round(STALL_STEP * 100)}% dearer. ` +
+        `That is ${stallNext} month${stallNext === 1 ? "" : "s"} of "not yet" now priced in, and the price does not come back down on its own. ` +
+        `They are not refusing to bargain. Refusing would be illegal. They are agreeing to meet, at length, forever.`
+      );
+    }
+    const buyable = w.filter(x => !x.cat && (x.bought || 0) <= 0 && x.commitment >= 20)
+      .sort((a, b) => a.commitment - b.commitment);
+    if (buyable.length && Math.random() < 0.3) {
+      const mark = buyable[0];
+      const before = mark.commitment;
+      const takeChance = Math.min(0.75, Math.max(0.1, (100 - before) / 90));
+      if (Math.random() < takeChance) {
+        mark.commitment = clamp(before - 26);
+        mark.bought = 3;
+        notes[mark.id] = "TAKES THE OFFER";
+        lines.push(
+          `DIRECT DEALING \u2014 ${mark.name} is offered a raise and a title one to one, outside the contract. At ${before} commitment that was a ` +
+          `${Math.round(takeChance * 100)}% chance of landing, and it landed: ${before} \u2192 ${mark.commitment}, and they sit out the next 3 actions. ` +
+          `Going around the union like this is unlawful. Proving it takes longer than the certification year, which is the point.`
+        );
+      } else {
+        mark.commitment = clamp(before + 6);
+        mark.spokenMonth = turn;
+        notes[mark.id] = "TURNS IT DOWN";
+        lines.push(
+          `DIRECT DEALING REFUSED \u2014 ${mark.name} is offered a raise outside the contract and brings the offer to the team instead. ` +
+          `+6 commitment, and you know exactly where they stand now, which is worth as much as the six.`
+        );
+      }
+    }
+    if (actionResult && tier.rank >= 3 && actionResult.showed > 0 && Math.random() < 0.35) {
+      const pool = w.filter(x => x.participated && x.cat);
+      const mark = pool.length
+        ? [...pool].sort((a, b) => catBacking(influence, w, a.id) - catBacking(influence, w, b.id))[0]
+        : null;
+      if (mark) {
+        mark.cat = false;
+        mark.commitment = clamp(mark.commitment - 18);
+        w.forEach(x => { if (x.id !== mark.id) x.commitment = clamp(x.commitment - 3); });
+        notes[mark.id] = "WRITTEN UP";
+        lines.push(
+          `DISCIPLINE \u2014 ${BURN_NARRATIVES[rand(BURN_NARRATIVES.length)](mark.name)} ` +
+          `${mark.name} comes off the action team, \u221218 commitment, and \u22123 across everybody who watched it happen. ` +
+          `They picked the person on your team with the least standing behind them. This is what the top of the ladder costs, and it is why you do not climb it before the floor is with you.`
+        );
+      }
+    }
+
+    // --- A TEAM IS A SET OF PEOPLE WHO ARE ASKED TO DO THINGS ---
+    w.forEach(x => {
+      if (!x.cat) { x.monthsIdle = 0; return; }
+      // Turning out for the action is doing something. Only somebody nobody asked for
+      // anything at all — no conversation to run, no action to stand up in — drifts off.
+      const used = planEntries.some(e => e.actorId === x.id) || actionPlan?.leadId === x.id || x.participated;
+      x.monthsIdle = used ? 0 : (x.monthsIdle || 0) + 1;
+      if (x.monthsIdle >= CAT_IDLE_QUIT) {
+        x.cat = false;
+        x.monthsIdle = 0;
+        x.commitment = clamp(x.commitment - 8);
+        notes[x.id] = "STEPS OFF THE TEAM";
+        lines.push(`${x.name} stops coming to the meetings. Nobody has asked them to do anything in ${CAT_IDLE_QUIT} months, and they got the message.`);
+      } else if ((x.thinRuns || 0) >= 2) {
+        x.cat = false;
+        x.thinRuns = 0;
+        x.commitment = clamp(x.commitment - 6);
+        notes[x.id] = "HAS HAD ENOUGH";
+        lines.push(`${x.name} steps off the action team. Two actions running where they stood there with their name on it and almost nobody came is enough for anybody.`);
+      }
+    });
+    w.forEach(x => { if ((x.bought || 0) > 0) x.bought -= 1; });
+
     setWorkers(w);
     setLeverage(l => l + gained);
+    setRungUses(usesNext);
+    setStall(stallNext);
     setResult({ lines, notes, action: actionResult, gained });
     setPhase("result");
   }
@@ -6579,6 +6768,13 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
     setPlanEntries([]);
     setActionPlan(null);
     if (turn >= CONTRACT_MONTHS) { runDecert(); return; }
+    // Same promise as the other two acts: the moment the arithmetic dies, say so, and
+    // say why. Here it dies when there is nobody left willing to put their name on
+    // anything, because then there is nothing for the company to answer.
+    if (!workers.some(x => x.cat)) {
+      setDead(`There is nobody left on the contract action team. The company does not have to agree with an empty room \u2014 it only has to keep booking the meeting.`);
+      return;
+    }
     setLeverage(l => Math.floor(l * LEVERAGE_COOLING));
     setTurn(t => t + 1);
     setPhase("plan");
@@ -6609,6 +6805,15 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
           <div className="text-center">
             <div className="text-stone-500 text-xs">MONTH</div>
             <div className="text-lg font-bold text-stone-100">{Math.min(turn, CONTRACT_MONTHS)} / {CONTRACT_MONTHS}</div>
+          </div>
+          <div className="text-center">
+            <div className="text-stone-500 text-xs">THE CALENDAR</div>
+            <div className={`text-lg font-bold ${CONTRACT_MILESTONES[turn] ? "text-amber-400" : "text-stone-500"}`}>
+              {CONTRACT_MILESTONES[turn] ? "MILESTONE" : "quiet"}
+            </div>
+            <div className="text-[11px] text-stone-600">
+              {CONTRACT_MILESTONES[turn] || `next: month ${Object.keys(CONTRACT_MILESTONES).map(Number).find(m => m > turn) ?? "\u2014"}`}
+            </div>
           </div>
           <div className="text-center">
             <div className="text-stone-500 text-xs">CERT YEAR</div>
@@ -6684,6 +6889,22 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
         />
       )}
 
+      {dead && (
+        <div className="fixed inset-0 bg-stone-950/95 z-50 flex items-center justify-center px-6">
+          <div className="max-w-lg text-center anim-rise">
+            <div className="font-stencil text-5xl mb-4 text-red-500">NOBODY LEFT TO ASK</div>
+            <p className="text-stone-400 mb-4 leading-relaxed">{dead}</p>
+            <p className="text-red-400/80 text-sm mb-6 leading-relaxed border border-red-900/60 bg-red-950/20 px-4 py-3">
+              Called at month {turn} of {CONTRACT_MONTHS}, with {contractTierSum(issues)} of {CONTRACT_MAX_TIERS} tiers won. There is
+              still calendar left, but no campaign to run on it — so the rest of the year would not have changed the ending.
+            </p>
+            <button onClick={onExit} className="border-2 border-stone-600 px-6 py-2 text-sm text-stone-200 hover:bg-stone-800 transition-colors">
+              START OVER
+            </button>
+          </div>
+        </div>
+      )}
+
       {(phase === "plan" || phase === "result") && (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           {turn === 1 && phase === "plan" && (
@@ -6695,7 +6916,8 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
                 Run an action, and whatever turnout you get is the only argument the company answers to.
                 {carry && <> These are the same people, and it starts from where you actually left them — the map you drew, what you found they have in
                 common, and how far each of them would really have gone. Nobody was rolled again.</>}
-              </span>
+                {" "}Running the same action twice tells them nothing the first one didn't, so it pays a fraction: climb the ladder, don't camp on it.
+                And the months marked MILESTONE are the ones where withholding labour actually costs them something.</span>
             </div>
           )}
 
@@ -6703,13 +6925,17 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
           <div className="border-2 border-stone-800 bg-stone-900 p-4 mb-6">
             <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
               <div className="font-stencil text-lg tracking-wide text-stone-200">AT THE TABLE</div>
-              <div className="text-sm text-stone-400">Spend leverage to move an issue. You will not be able to afford everything — and it cools 20% a month if you sit on it.</div>
+              <div className="text-sm text-stone-400 max-w-md text-right">
+                Spend leverage to move an issue. You will not be able to afford everything — and it cools 20% a month if you sit on it.
+                {stall > 0 && <span className="text-red-400"> Every price here is {Math.round(STALL_STEP * stall * 100)}% above list: {stall} month{stall === 1 ? "" : "s"} of them agreeing to meet and settling nothing.</span>}
+              </div>
             </div>
             <div className="grid gap-2 sm:grid-cols-3">
               {CONTRACT_ISSUES.map(def => {
                 const cur = issues.find(i => i.id === def.id);
                 const maxed = cur.tier >= 2;
-                const cost = maxed ? null : def.costs[cur.tier + 1];
+                const base = maxed ? null : def.costs[cur.tier + 1];
+                const cost = maxed ? null : stalledCost(base, stall);
                 const afford = !maxed && leverage >= cost;
                 return (
                   <div key={def.id} className={`border p-2.5 ${maxed ? "border-teal-800 bg-teal-950/20" : "border-stone-700"}`}>
@@ -6728,7 +6954,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
                         disabled={!afford}
                         className={`w-full text-sm py-1.5 tracking-wide transition-colors ${afford ? "bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold" : "border border-stone-800 text-stone-600 cursor-not-allowed"}`}
                       >
-                        PUSH IT — {cost} LEVERAGE
+                        PUSH IT — {cost}{stall > 0 && base !== cost ? ` (was ${base})` : ""} LEVERAGE
                       </button>
                     )}
                   </div>
@@ -6807,12 +7033,23 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
               {/* THE ACTION */}
               <div className="border-2 border-stone-800 bg-stone-900 p-4 mb-4">
                 <div className="font-stencil text-lg tracking-wide text-stone-200 mb-1">CALL AN ACTION</div>
-                <p className="text-xs text-stone-500 mb-3">One per month. Pick who leads it — the people they carry weight with are likelier to show.</p>
+                <p className="text-xs text-stone-500 mb-3">
+                  One per month. Pick who leads it — the people they carry weight with are likelier to show.
+                  {unread > 0
+                    ? <span className="text-amber-500"> Turnout is a range because {unread} {unread === 1 ? "person hasn't" : "people haven't"} been sat down with
+                      or seen at an action lately. Running one is how you find out — but only about the people who turn up.</span>
+                    : <span className="text-teal-500"> Every read on this floor is current, so these numbers are as good as they get.</span>}
+                </p>
                 <div className="grid gap-2 sm:grid-cols-2 mb-3">
                   {ACTION_LADDER.map(t => {
                     const chosen = actionPlan?.tierKey === t.key;
-                    const proj = projectedTurnout(workers, influence, t);
-                    const lands = proj / workers.length >= t.threshold;
+                    const proj = projectedTurnoutBand(workers, influence, t, turn);
+                    // Green only when even the pessimistic end of the range clears it.
+                    const need = t.threshold * workers.length;
+                    const lands = proj.lo >= need;
+                    const maybe = !lands && proj.hi >= need;
+                    const uses = rungUses[t.key] || 0;
+                    const timing = timingMult(t, turn);
                     // Prep comes out of the pool, so a rung the team can't cover this month
                     // shouldn't be selectable — better than letting the plan go over and
                     // then refusing to resolve it.
@@ -6829,8 +7066,15 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
                           <span className="text-xs text-stone-500">{t.hours}h</span>
                         </div>
                         <div className="text-xs text-stone-400 leading-snug mt-0.5">{t.blurb}</div>
-                        <div className={`text-xs mt-1 ${lands ? "text-teal-400" : "text-red-400"}`}>
-                          Projected ~{Math.round(proj)} of {workers.length} · needs {Math.round(t.threshold * workers.length)} to land
+                        {(uses > 0 || timing !== 1) && (
+                          <div className="text-xs mt-1 text-amber-500 leading-snug">
+                            {uses > 0 && <>Run {uses === 1 ? "once" : `${uses} times`} already — pays {Math.round(rungFatigue(uses) * 100)}%. </>}
+                            {timing > 1 && <>{CONTRACT_MILESTONES[turn]} this month — worth {Math.round(timing * 100)}%.</>}
+                            {timing < 1 && <>No milestone this month — worth {Math.round(timing * 100)}%.</>}
+                          </div>
+                        )}
+                        <div className={`text-xs mt-1 ${lands ? "text-teal-400" : maybe ? "text-amber-400" : "text-red-400"}`}>
+                          {proj.lo === proj.hi ? `~${proj.lo}` : `${proj.lo}\u2013${proj.hi}`} of {workers.length} · needs {Math.round(t.threshold * workers.length)} to land
                         </div>
                       </button>
                     );
@@ -6851,7 +7095,9 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
                       ))}
                     </div>
                     <div className="text-xs text-amber-400 mt-2">
-                      Projected turnout with this lead: ~{Math.round(projection)} of {workers.length}.
+                      Turnout with this lead: {projection.lo === projection.hi ? `~${projection.lo}` : `${projection.lo}\u2013${projection.hi}`} of {workers.length}.
+                      {unread > 0 && <span className="text-stone-500"> The range is that wide because {unread} {unread === 1 ? "person hasn't" : "people haven't"} been
+                        sat down with or seen at an action recently. Running it is how you find out.</span>}
                     </div>
                   </div>
                 )}
@@ -6915,8 +7161,14 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
                 <button onClick={() => setSelected(null)}><X size={18} className="text-stone-500 hover:text-stone-200" /></button>
               </div>
               <p className="text-sm text-stone-400 mb-3">{w.hook}</p>
-              <StatRow label="COMMITMENT" value={w.commitment} hex={supportTier(w.commitment).hex} align="left"
-                info="Whether this person will actually do something — not whether they support the union. They already voted yes. Commitment is what turns that into showing up." />
+              {(() => {
+                const r = contractRead(w, turn);
+                return (
+                  <StatRow label="COMMITMENT" value={r.exact ? r.mid : `${r.lo}\u2013${r.hi}`} hex={supportTier(r.mid).hex} align="left"
+                    info="Whether this person will actually do something — not whether they support the union. They already voted yes; commitment is what turns that into showing up. You only get a number for somebody you have sat down with recently, or who turned out at the last action. Everyone else is a range, and it widens."
+                    sub={r.exact ? "Read is current." : `Nobody has sat down with them or seen them turn out in ${r.age} months. This is an estimate.`} />
+                );
+              })()}
               <StatRow label="JOB FULFILLMENT" value={w.fulfillment} hex={FULFILL_HEX} align="left"
                 info="Still decides who can move them. It also decides how far they'll go: somebody who loves this job will sign a letter but won't hold a milestone hostage."
                 sub={`${fulfillmentLabel(w.fulfillment)} — expect them at the low rungs, not the high ones.`} />
@@ -6927,7 +7179,12 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
               <div className="grid grid-cols-2 gap-1 mb-3">
                 {ACTION_LADDER.map(t => (
                   <div key={t.key} className="text-xs text-stone-400 border border-stone-800 px-2 py-1">
-                    {t.label}: <span className="text-stone-200 font-bold">{Math.round(participationChance(w, t, backing) * 100)}%</span>
+                    {t.label}: <span className="text-stone-200 font-bold">{(() => {
+                      const r = contractRead(w, turn);
+                      const lo = Math.round(participationChance({ ...w, commitment: r.lo }, t, backing) * 100);
+                      const hi = Math.round(participationChance({ ...w, commitment: r.hi }, t, backing) * 100);
+                      return lo === hi ? `${lo}%` : `${lo}\u2013${hi}%`;
+                    })()}</span>
                   </div>
                 ))}
               </div>

@@ -443,7 +443,62 @@ twice is not news, and it is not a *test* either, because it reveals nothing the
 "three weeks from a milestone, that is a loaded gun", but there is no milestone: leverage is
 perishable but never *situational*, so timing is not a decision.
 
-### 4.3 Fixes
+### 4.3 Fixes — DONE, commit after `4a70654`
+
+Items 1–5, 7 and 8 are in. Item 6 no longer applies: it assumed the demand platform came
+*before* the contract, and after the reorder it comes after, so there is no platform yet to
+ratify against. The reverse carry — a signed contract making the company campaign's platform
+easier to write — is a new idea rather than a fix, and is not done.
+
+- **An employer at the table** (1). Three moves, each stating its own numbers. *Surface
+  bargaining*: a month where nothing lands banks a month of "not yet", and every tier you have
+  not won gets 15% dearer, up to 60% — they never refuse to bargain, because refusing would be
+  illegal; they agree to meet, at length, forever. *Direct dealing*: the company goes round the
+  union to whoever is cheapest to buy, and a worker who takes it sits out the next three
+  actions. *Discipline*: the rungs from "march on the boss" up get somebody written up — the
+  person on your team with the least standing behind them — costing them the team and everyone
+  who watched it 3 commitment. Act One's own `BURN_NARRATIVES` do the talking.
+- **The projection is a read** (2). This is the one that makes it a structure test. Commitment
+  is a number only for somebody sat down with in the last two months, or who turned out at the
+  last action; everyone else is a range that widens 5 points a month. So the ladder quotes
+  "13–14 of 20 · needs 11", green only when even the pessimistic end clears the line. And a
+  landed action reads the floor — but only the people who *turned up*. The ones who stayed home
+  stay unread, which is exactly who the next month has to be spent on.
+- **Fatigue and escalation** (3). A rung pays `1/(1 + 0.6·uses)` of its value. Fatigue applies
+  to the leverage, not to what standing next to each other does for the people who came, so
+  the floor still builds — that distinction matters, because scaling both killed the growth
+  engine outright in the first pass (2.19 tiers, ladder stuck at sticker day). Higher rungs pay
+  substantially more than they used to, since each is now worth full value only once.
+- **A team, capped, that can leave** (4). Commitment growth is dragged by fulfillment. A member
+  nobody asks for anything — no conversation to run, no action to stand up in, and turning out
+  counts — drifts off after four months. Two thin turnouts running is enough for anyone. Teams
+  now end at 9–11 rather than 19.9.
+- **A fifth rung and a calendar** (5). The one-day stoppage: 75% threshold, 160 payout. And
+  three milestone months, visible from month one, where withholding labour is worth 180% and
+  outside them 65% — so timing the ladder is a real decision, and it is the strongest line.
+- **An unwinnable detector** (7). No action team left, no campaign: named and called, like the
+  other two acts.
+
+Measured, n=800 per row, on real Act One wins (`node sim/contract-report.mjs`):
+
+| policy | tiers /6 | 4+ tiers | 6/6 | ratified | survives | dead |
+|---|---|---|---|---|---|---|
+| escalate, reading the band | 3.29 | 56% | 23% | 58% | 57% | 12% |
+| **time the milestones** | 3.41 | 55% | **35%** | **60%** | **59%** | **8%** |
+| gamble on the optimistic end | 3.53 | 57% | 21% | 60% | 57% | 20% |
+| letters only, every month | 0.42 | 0% | 0% | 18% | **16%** | 16% |
+| reckless (top rung always) | 0.00 | 0% | 0% | 0% | 0% | 100% |
+
+Against F9's "follow the green text and you cannot lose": a careful escalating campaign now
+wins a contract it can ratify 58% of the time, timing the milestones is the best line and the
+safest (8% collapse against 12%), gambling on the optimistic end of the range pays more and
+kills more, camping on open letters gets the unit **decertified 84% of the time**, and reckless
+climbing loses the whole team inside three months. The decertification vote was reweighted onto
+what was actually won rather than how warm the floor feels, because a year of pleasant meetings
+and an empty contract is the most common way a first unit dies and it should read that way.
+
+Act One skill now carries into the result: a careful Act One yields 3.46 tiers and 62%
+ratification, a sloppy one 2.91 and 52%.
 
 1. **Put an employer at the table.** Three moves, each a set piece with its numbers stated, in the
    Act One style: *surface bargaining* (the cost of every tier rises each month no action lands —
