@@ -41,7 +41,8 @@ export function planTurn(G, opts = {}) {
   const campaigns = G.locations.filter(l => l.status === 'campaign');
   const ranked = rankSites(organizing);
   const resp = {}, alloc = {};
-  let left = G.budget;
+  // Shops at the vote take their upkeep before anything is planned.
+  let left = G.budget - campaigns.length * C.ACT2_CAMPAIGN_UPKEEP;
 
   // 1. Responses at every organizing site, most valuable first.
   organizing.forEach(l => {
@@ -52,7 +53,7 @@ export function planTurn(G, opts = {}) {
     if (l.antiUnion?.active) tryAdd('counter');
     if (l.buyOff?.active) tryAdd('reframe');
     const committeeEligible = !l.committee?.active && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ;
-    if (committeeEligible) tryAdd('formCommittee');
+    if (committeeEligible && !opts.noCommittee) tryAdd('formCommittee');
     if (opts.bargain) {
       const comp = LOC_COMPOSITION[l.id] || {};
       const thick = BLOCS.find(b => (comp[b.id] || 0) >= 0.5 && !G.priorities[b.id]?.known);
@@ -63,21 +64,32 @@ export function planTurn(G, opts = {}) {
     left -= cost(r);
   });
 
-  // 2. Campaign sites get worked hard: they're the only thing that can still win.
+  // 2. A campaign site with no committee builds one first: it is the only response that
+  //    still means anything once the petition is in, and it is what makes the count real.
+  campaigns.forEach(l => {
+    const r = {};
+    const eligible = !l.committee?.active && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ;
+    if (eligible && !opts.noCommittee && responseCostFor(l, { formCommittee: true }) <= left) {
+      r.formCommittee = true; left -= responseCostFor(l, r);
+    }
+    resp[l.id] = r;
+  });
+
+  // 3. Campaign sites get worked hard: they're the only thing that can still win.
   campaigns.forEach(l => {
     const want = campaigns.length === 1 ? 6 : 4;
     const u = TIERS.find(t => t <= Math.min(want, left)) ?? 0;
     alloc[l.id] = u; left -= u;
   });
 
-  // 3. Focus sites, in preference order.
+  // 4. Focus sites, in preference order.
   const targets = ranked.slice(0, focus);
   targets.forEach((l, i) => {
     const share = Math.floor(left / (targets.length - i));
     const u = TIERS.find(t => t <= share) ?? 0;
     alloc[l.id] = u; left -= u;
   });
-  // 4. Anything left trickles to the next site so momentum doesn't rot there.
+  // 5. Anything left trickles to the next site so momentum doesn't rot there.
   ranked.slice(focus).forEach(l => { const u = TIERS.find(t => t <= left) ?? 0; alloc[l.id] = u; left -= u; });
   return { alloc, resp };
 }

@@ -3,7 +3,7 @@ import { playAct2 } from './act2-run.mjs';
 const N = Number(process.argv[2] || 2000);
 const mean = (a) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0;
 const pct = (a, q) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(q * (s.length - 1))]; };
-for (const [name, opts] of Object.entries({ 'file now': { focus: 2 }, 'wait for committee': { focus: 2, fileMode: 'committee' } })) {
+for (const [name, opts] of Object.entries({ 'focus 3 shops': { focus: 3 }, 'spread across all 4': { focus: 4 } })) {
   const rs = []; for (let i = 0; i < N; i++) rs.push(playAct2(opts));
   const els = rs.flatMap(r => r.elections);
   console.log(`\n${name}: ${els.length} elections`);

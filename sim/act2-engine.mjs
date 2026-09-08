@@ -3,10 +3,12 @@
 // stripped — it lives inside a React component, so it can't be extracted verbatim.
 // Keep it in step with App.jsx by hand; the order of operations matters.
 import * as C from './core2.mjs';
-const { clamp, rand, TOTAL_TURNS, START_LOCATIONS, COMMITTEE_COST, COMMITTEE_MORALE_REQ,
+const { clamp, rand, TOTAL_TURNS, START_LOCATIONS, COMMITTEE_COST, COMMITTEE_COST_CAMPAIGN, COMMITTEE_MORALE_REQ,
   COMMITTEE_RECRUIT_PCT_REQ, GRIEVANCE_META, EXTERNAL_EVENTS, BLOCS, LOC_COMPOSITION, DEMAND_BY_ID,
   PLATFORM_SLOTS, DEFECT_THRESHOLD, rollBlocPriorities, blocSatisfaction, locBlocFactor,
-  computeSolidarityScore, baseGain, baseVis, ACT2_SITES_NEEDED, ACT2_FILING_LEAD, ACT2_LAST_FILING_TURN, ACT2_BASE_ACTIONS, filingGates, act2Winnability, act2WinChance, act2CastBallot } = C;
+  computeSolidarityScore, baseGain, baseVis, ACT2_SITES_NEEDED, ACT2_FILING_LEAD, ACT2_LAST_FILING_TURN, ACT2_BASE_ACTIONS, filingGates, act2Winnability, act2WinChance, act2CastBallot,
+  ACT2_LOSS_MORALE, ACT2_LOSS_TRUE, ACT2_LOSS_FEAR, ACT2_LOSS_STAMINA, ACT2_EMBOLDENED_RETALIATION,
+  ACT2_CAMPAIGN_UPKEEP } = C;
 const roll100 = () => rand(100) + 1;
 
 export function newGame(leaders = []) {
@@ -34,7 +36,7 @@ export function responseCostFor(loc, r) {
   if (r.document) cost += 1;
   if (r.counter) cost += 1;
   if (r.reframe && loc.buyOff?.active) cost += 1;
-  if (r.formCommittee) cost += COMMITTEE_COST;
+  if (r.formCommittee) cost += (loc.status === 'campaign' ? COMMITTEE_COST_CAMPAIGN : COMMITTEE_COST);
   if (r.bargain) cost += 2;
   return cost;
 }
@@ -68,7 +70,8 @@ export function resolveTurn(G, alloc, resp) {
 
   let activeLocationCount = 0;
   const totalResponseCost = workingLocs.reduce((s, l) => s + (l.status === 'organizing' ? responseCostFor(l, resp[l.id]) : 0), 0);
-  const totalAllocated = Object.values(alloc).reduce((a, b) => a + b, 0) + totalResponseCost;
+  const campaignUpkeep = workingLocs.filter(l => l.status === 'campaign').length * ACT2_CAMPAIGN_UPKEEP;
+  const totalAllocated = Object.values(alloc).reduce((a, b) => a + b, 0) + totalResponseCost + campaignUpkeep;
 
   workingLocs = workingLocs.map(l => {
     if (l.status === 'won' || l.status === 'lost') return l;
@@ -81,11 +84,17 @@ export function resolveTurn(G, alloc, resp) {
     if (units > 0) activeLocationCount++;
 
     if (l.status === 'campaign') {
+      const rc = resp[l.id] || {};
+      let campCommittee = l.committee || { active: false, strikes: 0 };
+      if (rc.formCommittee && !campCommittee.active
+          && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ) {
+        campCommittee = { active: true, strikes: 0 }; L.committees++;
+      }
       const employerHit = 3 + rand(3);
-      const committeeDefense = l.committee?.active ? 2 : 0;
+      const committeeDefense = campCommittee.active ? 2 : 0;
       const defense = Math.min(employerHit, Math.floor(units * 1.2) + committeeDefense);
       let moraleDelta = -(employerHit - defense);
-      let fearDelta = 8 - Math.floor(units * 1.5) - (l.committee?.active ? 2 : 0);
+      let fearDelta = 8 - Math.floor(units * 1.5) - (campCommittee.active ? 2 : 0);
       fearDelta = Math.max(-8, fearDelta);
       if (moraleClimateNext.tone === 'positive') { moraleDelta += 2; fearDelta -= 2; }
       else if (moraleClimateNext.tone === 'negative') { moraleDelta -= 2; fearDelta += 2; }
@@ -94,8 +103,8 @@ export function resolveTurn(G, alloc, resp) {
       if (firedEvent && firedEvent.immediateOrganizingMorale) moraleDelta += Math.round(firedEvent.immediateOrganizingMorale / 2);
       const newMorale = clamp(l.morale + moraleDelta);
       const newFear = clamp(l.fear + fearDelta);
-      const trueSupportDelta = Math.round(moraleDelta * 0.5) + (l.committee?.active ? 1 : 0);
-      return { ...l, morale: newMorale, trueSupport: clamp((l.trueSupport ?? l.morale) + trueSupportDelta), fear: newFear };
+      const trueSupportDelta = Math.round(moraleDelta * 0.5) + (campCommittee.active ? 1 : 0);
+      return { ...l, morale: newMorale, trueSupport: clamp((l.trueSupport ?? l.morale) + trueSupportDelta), fear: newFear, committee: campCommittee };
     }
 
     const r = resp[l.id] || {};
@@ -210,7 +219,8 @@ export function resolveTurn(G, alloc, resp) {
     if (l._watchRecovery && l.morale >= l._watchFloor) { sophisticationGain = 1; u._watchRecovery = false; }
     if (l.visibility >= 60) {
       const forceRetaliate = l.visibility >= 90;
-      const retaliateThreshold = legalClimateNext.tone === 'hostile' ? 65 : legalClimateNext.tone === 'favorable' ? 35 : 50;
+      const retaliateThreshold = (legalClimateNext.tone === 'hostile' ? 65 : legalClimateNext.tone === 'favorable' ? 35 : 50)
+        + (G.emboldened ? ACT2_EMBOLDENED_RETALIATION : 0);
       if (forceRetaliate || roll100() <= retaliateThreshold) {
         const typeRoll = rand(100);
         const buyOffChance = G.soph >= 1 ? 15 + G.soph * 8 : 0;
@@ -312,7 +322,7 @@ export function resolveTurn(G, alloc, resp) {
   }
 
   // Elections
-  let lostOne = false;
+  let lostCount = 0;
   workingLocs = workingLocs.map(l => {
     if (l.status === 'campaign' && turn >= l.electionTurn) {
       const raw = l.trueSupport ?? l.morale;
@@ -323,14 +333,22 @@ export function resolveTurn(G, alloc, resp) {
         morale: l.morale, winChance, won: b.won, margin: b.yes - b.no, cast: b.cast, out: b.out,
         committee: !!l.committee?.active });
       if (b.won) return { ...l, status: 'won', morale: 95, trueSupport: 95, legalRisk: 0 };
-      lostOne = true;
+      lostCount += 1;
       return { ...l, status: 'lost', morale: 20, trueSupport: 20, fear: 90, abandonedTurns: 99 };
     }
     return l;
   });
   let emboldenedNext = G.emboldened;
-  if (lostOne) {
-    workingLocs = workingLocs.map(l => l.status !== 'organizing' ? l : { ...l, morale: clamp(l.morale - 15), trueSupport: clamp((l.trueSupport ?? l.morale) - 8) });
+  if (lostCount) {
+    const n = lostCount;
+    workingLocs = workingLocs.map(l => (l.status !== 'organizing' && l.status !== 'campaign') ? l : {
+      ...l,
+      morale: clamp(l.morale - ACT2_LOSS_MORALE * n),
+      trueSupport: clamp((l.trueSupport ?? l.morale) - ACT2_LOSS_TRUE * n),
+      fear: clamp(l.fear + ACT2_LOSS_FEAR * n),
+    });
+    orgStamina = clamp(orgStamina - ACT2_LOSS_STAMINA * n, 0, 100);
+    if (orgStamina <= 0 && onBreak === 0) { onBreak = 2; breaksTaken += 1; justBroke = true; L.breaks++; }
     emboldenedNext = true;
   }
 

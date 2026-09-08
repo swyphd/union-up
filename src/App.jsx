@@ -42,8 +42,38 @@ const START_LOCATIONS = [
 ];
 
 const COMMITTEE_COST = 3;
+// Building one after the petition is filed, under the employer's campaign and a clock,
+// costs nearly twice as much. You would always rather have done it first.
+const COMMITTEE_COST_CAMPAIGN = 5;
 const COMMITTEE_MORALE_REQ = 55;
-const COMMITTEE_RECRUIT_PCT_REQ = 0.4;
+// Lined up with the petition's own recruitment gate. A shop that has recruited enough
+// people to file has recruited enough people to have a committee, so the committee is
+// never the thing that is arithmetically out of reach.
+const COMMITTEE_RECRUIT_PCT_REQ = 0.3;
+
+// ---------- WHAT A LOST ELECTION COSTS ----------
+// Bronfenbrenner's finding, as arithmetic: a defeat is not a local event. Every shop
+// still organizing watches it, and what they learn is that the company can win. Under
+// the NLRB's election bar the unit that lost cannot vote again for a year, which in
+// this campaign's calendar means never — so the shop is simply gone.
+const ACT2_LOSS_MORALE = 20;
+const ACT2_LOSS_TRUE = 16;
+// The one that bites, now that fear decides turnout: people who watched a shop lose
+// are markedly less willing to be seen voting.
+const ACT2_LOSS_FEAR = 16;
+// And it lands on the organizer. This is the first thing in the act that ever spends
+// real stamina, and it spends more of it the more shops you had in the air.
+const ACT2_LOSS_STAMINA = 22;
+// A company that has beaten you once reaches for the same tools sooner everywhere else.
+const ACT2_EMBOLDENED_RETALIATION = 15;
+
+// ---------- A PETITION IS NOT FREE ----------
+// The weeks between filing and the ballot are not weeks off. There are hearings, a unit
+// to argue over, an Excelsior list to check, and a mandatory meeting every week that
+// somebody has to answer. That comes off the top of the organizer's week whether they
+// like it or not, which is the real reason you cannot run four elections at once:
+// spreading thin is not punished by a rule, it is punished by the calendar.
+const ACT2_CAMPAIGN_UPKEEP = 2;
 
 const GRIEVANCE_META = {
   legal: { label: "Misclassification", action: "File an exempt-status complaint", cost: 2, icon: FileWarning, tone: "text-red-400 border-red-800", desc: "PerfAxis flags after-hours Slack activity as 'low engagement' — but those are unpaid hours on an exempt salary. Clear-cut FLSA violation. Legal will stall, but it's on record." },
@@ -392,13 +422,16 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     if (r.document) cost += 1;
     if (r.counter) cost += 1;
     if (r.reframe && loc.buyOff?.active) cost += 1;
-    if (r.formCommittee) cost += COMMITTEE_COST;
+    if (r.formCommittee) cost += (loc.status === "campaign" ? COMMITTEE_COST_CAMPAIGN : COMMITTEE_COST);
     if (r.bargain) cost += 2;
     return cost;
   }
 
   const totalResponseCost = locations.reduce((sum, l) => sum + responseCostFor(l, responses[l.id]), 0);
-  const totalAllocated = Object.values(allocations).reduce((a, b) => a + b, 0) + totalResponseCost;
+  // Every shop at the vote takes its upkeep off the top, before anything is allocated.
+  const campaignCount = locations.filter(l => l.status === "campaign").length;
+  const campaignUpkeep = campaignCount * ACT2_CAMPAIGN_UPKEEP;
+  const totalAllocated = Object.values(allocations).reduce((a, b) => a + b, 0) + totalResponseCost + campaignUpkeep;
 
   function updateAlloc(id, val) {
     val = Math.max(0, Math.min(weeklyBudget, val));
@@ -454,12 +487,22 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       if (units > 0) activeLocationCount++;
 
       if (l.status === "campaign") {
+        // A committee can still be built after the petition — it is the only response
+        // that means anything once the clock is running, and it costs more up here.
+        const rc = responses[l.id] || {};
+        let campCommittee = l.committee || { active: false, strikes: 0 };
+        let campCommitteeNote = "";
+        if (rc.formCommittee && !campCommittee.active
+            && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ) {
+          campCommittee = { active: true, strikes: 0 };
+          campCommitteeNote = ` ${l.name}: workers form a shop committee in the middle of the campaign. Somebody is finally counting honestly.`;
+        }
         // Election campaign turn: employer counter-campaign automatically fires
         const employerHit = 3 + rand(3); // -3 to -5
-        const committeeDefense = l.committee?.active ? 2 : 0;
+        const committeeDefense = campCommittee.active ? 2 : 0;
         const defense = Math.min(employerHit, Math.floor(units * 1.2) + committeeDefense);
         let moraleDelta = -(employerHit - defense);
-        let fearDelta = 8 - Math.floor(units * 1.5) - (l.committee?.active ? 2 : 0);
+        let fearDelta = 8 - Math.floor(units * 1.5) - (campCommittee.active ? 2 : 0);
         fearDelta = Math.max(-8, fearDelta);
         if (moraleClimateNext.tone === "positive") { moraleDelta += 2; fearDelta -= 2; }
         else if (moraleClimateNext.tone === "negative") { moraleDelta -= 2; fearDelta += 2; }
@@ -468,10 +511,12 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         if (firedEvent && firedEvent.immediateOrganizingMorale) moraleDelta += Math.round(firedEvent.immediateOrganizingMorale / 2);
         const newMorale = clamp(l.morale + moraleDelta);
         const newFear = clamp(l.fear + fearDelta);
-        const trueSupportDelta = Math.round(moraleDelta * 0.5) + (l.committee?.active ? 1 : 0);
+        const trueSupportDelta = Math.round(moraleDelta * 0.5) + (campCommittee.active ? 1 : 0);
         const newTrueSupport = clamp((l.trueSupport ?? l.morale) + trueSupportDelta);
         const turnsLeft = l.electionTurn - turn;
-        return { ...l, morale: newMorale, trueSupport: newTrueSupport, fear: newFear, _campaignNote: `Employer pressure this week: ${moraleDelta >= 0 ? "+" : ""}${moraleDelta} morale. ${turnsLeft <= 0 ? "Election is today." : `${turnsLeft} turn(s) until the vote.`}` };
+        return { ...l, morale: newMorale, trueSupport: newTrueSupport, fear: newFear, committee: campCommittee,
+          _feedbackLines: campCommitteeNote ? [campCommitteeNote.trim()] : [],
+          _campaignNote: `Employer pressure this week: ${moraleDelta >= 0 ? "+" : ""}${moraleDelta} morale. ${turnsLeft <= 0 ? "Election is today." : `${turnsLeft} turn(s) until the vote.`}` };
       }
 
       // Normal organizing location
@@ -674,7 +719,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     });
 
     const allocLines = workingLocs.filter(l => l.status === "organizing").map(l => `${l.name}: allocated ${allocations[l.id] || 0} action(s) → morale ${l._lastGain >= 0 ? "+" : ""}${l._lastGain ?? 0}`);
-    const feedbackLines = workingLocs.filter(l => l.status === "organizing").flatMap(l => l._feedbackLines || []);
+    const feedbackLines = workingLocs.filter(l => l.status === "organizing" || l.status === "campaign").flatMap(l => l._feedbackLines || []);
     steps.push({ label: "MORALE & VISIBILITY", sub: "Resolving organizing activity across sites...", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: [...allocLines, ...feedbackLines] });
 
     // Retaliation checks — an employer that's learned from past failures reaches for subtler tools
@@ -694,7 +739,8 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       if (l.visibility >= 60) {
         const forceRetaliate = l.visibility >= 90;
         const roll = roll100();
-        const retaliateThreshold = legalClimateNext.tone === "hostile" ? 65 : legalClimateNext.tone === "favorable" ? 35 : 50;
+        const retaliateThreshold = (legalClimateNext.tone === "hostile" ? 65 : legalClimateNext.tone === "favorable" ? 35 : 50)
+          + (employerEmboldened ? ACT2_EMBOLDENED_RETALIATION : 0);
         if (forceRetaliate || roll <= retaliateThreshold) {
           const typeRoll = rand(100);
           // Weight shifts toward the quiet buy-off as the employer gets more sophisticated (unlocked at sophistication >= 1)
@@ -948,15 +994,45 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     });
 
     if (electionLines.length) {
-      // A loss is still an immediate gut-punch; a win's ongoing upside now comes from the
-      // solidarity network above, which keeps paying out every week instead of a single jolt.
-      const lost = workingLocs.some(l => l.status === "lost" && electionLines.some(s => s.startsWith(l.name)));
-      if (lost) {
+      // A win's ongoing upside comes from the solidarity network above, which pays out
+      // every week. A loss is the mirror of it, and it has to be the heavier of the two:
+      // spreading yourself over four shops means more elections, and if losing them is
+      // cheap then four weak petitions beat two strong ones, which is the opposite of
+      // what organizing a company actually takes.
+      const lostNow = workingLocs.filter(l => l.status === "lost"
+        && electionLines.some(s => s.startsWith(l.name) && s.includes("ELECTION LOST")));
+      if (lostNow.length) {
+        const n = lostNow.length;
+        let hit = 0;
         workingLocs = workingLocs.map(l => {
-          if (l.status !== "organizing") return l;
-          return { ...l, morale: clamp(l.morale - 15), trueSupport: clamp((l.trueSupport ?? l.morale) - 8) };
+          if (l.status !== "organizing" && l.status !== "campaign") return l;
+          hit += 1;
+          return {
+            ...l,
+            morale: clamp(l.morale - ACT2_LOSS_MORALE * n),
+            trueSupport: clamp((l.trueSupport ?? l.morale) - ACT2_LOSS_TRUE * n),
+            fear: clamp(l.fear + ACT2_LOSS_FEAR * n),
+          };
         });
+        const staminaCost = ACT2_LOSS_STAMINA * n;
+        orgStamina = clamp(orgStamina - staminaCost, 0, 100);
+        // The stamina check has already run this turn, so re-run it: a defeat is exactly
+        // the week an organizer goes under, and it should not be held over to the next.
+        if (orgStamina <= 0 && onBreak === 0) { onBreak = 2; breaksTaken += 1; justBroke = true; }
         setEmployerEmboldened(true);
+        electionLines.push(
+          `A DEFEAT IS NOT A LOCAL EVENT \u2014 ${hit} shop${hit === 1 ? "" : "s"} still in play: \u2212${ACT2_LOSS_MORALE * n} morale, ` +
+          `\u2212${ACT2_LOSS_TRUE * n} true support, +${ACT2_LOSS_FEAR * n} fear. The organizer loses ${staminaCost} stamina. ` +
+          `Everybody who was watching just learned that the company can win one, and the people you have left are the ones who have to be asked to go next. ` +
+          `Management across the company reaches for the same tools sooner now.` +
+          (justBroke ? " That is what puts the organizer on a mandatory break." : "")
+        );
+        if (lostNow.length) {
+          electionLines.push(
+            `THE ELECTION BAR \u2014 ${lostNow.map(l => l.name).join(" and ")} cannot petition again for a year. ` +
+            `In a twelve-week campaign that is not a setback you organize back from. That shop is gone.`
+          );
+        }
       }
       steps.push({ label: "ELECTION DAY", sub: "The votes are in.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: electionLines });
     }
@@ -1246,8 +1322,8 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
                       {ready.length === 1 ? `${ready[0].name} CAN FILE TODAY` : `${ready.length} SHOPS CAN FILE TODAY`}
                     </div>
                     <div className="text-xs text-stone-400 leading-relaxed mt-1">
-                      Every gate is green. Filing starts a {ACT2_FILING_LEAD}-week clock you cannot stop, and the vote rolls on true support, not morale
-                      {ready.some(l => !l.committee?.active) ? " — which, without a shop committee, you cannot see" : ""}. The last week to file is {ACT2_LAST_FILING_TURN}.
+                      Every gate is green, committee included. Filing starts a {ACT2_FILING_LEAD}-week clock you cannot stop, and the vote
+                      rolls on true support, not morale. The last week to file is {ACT2_LAST_FILING_TURN}.
                     </div>
                   </div>
                   <div className="flex flex-col gap-1.5 shrink-0">
@@ -1337,6 +1413,12 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
                 </span>
               </div>
             </div>
+            {campaignUpkeep > 0 && (
+              <div className="text-xs text-amber-400 border border-amber-900 bg-amber-950/20 px-2 py-1.5 mb-2">
+                {campaignCount} shop{campaignCount === 1 ? " is" : "s are"} at the vote, which takes <span className="font-bold">{campaignUpkeep}</span> of
+                this week off the top — hearings, the voter list, and a mandatory meeting somebody has to answer. That is spent before you allocate anything.
+              </div>
+            )}
             <p className="text-xs text-stone-500 mb-3">Click a location above to choose what the organizer does there this week. Tap it again to change the plan. Unassigned actions count as rest — they help the organizer recover stamina but do nothing for the campaign.</p>
             <button
               onClick={resolveTurn}
@@ -1466,6 +1548,11 @@ function filingGates(loc, turn) {
     { id: "recruited", label: "RECRUITED", val: `${Math.round(recruitedPct * 100)}%`, pass: recruitedPct >= 0.3, req: "\u2265 30%" },
     { id: "legal", label: "LEGAL RISK", val: loc.legalRisk, pass: loc.legalRisk < 75, req: "< 75" },
     { id: "clock", label: "WEEK", val: turn, pass: turn <= ACT2_LAST_FILING_TURN, req: `\u2264 ${ACT2_LAST_FILING_TURN}` },
+    // The gate the campaign research is loudest about. A representative committee of
+    // the workers themselves, before the petition, is the strongest single predictor of
+    // winning the vote — and mechanically it is the only thing that lets anyone in this
+    // shop count honestly, so filing without one is filing blind.
+    { id: "committee", label: "COMMITTEE", val: loc.committee?.active ? "yes" : "no", pass: !!loc.committee?.active, req: "built" },
   ];
 }
 // `turn` is the next turn the player can act on: a site still organizing can only
@@ -1643,16 +1730,21 @@ function Meter({ label, value, icon, colorClass = "bg-amber-500", danger = false
 }
 
 function FeedbackControls({ loc, response, priorities = null, onToggle }) {
-  const inCrackdownBand = loc.visibility >= 40 && loc.visibility < 60;
+  // Once the petition is in, nothing on this list still applies except the one thing
+  // that decides the vote — so the campaign gets the committee row and nothing else.
+  const campaign = loc.status === "campaign";
+  const inCrackdownBand = !campaign && loc.visibility >= 40 && loc.visibility < 60;
   const recruitedPct = loc.recruited / loc.workers;
   const committeeEligible = !loc.committee?.active && loc.morale >= COMMITTEE_MORALE_REQ && recruitedPct >= COMMITTEE_RECRUIT_PCT_REQ;
-  const bargainable = priorities && BLOCS.some(b => (LOC_COMPOSITION[loc.id]?.[b.id] || 0) >= 0.5 && !priorities[b.id]?.known);
-  const hasAny = loc.grievance || inCrackdownBand || loc.antiUnion?.active || loc.buyOff?.active || committeeEligible || bargainable;
+  const bargainable = !campaign && priorities && BLOCS.some(b => (LOC_COMPOSITION[loc.id]?.[b.id] || 0) >= 0.5 && !priorities[b.id]?.known);
+  const hasAny = campaign
+    ? committeeEligible
+    : (loc.grievance || inCrackdownBand || loc.antiUnion?.active || loc.buyOff?.active || committeeEligible || bargainable);
   if (!hasAny) return null;
 
   return (
     <div className="mt-2 space-y-1.5 border-t border-stone-800 pt-2">
-      {loc.grievance && (() => {
+      {!campaign && loc.grievance && (() => {
         const meta = GRIEVANCE_META[loc.grievance.type];
         const Icon = meta.icon;
         const autoHandled = loc.committee?.active && loc.grievance.type !== "legal";
@@ -1679,14 +1771,14 @@ function FeedbackControls({ loc, response, priorities = null, onToggle }) {
           <span className="flex-1"><span className="font-bold">Management is watching closer.</span> Document it</span><CostPips hours={1} />
         </label>
       )}
-      {loc.antiUnion?.active && (
+      {!campaign && loc.antiUnion?.active && (
         <label className="flex items-center gap-2 text-xs border border-red-800 text-red-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.counter} onChange={() => onToggle("counter")} className="accent-amber-500" />
           <Megaphone size={12} />
           <span className="flex-1"><span className="font-bold">Anti-union talk is spreading.</span> Counter-message</span><CostPips hours={1} />
         </label>
       )}
-      {loc.buyOff?.active && (
+      {!campaign && loc.buyOff?.active && (
         <label className="flex items-center gap-2 text-xs border border-teal-800 text-teal-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.reframe} onChange={() => onToggle("reframe")} className="accent-amber-500" />
           <HandCoins size={12} />
@@ -1716,7 +1808,12 @@ function FeedbackControls({ loc, response, priorities = null, onToggle }) {
         <label className="flex items-center gap-2 text-xs border border-amber-600 text-amber-300 px-2 py-1 cursor-pointer">
           <input type="checkbox" checked={!!response.formCommittee} onChange={() => onToggle("formCommittee")} className="accent-amber-500" />
           <UsersRound size={12} />
-          <span className="flex-1"><span className="font-bold">Ready for a shop committee.</span> Help workers form one — unlocks the true-support read here</span><CostPips hours={COMMITTEE_COST} />
+          <span className="flex-1">
+            <span className="font-bold">{campaign ? "Still no shop committee, and the vote is coming." : "Ready for a shop committee."}</span>{" "}
+            {campaign
+              ? "Build one now — it is the only thing left that changes the count, and it costs more under a running clock"
+              : "Help workers form one — the petition needs it, and it is what lets anyone here count honestly"}
+          </span><CostPips hours={campaign ? COMMITTEE_COST_CAMPAIGN : COMMITTEE_COST} />
         </label>
       )}
     </div>
@@ -2049,7 +2146,7 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
                 </button>
               ))}
             </div>
-            {isOrganizing && (
+            {(isOrganizing || isCampaign) && (
               <FeedbackControls loc={loc} response={response} priorities={priorities} onToggle={onToggleResponse} />
             )}
             {isOrganizing && onFile && loc.morale >= 70 && (() => {
@@ -2214,7 +2311,7 @@ function EscalationModal({ loc, turn, factor = 1, onFile, onConsolidate, onPivot
         <p className="text-sm text-stone-400 mb-4">Morale has crossed 70. Workers are ready to move — the question is whether you are. You will only be asked this once; after today the FILE control lives on the shop's own panel.</p>
 
         {/* The gates. Each one passes or it doesn't \u2014 no interpreting a number. */}
-        <div className="grid grid-cols-4 gap-2 mb-3 text-xs">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-3 text-xs">
           {gates.map(g => (
             <div key={g.label} className={`border p-2 text-center ${g.pass ? "border-teal-800 bg-teal-950/20" : "border-red-900 bg-red-950/20"}`}>
               <div className="text-stone-500">{g.label}</div>
@@ -2230,8 +2327,9 @@ function EscalationModal({ loc, turn, factor = 1, onFile, onConsolidate, onPivot
         <div className="mb-3 text-xs border border-stone-800 bg-stone-950/50 px-3 py-2">
           <div className="text-stone-500 font-bold tracking-wide mb-1">IF YOU FILE TODAY</div>
           <div className="text-stone-400 leading-relaxed">
-            Vote lands in <span className="text-stone-200 font-bold">{ACT2_FILING_LEAD} weeks</span>. Every worker in
-            the unit gets one secret ballot, and it takes a majority of the ones actually cast.
+            Vote lands in <span className="text-stone-200 font-bold">{ACT2_FILING_LEAD} weeks</span>, and every one of them
+            costs <span className="text-amber-400 font-bold">{ACT2_CAMPAIGN_UPKEEP} actions a week</span> off the top just to keep the process
+            running. Every worker in the unit gets one secret ballot, and it takes a majority of the ones actually cast.
             {loc.committee?.active
               ? (() => {
                   const odds = act2WinChance(loc, factor);

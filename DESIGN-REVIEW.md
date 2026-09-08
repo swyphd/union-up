@@ -249,7 +249,47 @@ rate, because extra actions buy extra elections.
    allows one of those. Give the committee's counter-messaging, a won grievance, and solidarity
    from a *certified* site explicit fear reductions during a campaign; say the numbers.
 
-**Depth over breadth (makes F2 go the right way):**
+**Depth over breadth (makes F2 go the right way) - DONE, commit after `20fe3fa`:**
+Items 10, 11 and 12 are in. 12 was not optional: with a 5-week filing lead and a week-7
+deadline every election lands in weeks 9-12, often the same week, so a loss has no time to
+bite before the other votes are already cast. Raising the cascade from 18/14/14/18 to
+26/22/22/32 moved `spread 4` by 1.4 points and did not change the ordering at all. The cost of
+breadth has to be paid *before* the votes, and item 12 is where it is paid.
+
+- **The committee is the fifth gate on the petition** (item 10), and `COMMITTEE_RECRUIT_PCT_REQ`
+  dropped 0.4 -> 0.3 to line up with the petition's own recruitment gate, so the committee is
+  never the thing that is arithmetically out of reach. A committee can also still be built after
+  filing, at 5 actions instead of 3 - though that path is currently unreachable, because
+  retaliation cannot touch a campaign site (item 17). It becomes reachable the moment 17 lands.
+- **A defeat is company-wide** (item 11): every shop still in play takes -20 morale, -16 true
+  support and **+16 fear**, which is the term that bites now that fear decides turnout. The
+  organizer loses 22 stamina, and the stamina check re-runs so a defeat is the week they go
+  under rather than the week after. A beaten employer reaches for the same tools sooner
+  everywhere (+15 on the retaliation roll). The lost shop is named as gone: under the NLRB
+  election bar it cannot petition again for a year, which in a twelve-week campaign is never.
+- **A petition costs 2 actions a week to hold** (item 12) - hearings, the voter list, and a
+  mandatory meeting somebody has to answer - taken off the top before anything is allocated.
+
+| policy | before | after | mean p(win) per election | losses/game | organizer breaks |
+|---|---|---|---|---|---|
+| focus 1 shop | - | 64.7% | 0.90 | 0.15 | 0.00 |
+| focus 2 shops | 71.8% | **70.8%** | 0.85 | 0.27 | 0.00 |
+| focus 3 shops | - | **78.6%** | 0.71 | 0.80 | 0.21 |
+| spread across all 4 | 93.2% | **68.9%** | 0.65 | 0.98 | 0.27 |
+| never builds a committee | - | **0.0%** | - | - | - |
+
+The test the review set - focus beats spread - passes: 70.8% against 68.9% at two shops, and
+78.6% at three. The curve now has an interior optimum, which is the right shape: one shop
+cannot reach the two wins the objective needs, four is too thin to carry, three is the campaign
+that wins. Every measure moves the right way with breadth - the odds per election fall from
+0.90 to 0.65, defeats per game rise from 0.15 to 0.98, and the organizer starts hitting zero
+stamina. A player who never builds a committee never files at all.
+
+Two side effects worth noting. Carried leaders are back to a sane +4.8 points (they were +39
+before the upkeep, because extra actions bought extra cheap elections). And listening first is
+now worth +3.3 rather than +11 - the platform matters less when fewer shops reach a vote, which
+is an argument for doing item 13 next rather than a reason not to.
+
 10. **A committee is the price of filing.** Bronfenbrenner: a representative rank-and-file
     committee before filing is the single strongest predictor of a win. Make "shop committee
     active" the third gate next to morale and recruited (drop the 40%-recruited requirement to
