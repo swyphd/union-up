@@ -201,7 +201,43 @@ used by the prompt, the banner, the panel and the filing itself, with the clock 
    weekly budget (11, 12, 13, 14) and their Act One organizer tier carries. That is an effect the
    sim can see.
 
-**The election (this is the fix that matters most):**
+**The election (this is the fix that matters most) — DONE, commit after `12af198`:**
+Items 7 and 8 are in; item 9 is partly answered and partly still open. Each site now casts
+one ballot per worker: a deterministic spread of standings around the site's true support,
+a per-worker turnout roll and yes roll, decided on a majority of the ballots cast. The exact
+odds are computed by walking the distribution of (yes - no) over the shop, so the percentage
+the player is quoted before filing is the percentage the ballot actually rolls.
+
+The curve is Act Two's own (pivot 12, span 100), because a *shop* at 78 and a *person* at 78
+are not the same measurement - Act One's pivot would have put every shop at the 0.93 cap.
+Anchors, for a 10-worker shop at 40% recruited: 70 true support is the coin flip, 85 reads
+79%, 98 reads 91%, 55 reads 18%.
+
+Fear needed rethinking. Symmetric turnout suppression cannot move a majority at all - thinning
+both piles in proportion changes the turnout and not the result - so fear now acts only on the
+union's half of the room, in two terms: it keeps your voters at their desks, and it moves the
+marginal one to the safe vote. Across the range the employer's counter-campaign reaches, that
+is worth about 20 points of win chance. The platform factor moved onto turnout for the same
+reason, which is what it always claimed to do. Item 9 (giving the player more handles on fear)
+is still open; fear is now worth pulling, but a 6-action all-in is still the only lever on it.
+
+| | before | after |
+|---|---|---|
+| focus 2, file at the prompt | 56.4% | 41.3% |
+| focus 2, wait for a committee | 71.8% | 89.3% |
+| spread 4, wait for a committee | 93.2% | 95.8% |
+| median ballot margin, file-now | n/a (one roll) | 2 votes, 41% within one |
+| median ballot margin, committee | n/a | 4 votes, 28% by six or more |
+| listening first (open bargaining) | +3.7 pts | +11.3 pts |
+
+Skill separation went from 15 points to 48. The margin now reads like Act One's (median 3,
+41% close). Depth still does not quite beat breadth - 89.3% against 95.8% - but the gap
+closed from 21 points to 7, and the rest of it is item 11's job: a lost election is still
+nearly free, so four cheap tickets still beat two good ones. Two things to watch: filing at
+the prompt now loses more often than it wins, which is correct but makes the committee gate
+(item 10) urgent rather than optional; and four carried leaders are worth 39 points of win
+rate, because extra actions buy extra elections.
+
 7. **Resolve the vote as a ballot, not a roll.** Reuse Act One's `turnoutChance` / `yesChance`
    with per-site "virtual voters": a site of 12 workers casts 12 ballots, each with p from the
    site's true support and fear. This alone turns a 28%-loss-on-perfect-play act into one where
@@ -371,6 +407,7 @@ node sim/when.mjs                    # Act One: public actions by timing
 node sim/act2-report.mjs 2000        # Act Two: win rate by policy
 node sim/act2-anatomy.mjs 1500       # Act Two: what an election is made of
 node sim/act2-platform.mjs           # Act Two: all 56 platforms, side-offer safety
+node sim/act2-ballot.mjs             # Act Two: the ballot curve, and what each input is worth
 node sim/contract-report.mjs 1500    # contract: tiers, ratification, decert by policy
 ```
 

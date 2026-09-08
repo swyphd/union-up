@@ -6,7 +6,7 @@ import * as C from './core2.mjs';
 const { clamp, rand, TOTAL_TURNS, START_LOCATIONS, COMMITTEE_COST, COMMITTEE_MORALE_REQ,
   COMMITTEE_RECRUIT_PCT_REQ, GRIEVANCE_META, EXTERNAL_EVENTS, BLOCS, LOC_COMPOSITION, DEMAND_BY_ID,
   PLATFORM_SLOTS, DEFECT_THRESHOLD, rollBlocPriorities, blocSatisfaction, locBlocFactor,
-  computeSolidarityScore, baseGain, baseVis, ACT2_SITES_NEEDED, ACT2_FILING_LEAD, ACT2_LAST_FILING_TURN, ACT2_BASE_ACTIONS, filingGates, act2Winnability } = C;
+  computeSolidarityScore, baseGain, baseVis, ACT2_SITES_NEEDED, ACT2_FILING_LEAD, ACT2_LAST_FILING_TURN, ACT2_BASE_ACTIONS, filingGates, act2Winnability, act2WinChance, act2CastBallot } = C;
 const roll100 = () => rand(100) + 1;
 
 export function newGame(leaders = []) {
@@ -316,12 +316,13 @@ export function resolveTurn(G, alloc, resp) {
   workingLocs = workingLocs.map(l => {
     if (l.status === 'campaign' && turn >= l.electionTurn) {
       const raw = l.trueSupport ?? l.morale;
-      const factor = locBlocFactor(l, G.platform, G.priorities);
-      const support = clamp(Math.round(raw * factor));
-      const winChance = (support / 100) * 0.6 + ((100 - l.fear) / 100) * 0.4;
-      const won = Math.random() <= winChance;
-      L.elections.push({ id: l.id, turn, raw, factor, support, fear: l.fear, morale: l.morale, winChance, won, committee: !!l.committee?.active });
-      if (won) return { ...l, status: 'won', morale: 95, trueSupport: 95, legalRisk: 0 };
+      const factor = locBlocFactor(l, G.platform, prioritiesNext);
+      const winChance = act2WinChance(l, factor);
+      const b = act2CastBallot(l, factor);
+      L.elections.push({ id: l.id, turn, raw, factor, workers: l.workers, recruited: l.recruited, fear: l.fear,
+        morale: l.morale, winChance, won: b.won, margin: b.yes - b.no, cast: b.cast, out: b.out,
+        committee: !!l.committee?.active });
+      if (b.won) return { ...l, status: 'won', morale: 95, trueSupport: 95, legalRisk: 0 };
       lostOne = true;
       return { ...l, status: 'lost', morale: 20, trueSupport: 20, fear: 90, abandonedTurns: 99 };
     }

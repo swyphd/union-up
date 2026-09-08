@@ -636,7 +636,9 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         - momentumPenalty
         + committeeSupportBonus
         - (buyOffWasActive && !r.reframe ? 3 : 0);
-      let newTrueSupport = clamp(l.trueSupport + trueSupportGain);
+      // Rounded: recruitment contributes a fractional term, and an unrounded number
+      // ends up quoted at the ballot as "91.39999999999999 true support".
+      let newTrueSupport = Math.round(clamp(l.trueSupport + trueSupportGain));
 
       // Visibility
       let visGain = baseVis(units);
@@ -922,20 +924,25 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
     workingLocs = workingLocs.map(l => {
       if (l.status === "campaign" && turn >= l.electionTurn) {
         const raw = l.trueSupport ?? l.morale;
-        // The platform decides who actually turns out. A shop full of a bloc you
-        // ignored votes at a fraction of its paper strength.
-        const factor = locBlocFactor(l, platform, blocPriorities);
-        const support = clamp(Math.round(raw * factor));
-        const winChance = (support / 100) * 0.6 + ((100 - l.fear) / 100) * 0.4;
-        const roll = Math.random();
-        const gapWarning = l.morale - support >= 15 ? " Turnout looked stronger on paper than it was in the room." : "";
-        if (roll <= winChance) {
-          electionLines.push(`${l.name}: ELECTION WON. Workers vote to unionize. (True win probability was ${Math.round(winChance * 100)}%; the platform moved turnout ${factor >= 1 ? "+" : ""}${Math.round((factor - 1) * 100)}%, ${raw} \u2192 ${support} effective support.)${gapWarning}`);
-          return { ...l, status: "won", morale: 95, trueSupport: 95, legalRisk: 0 };
-        } else {
-          electionLines.push(`${l.name}: ELECTION LOST. The vote came back NO. (True win probability was ${Math.round(winChance * 100)}%; the platform moved turnout ${factor >= 1 ? "+" : ""}${Math.round((factor - 1) * 100)}%, ${raw} \u2192 ${support} effective support.)${factor < 0.92 ? " The people you didn't write into the platform stayed home." : ""}${gapWarning}`);
-          return { ...l, status: "lost", morale: 20, trueSupport: 20, fear: 90, abandonedTurns: 99 };
+        // The platform decides who actually turns out — so it multiplies turnout, which
+        // is what it has always claimed to do. Read against THIS turn's priorities: a
+        // bloc that walked an hour ago does not get to vote.
+        const factor = locBlocFactor(l, platform, prioritiesNext);
+        const odds = act2WinChance(l, factor);
+        const b = act2CastBallot(l, factor);
+        const margin = `${b.yes}\u2013${b.no}`;
+        const turnoutLine = `${b.cast} of ${l.workers} cast a ballot${b.out ? `, ${b.out} didn't vote` : ""}`;
+        const oddsLine = `The odds going in were ${Math.round(odds * 100)}%, on ${raw} true support and ${l.fear} fear; the platform moved turnout ${factor >= 1 ? "+" : ""}${Math.round((factor - 1) * 100)}%.`;
+        const gapWarning = l.morale - raw >= 15 ? ` Morale read ${l.morale}. The room was ${l.morale - raw} points warmer than the vote.` : "";
+        if (b.won) {
+          electionLines.push(`${l.name}: ELECTION WON, ${margin}. ${turnoutLine}. ${oddsLine}${gapWarning}`);
+          return { ...l, status: "won", morale: 95, trueSupport: 95, legalRisk: 0, ballot: b };
         }
+        const stayedHome = b.out > b.yes
+          ? ` More people stayed at their desks than voted yes. Every one of them was a vote you could have had.`
+          : factor < 0.98 ? ` The people you didn't write into the platform stayed home.` : "";
+        electionLines.push(`${l.name}: ELECTION LOST, ${b.yes} yes to ${b.no} no. ${turnoutLine}. ${oddsLine}${stayedHome}${gapWarning}`);
+        return { ...l, status: "lost", morale: 20, trueSupport: 20, fear: 90, abandonedTurns: 99, ballot: b };
       }
       return l;
     });
@@ -1069,6 +1076,8 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
   }
 
   const remaining = weeklyBudget - totalAllocated;
+  // Before a platform exists there is nothing to suppress turnout, so it is a flat 1.
+  const turnoutFactorFor = (loc) => (platform.length ? locBlocFactor(loc, platform, blocPriorities) : 1);
   const locByStatus = (s) => locations.filter(l => l.status === s);
   const escLoc = locations.find(l => l.id === escalationTarget);
 
@@ -1377,6 +1386,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         <EscalationModal
           loc={escLoc}
           turn={turn}
+          factor={turnoutFactorFor(escLoc)}
           onFile={() => fileForElection(escLoc.id)}
           onConsolidate={consolidate}
           onPivot={() => pivotAway(escLoc.id)}
@@ -1432,6 +1442,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
           response={responses[selectedLoc.id] || {}}
           priorities={blocPriorities}
           remaining={remaining}
+          factor={turnoutFactorFor(locations.find(l => l.id === selectedLoc.id) || selectedLoc)}
           onFile={() => fileForElection(selectedLoc.id)}
           onSetUnits={(units) => updateAlloc(selectedLoc.id, units)}
           onToggleResponse={(key) => toggleResponse(selectedLoc.id, key)}
@@ -1483,6 +1494,106 @@ function act2Winnability(locations, turn) {
     };
   }
   return { alive: true, won, needed, salvageable, reason: null };
+}
+
+// ---------- THE BALLOT ----------
+// A shop's election is decided the way Act One's is: one ballot per worker, each with
+// their own odds, counted up. Not one Math.random() against an aggregate probability —
+// that made a well-run campaign lose a quarter of the time for no reason the player
+// could see, and it meant the margin said nothing about the work.
+//
+// The curve is NOT Act One's. There, `trueSupport` is what one named person would do
+// with a card in front of them and it runs in the 40s. Here it is a whole shop's
+// aggregate standing and it runs in the 70s and 80s, so this needs its own pivot and
+// span. A shop sitting at PIVOT + SPAN/2 is the coin flip.
+const ACT2_BALLOT_PIVOT = 12;
+const ACT2_BALLOT_SPAN = 100;
+// No shop is uniform. A shop at 70 is carrying people at 52 and people at 88, and the
+// ones at both ends are the ones who reliably turn up. Spread is deterministic in
+// shape — the site's own number decides the distribution, and only voting is random.
+const ACT2_BALLOT_SPREAD = 18;
+// Fear works on the ballot twice, and both of them land on YOUR half of the room.
+// Nobody stays home out of fear of voting no, and nobody is frightened into voting for
+// a union — so both terms are weighted by how much of a worker is on your side.
+//
+// It empties the room: a frightened yes stays at their desk. On its own this is a much
+// weaker weapon than it looks, because thinning both piles in proportion changes the
+// turnout and not the result — which is why the second term has to exist.
+const ACT2_FEAR_TURNOUT = 0.45;
+// And it moves the marginal vote. A worker who believes the company will find out and
+// remember votes the safe way. This is the term that lets a fear campaign actually take
+// a close shop off you, and it is worth about 20 points of win chance across the range
+// the employer's counter-campaign can reach.
+const ACT2_FEAR_YES = 0.18;
+
+function act2Standings(trueSupport, n) {
+  return Array.from({ length: n }, (_, i) =>
+    clamp(Math.round(trueSupport + ACT2_BALLOT_SPREAD * (n === 1 ? 0 : (2 * i) / (n - 1) - 1))));
+}
+function act2YesChance(standing, recruited, fear = 0) {
+  return Math.min(0.93, Math.max(0.02,
+    (standing - ACT2_BALLOT_PIVOT) / ACT2_BALLOT_SPAN
+    - ACT2_FEAR_YES * (fear / 100)
+    + (recruited ? 0.08 : 0)));
+}
+// People with strong feelings in either direction vote. The torn stay at their desks,
+// fear keeps more of them there, and the platform decides whose turnout it suppresses —
+// which is what "the people you didn't write into the platform stayed home" means.
+function act2TurnoutChance(yes, fear, factor, recruited) {
+  const conviction = Math.abs(yes - 0.5) * 2;
+  const base = 0.55 + 0.30 * conviction + (recruited ? 0.06 : 0);
+  // Both the employer's fear campaign and your own platform act on your voters, not on
+  // theirs. `yes` is how much of this person is on your side of the ballot.
+  const mobilization = 1 - ACT2_FEAR_TURNOUT * (fear / 100) * yes + (factor - 1) * yes;
+  return Math.min(0.96, Math.max(0.05, base * mobilization));
+}
+// The shop as a list of voters. The recruited are the most convinced end of the floor,
+// which is what finally gives the recruitment number a job at the ballot box instead of
+// only being a gate on the petition.
+function act2Ballot(loc, factor = 1) {
+  const n = loc.workers;
+  const signedUp = Math.min(n, loc.recruited || 0);
+  return act2Standings(loc.trueSupport ?? loc.morale, n).map((standing, i) => {
+    const recruited = i >= n - signedUp;
+    const yes = act2YesChance(standing, recruited, loc.fear);
+    return { standing, recruited, yes, turnout: act2TurnoutChance(yes, loc.fear, factor, recruited) };
+  });
+}
+function act2Projection(loc, factor = 1) {
+  let yes = 0, no = 0, out = 0;
+  act2Ballot(loc, factor).forEach(v => {
+    yes += v.turnout * v.yes; no += v.turnout * (1 - v.yes); out += 1 - v.turnout;
+  });
+  return { yes: Math.round(yes), no: Math.round(no), out: Math.round(out) };
+}
+// The exact odds, by walking the distribution of (yes - no) over the whole shop. It is
+// a dozen workers, so this is cheap — and it means the percentage the player is quoted
+// before filing is the percentage the ballot actually rolls, rather than a formula that
+// approximates it.
+function act2WinChance(loc, factor = 1) {
+  let dist = new Map([[0, 1]]);
+  act2Ballot(loc, factor).forEach(v => {
+    const next = new Map();
+    const add = (k, p) => { if (p > 0) next.set(k, (next.get(k) || 0) + p); };
+    dist.forEach((p, k) => {
+      add(k + 1, p * v.turnout * v.yes);
+      add(k - 1, p * v.turnout * (1 - v.yes));
+      add(k, p * (1 - v.turnout));
+    });
+    dist = next;
+  });
+  let win = 0;
+  dist.forEach((p, k) => { if (k > 0) win += p; }); // a tie is not a majority
+  return win;
+}
+// Cast it. Every worker decides whether to show up, then how to vote.
+function act2CastBallot(loc, factor = 1) {
+  let yes = 0, no = 0, out = 0;
+  act2Ballot(loc, factor).forEach(v => {
+    if (Math.random() >= v.turnout) { out += 1; return; }
+    if (Math.random() < v.yes) yes += 1; else no += 1;
+  });
+  return { yes, no, out, cast: yes + no, won: yes > no };
 }
 
 // ---------- SUBCOMPONENTS ----------
@@ -1795,7 +1906,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
   );
 }
 
-function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, onFile = null, onSetUnits, onToggleResponse, onClose }) {
+function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, factor = 1, onFile = null, onSetUnits, onToggleResponse, onClose }) {
   const meta = statusMeta[loc.status];
   const isCampaign = loc.status === "campaign";
   const isOrganizing = loc.status === "organizing";
@@ -1858,6 +1969,36 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
             />
           )}
         </div>
+
+        {/* The count, as it stands today. This is the number the campaign is actually
+            fighting over, so it belongs where the player decides what to spend here. */}
+        {isCampaign && (
+          loc.committee?.active ? (() => {
+            const odds = act2WinChance(loc, factor);
+            const p = act2Projection(loc, factor);
+            return (
+              <div className="border border-stone-700 bg-stone-950/60 px-3 py-2 mb-4">
+                <div className="text-xs text-stone-500 tracking-wide mb-1">THE COUNT, ON TODAY'S NUMBERS</div>
+                <div className="flex items-center gap-4 text-base">
+                  <span className="text-teal-400 font-bold">{p.yes} YES</span>
+                  <span className="text-red-400 font-bold">{p.no} NO</span>
+                  <span className="text-stone-500">{p.out} won't vote</span>
+                  <span className={`ml-auto font-bold ${odds >= 0.7 ? "text-teal-400" : odds >= 0.5 ? "text-amber-400" : "text-red-400"}`}>
+                    {Math.round(odds * 100)}%
+                  </span>
+                </div>
+                <div className="text-xs text-stone-500 mt-1 leading-snug">
+                  A majority of the ballots cast decides it. Fear keeps people at their desks rather than changing their vote —
+                  every week of the employer's campaign is a week it goes up.
+                </div>
+              </div>
+            );
+          })() : (
+            <div className="border border-amber-800 bg-amber-950/20 text-amber-300 px-3 py-2 mb-4 text-xs leading-snug">
+              No shop committee here, so nobody is counting honestly. You are running a campaign without knowing the count.
+            </div>
+          )
+        )}
 
         <div className="text-xs text-stone-500 space-y-1 font-mono mb-4">
           <div>
@@ -2059,7 +2200,7 @@ function PlatformModal({ priorities, locations, onAdopt, onPledge }) {
   );
 }
 
-function EscalationModal({ loc, turn, onFile, onConsolidate, onPivot }) {
+function EscalationModal({ loc, turn, factor = 1, onFile, onConsolidate, onPivot }) {
   const gates = filingGates(loc, turn);
   const eligible = gates.every(g => g.pass);
   const gap = loc.morale - (loc.trueSupport ?? loc.morale);
@@ -2089,14 +2230,20 @@ function EscalationModal({ loc, turn, onFile, onConsolidate, onPivot }) {
         <div className="mb-3 text-xs border border-stone-800 bg-stone-950/50 px-3 py-2">
           <div className="text-stone-500 font-bold tracking-wide mb-1">IF YOU FILE TODAY</div>
           <div className="text-stone-400 leading-relaxed">
-            Vote lands in <span className="text-stone-200 font-bold">{ACT2_FILING_LEAD} weeks</span>. Win chance is
-            {" "}<span className="text-stone-200 font-bold">60% of true support + 40% of whatever fear isn't</span>.
+            Vote lands in <span className="text-stone-200 font-bold">{ACT2_FILING_LEAD} weeks</span>. Every worker in
+            the unit gets one secret ballot, and it takes a majority of the ones actually cast.
             {loc.committee?.active
-              ? <> At {loc.trueSupport} true support and {loc.fear} fear, that reads
-                  {" "}<span className={`font-bold ${((loc.trueSupport / 100) * 0.6 + ((100 - loc.fear) / 100) * 0.4) >= 0.6 ? "text-teal-400" : "text-amber-400"}`}>
-                    {Math.round(((loc.trueSupport / 100) * 0.6 + ((100 - loc.fear) / 100) * 0.4) * 100)}%
-                  </span> right now.</>
-              : <> You cannot compute it: true support here is unknown.</>}
+              ? (() => {
+                  const odds = act2WinChance(loc, factor);
+                  const p = act2Projection(loc, factor);
+                  return <> At {loc.trueSupport} true support and {loc.fear} fear that projects
+                    {" "}<span className="text-teal-400 font-bold">{p.yes} yes</span> to <span className="text-red-400 font-bold">{p.no} no</span>
+                    {p.out > 0 && <span className="text-stone-500"> with {p.out} not voting</span>}, which carries
+                    {" "}<span className={`font-bold ${odds >= 0.7 ? "text-teal-400" : odds >= 0.5 ? "text-amber-400" : "text-red-400"}`}>
+                      {Math.round(odds * 100)}%
+                    </span> of the time.</>;
+                })()
+              : <> You cannot project it: true support here is unknown, and the ballot rolls against that, not morale.</>}
           </div>
         </div>
 

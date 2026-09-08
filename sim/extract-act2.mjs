@@ -25,7 +25,9 @@ export { TOTAL_TURNS, START_LOCATIONS, COMMITTEE_COST, COMMITTEE_MORALE_REQ, COM
   GRIEVANCE_META, EXTERNAL_EVENTS, ACT2_EFFORT_TIERS, ACT2_CAMPAIGN_TIERS, clamp, rand,
   BLOCS, BLOC_BY_ID, LOC_COMPOSITION, DEMANDS, DEMAND_BY_ID, PLATFORM_SLOTS, DEFECT_THRESHOLD,
   rollBlocPriorities, blocSatisfaction, locBlocFactor, computeSolidarityScore, baseGain, baseVis,
-  ACT2_SITES_NEEDED, ACT2_FILING_LEAD, ACT2_LAST_FILING_TURN, ACT2_BASE_ACTIONS, filingGates, act2Winnability };
+  ACT2_SITES_NEEDED, ACT2_FILING_LEAD, ACT2_LAST_FILING_TURN, ACT2_BASE_ACTIONS, filingGates, act2Winnability,
+  ACT2_BALLOT_PIVOT, ACT2_BALLOT_SPAN, ACT2_BALLOT_SPREAD, ACT2_FEAR_TURNOUT,
+  act2Standings, act2YesChance, act2TurnoutChance, act2Ballot, act2Projection, act2WinChance, act2CastBallot };
 `;
 fs.writeFileSync(new URL('core2.mjs', import.meta.url), out);
 console.log('core2.mjs written,', out.split('\n').length, 'lines');
