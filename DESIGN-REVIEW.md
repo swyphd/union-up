@@ -41,20 +41,45 @@ and escalating actions are what predict wins) as the second source.
 
 ### What is broken across the acts
 
-1. **State does not carry. The spine breaks at every act boundary.** Act One hands Act Two four
-   names and a trait each, worth **+0.6 points of win rate** in the sim (57.0% vs 56.4%). The
-   contract prototype rolls a *fresh* influence map (`generateInfluence` is called again) and
-   fresh commitment for the same twenty people, so the relationships the player mapped and the
-   committee they built in Act One are discarded. "Nothing resets clean" is the game's promise;
-   the acts reset each other clean.
-2. **The acts are in the wrong order, and the Act Two win screen says the wrong thing.** Act Two
-   ends with the headline **CONTRACT WON** on the strength of two election wins. Act One's own
-   victory screen says the opposite ("Certification obliges them to bargain, not to agree").
-   The contract prototype then goes back to the *first* shop. The natural arc is: win the shop
-   (Act One) → win its first contract (the prototype, promoted to Act Two) → take the contract to
-   the parent company's other studios (the current Act Two, as Act Three). That order is the
-   real sequence, it fixes the mislabel, and it puts the "you can't be everywhere" lesson after
-   the player has learned that committees are the engine.
+1. ~~**State does not carry. The spine breaks at every act boundary.**~~ **FIXED, commit after
+   `bd2ecc0`.** Act One used to hand Act Two four names and a trait each, worth +0.6 points of
+   win rate, while the contract prototype rolled a *fresh* influence map and fresh commitment for
+   the same twenty people. Act One now hands forward the floor itself — the twenty workers with
+   where they actually stood, the affinities the player surfaced, their history, their organizer
+   experience, and the influence map that took twenty weeks to draw. The contract act runs on it:
+   commitment starts from each worker's real true support at the ballot, scaled by
+   `CONTRACT_VOTE_TO_ACTION` because voting yes once and giving up your Friday are different
+   acts; the committee that won the election is the action team; a lead organizer keeps the extra
+   hour their experience earned; and winning the election is what brings back anyone management
+   burned out of Act One, wary. The company's perks lapse, so the common ground is theirs again.
+
+   The effect on the contract act, measured end to end by playing real Act One wins into it
+   (`sim/carry.mjs`):
+
+   | | rolled floor (old) | carried, careful Act One | carried, sloppy Act One |
+   |---|---|---|---|
+   | starting commitment | 59 | 45 | 44 |
+   | starting action team | 2.0 | 4.6 | 4.6 |
+   | full contract (6/6) | 94% | **68%** | **61%** |
+   | ratified | 100% | **84%** | **81%** |
+   | survives decertification | 100% | **85%** | **83%** |
+   | tiers won, escalating | 5.92 | 4.86 | 4.65 |
+
+   So the carry is also a partial answer to F9: the contract act stopped being a walkover on its
+   own, because a floor nobody organized properly arrives measurably colder than an invented
+   one. Act One skill now shows through into the contract. It is still too easy, and §4 is still
+   the work.
+2. ~~**The acts are in the wrong order, and the Act Two win screen says the wrong thing.**~~
+   **FIXED.** The order is now win the shop → win its first contract → take the contract to the
+   parent company's other studios. The first-contract act calls itself Act Two rather than a
+   prototype slice, hands its outcome forward, and the company campaign's intro knows what
+   happened: "You won one shop, and then you won it a contract — 3 of 6 tiers, signed. The other
+   studios under the same parent read it the week it was posted", or, where nothing was signed,
+   "held it through a year of bargaining with nothing signed". Whoever is left on the contract
+   action team becomes the company team, capped at four. A decertified unit is an ending rather
+   than a doorway — nothing carries out of it. Saves are versioned: a v2 save carries the whole
+   floor and resumes at either boundary, and a pre-reorder v1 save still loads but can only
+   rejoin at the company campaign, since it never wrote a map down.
 3. **Three clocks, three units.** Act One is 26 weeks for one shop. Act Two is 12 *weeks* for four
    shops, each of which goes from cold to a certified election in about ten. The contract slice is
    12 months. Relabel Act Two's turns as months (vote two months after filing instead of five
@@ -486,6 +511,7 @@ node sim/act2-anatomy.mjs 1500       # Act Two: what an election is made of
 node sim/act2-platform.mjs           # Act Two: all 56 platforms, side-offer safety
 node sim/act2-ballot.mjs             # Act Two: the ballot curve, and what each input is worth
 node sim/contract-report.mjs 1500    # contract: tiers, ratification, decert by policy
+node sim/carry.mjs 300               # plays real Act One wins into the contract act
 ```
 
 The Act Two engine (`sim/act2-engine.mjs`) and the contract loop inside `contract-report.mjs`

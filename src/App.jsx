@@ -362,7 +362,7 @@ const ACT2_LAYOUT = {
   university: { x: 116, y: 74 },
 };
 
-function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
+function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
   // Each leader who came up from Act One is another pair of hands: one more action a
   // week. (The old +15 stamina per leader was clamped back to 100 on the first decay.)
   const weeklyBudget = ACT2_BASE_ACTIONS + recruitedLeaders.length;
@@ -1332,7 +1332,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
       {/* INTRO */}
       {phase === "intro" && (
         <IntroSequence
-          beats={act2IntroBeats(recruitedLeaders)}
+          beats={act2IntroBeats(recruitedLeaders, contract)}
           visuals={{ roster: <IntroRosterVisual leaders={recruitedLeaders} /> }}
           doneLabel="BEGIN CAMPAIGN"
           onDone={() => setPhase("allocate")}
@@ -2749,12 +2749,21 @@ function OutcomeRoster({ workers }) {
 }
 
 // Act Two's beats depend on who survived Act One, so they're built rather than declared.
-function act2IntroBeats(leaders) {
+function act2IntroBeats(leaders, contract = null) {
   const beats = [
     {
-      kicker: "AFTER THE VOTE",
+      kicker: "AFTER THE CONTRACT",
       title: "WORD TRAVELS",
-      lines: ["You won one shop. The other studios under the same parent heard about it inside a week."],
+      lines: [
+        contract
+          ? (contract.ratified
+              ? `You won one shop, and then you won it a contract — ${contract.tiers} of ${contract.max} tiers, signed. The other studios under the same parent read it the week it was posted.`
+              : `You won one shop and held it through a year of bargaining with nothing signed. The other studios under the same parent heard about that too.`)
+          : "You won one shop. The other studios under the same parent heard about it inside a week.",
+        contract && contract.ratified
+          ? "A contract is a document other people can point at. That is what makes the second shop easier than the first."
+          : "What they heard is that it can be done, and how long the company is willing to wait.",
+      ],
     },
     {
       kicker: "THE PARENT COMPANY",
@@ -2779,7 +2788,7 @@ function act2IntroBeats(leaders) {
       kicker: "YOU DIDN'T COME ALONE",
       title: "THE SHOP FLOOR CAME WITH YOU",
       lines: [
-        `${["Nobody", "One person", "Two people", "Three people", "Four people"][leaders.length] || `${leaders.length} people`} who proved themselves in the first campaign came with you.`,
+        `${["Nobody", "One person", "Two people", "Three people", "Four people"][leaders.length] || `${leaders.length} people`} who ran the first shop${contract ? " and bargained its contract" : ""} came with you.`,
         "Station each of them at a site — their strength only helps where you post them. And each of them is one more action every week.",
       ],
       visual: "roster",
@@ -4438,7 +4447,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
   );
 }
 
-function ActOneGame({ onGraduate, onPrototype }) {
+function ActOneGame({ onGraduate, onSkipToCompany }) {
   const [week, setWeek] = useState(1);
   const [phase, setPhase] = useState("intro"); // intro, plan, resolving, victory
   const [influence] = useState(() => generateInfluence(ACT1_WORKERS_SEED));
@@ -5364,12 +5373,17 @@ function ActOneGame({ onGraduate, onPrototype }) {
     setPhase("intro");
   }
 
+  // What Act One hands forward. Not four names and a trait each — the floor itself:
+  // who these people are, where they actually stand, what you found out they have in
+  // common, and the map of who listens to whom that took twenty weeks to draw. The next
+  // act is the same twenty people in the same building; there is no honest reason for
+  // any of it to be rolled again.
   function graduate(persist = true) {
     const committee = workers
       .filter(w => w.organizer && !w.burned)
       .slice(0, 4)
       .map(w => ({ name: w.name, trait: w.trait }));
-    onGraduate(committee, persist);
+    onGraduate({ leaders: committee, workers, influence, week }, persist);
   }
 
   const cardShare = signedCount / ACT1_TOTAL_WORKERS;
@@ -5711,7 +5725,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
           ]}
           visuals={{ roster: <OutcomeRoster workers={organizers} /> }}
           actions={<>
-            <button onClick={() => graduate(true)} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">GET CALLED UP</button>
+            <button onClick={() => graduate(true)} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">BARGAIN THE CONTRACT</button>
             <button onClick={startOver} className="font-stencil text-xl border-2 border-stone-700 hover:border-stone-500 text-stone-300 px-8 py-3 tracking-wide transition-colors">RUN IT FASTER</button>
           </>}
         />
@@ -5802,7 +5816,7 @@ function ActOneGame({ onGraduate, onPrototype }) {
           ]}
           visuals={{ roster: <OutcomeRoster workers={organizers} /> }}
           actions={<>
-            <button onClick={() => graduate(true)} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">GET CALLED UP</button>
+            <button onClick={() => graduate(true)} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">BARGAIN THE CONTRACT</button>
             <button onClick={startOver} className="font-stencil text-xl border-2 border-stone-700 hover:border-stone-500 text-stone-300 px-8 py-3 tracking-wide transition-colors">RUN IT AGAIN</button>
           </>}
         />
@@ -5895,18 +5909,18 @@ function ActOneGame({ onGraduate, onPrototype }) {
         <div className="fixed bottom-2 right-2 z-40">
           <button
             onClick={() => graduate(false)}
-            title="Jumps to Act Two for testing without saving over your real Act One progress."
+            title="Jumps straight to the first contract without saving over your real Act One progress."
             className="text-xs text-stone-600 hover:text-stone-400 underline transition-colors"
           >
-            Skip to Phase 2 (playtest — doesn't save)
+            Skip to the first contract (playtest — doesn't save)
           </button>
-          {onPrototype && (
+          {onSkipToCompany && (
             <button
-              onClick={onPrototype}
-              title="A vertical slice of the proposed first-contract act. Doesn't save."
+              onClick={onSkipToCompany}
+              title="Jumps past the first contract to the company-wide campaign. Doesn't save."
               className="text-xs text-stone-600 hover:text-amber-400 underline transition-colors ml-3"
             >
-              First Contract prototype
+              Skip to the company campaign (playtest)
             </button>
           )}
         </div>
@@ -6324,18 +6338,45 @@ const CONTRACT_ISSUES = [
 ];
 const CONTRACT_MAX_TIERS = CONTRACT_ISSUES.length * 2;
 
-function makeContractWorkers() {
-  // They just voted the union in, so nobody is hostile — but voting yes once and
-  // showing up for something are different things, which is the whole level.
-  return ACT1_WORKERS_SEED.map((w, i) => ({
-    ...w,
-    commitment: clamp(38 + rand(38) + (w.organizer ? 22 : 0)),
-    fulfillment: clamp(w.fulfillment + rand(9) - 4),
-    cat: !!w.organizer,
-    participated: false,
-    revealed: true,
-    history: [],
-  }));
+// Voting yes once and giving up your Friday are different acts, so what somebody would
+// have done at the ballot is a ceiling on what they will do now, not a promise.
+const CONTRACT_VOTE_TO_ACTION = 0.85;
+
+function makeContractWorkers(act1Workers = null) {
+  if (!act1Workers) {
+    // The playtest entrance, with no campaign behind it: a plausible floor, rolled.
+    return ACT1_WORKERS_SEED.map(w => ({
+      ...w,
+      commitment: clamp(38 + rand(38) + (w.organizer ? 22 : 0)),
+      fulfillment: clamp(w.fulfillment + rand(9) - 4),
+      cat: !!w.organizer,
+      participated: false,
+      revealed: true,
+      history: [],
+    }));
+  }
+  // The real entrance. These are the same twenty people a week after the vote, and
+  // everything that was true of them at the ballot is still true of them now.
+  return act1Workers.map(w => {
+    const stood = w.trueSupport ?? w.support;
+    const wasBurned = !!w.burned;
+    return {
+      ...w,
+      commitment: clamp(Math.round(stood * CONTRACT_VOTE_TO_ACTION)
+        + (w.organizer && !wasBurned ? 10 : 0)   // they have already been doing this
+        - (wasBurned ? 18 : 0)),                 // and they have already been punished for it
+      // The committee that won the election is the team that bargains the contract.
+      cat: !!w.organizer && !wasBurned,
+      // Winning is what brings back the people management pulled out of the campaign.
+      // They come back, and they come back wary.
+      burned: false,
+      // The company's perks lapse in the contract fight. What these people have in
+      // common is theirs again.
+      poisoned: [],
+      participated: false,
+      revealed: true,
+    };
+  });
 }
 
 // Who turns people out: the people on the contract action team who carry weight with them.
@@ -6375,9 +6416,12 @@ function keepUnionChance(w, issues) {
   return Math.max(0.03, Math.min(0.97, 0.26 + won * 0.36 + (w.commitment - 45) / 165));
 }
 
-function ContractPrototype({ onExit }) {
-  const [influence] = useState(() => generateInfluence(ACT1_WORKERS_SEED));
-  const [workers, setWorkers] = useState(makeContractWorkers);
+function ContractPrototype({ carry = null, onComplete = null, onExit }) {
+  // The influence map is not regenerated. Who listens to whom did not change because an
+  // election happened, and re-rolling it would throw away the one thing the player spent
+  // the whole of Act One learning.
+  const [influence] = useState(() => carry?.influence ?? generateInfluence(ACT1_WORKERS_SEED));
+  const [workers, setWorkers] = useState(() => makeContractWorkers(carry?.workers));
   const [turn, setTurn] = useState(1);
   const [phase, setPhase] = useState("plan"); // plan, result, ratify
   const [leverage, setLeverage] = useState(0);
@@ -6396,8 +6440,10 @@ function ContractPrototype({ onExit }) {
   // could never be chosen by anybody, which is exactly the lock this replaced.
   const hoursUsed = (id) =>
     planEntries.filter(e => e.actorId === id).reduce((n, e) => n + (e.type === "oneOnOne" ? 2 : 3), 0);
-  const hoursLeft = (w) => CAT_HOURS - hoursUsed(w.id);
-  const totalHours = cat.length * CAT_HOURS;
+  // A lead organizer out of Act One is still a lead organizer. Experience carries.
+  const catHours = (w) => CAT_HOURS + (orgTier(w).bonusHours || 0);
+  const hoursLeft = (w) => catHours(w) - hoursUsed(w.id);
+  const totalHours = cat.reduce((n, o) => n + catHours(o), 0);
   const actionHours = actionPlan ? ACTION_LADDER.find(t => t.key === actionPlan.tierKey).hours : 0;
   const totalUsed = cat.reduce((n, o) => n + hoursUsed(o.id), 0) + actionHours;
 
@@ -6503,6 +6549,25 @@ function ContractPrototype({ onExit }) {
     setPhase("decert");
   }
 
+  // Who walks out of this act and into the company campaign: the action team, best
+  // first. Four at most — beyond that the company campaign's week stops making sense.
+  function contractLeaders() {
+    return workers.filter(w => w.cat)
+      .sort((a, b) => b.commitment - a.commitment)
+      .slice(0, 4)
+      .map(w => ({ name: w.name, trait: w.trait }));
+  }
+  function finish(outcome) {
+    const payload = {
+      ...outcome,
+      tiers: contractTierSum(issues),
+      max: CONTRACT_MAX_TIERS,
+      leaders: contractLeaders(),
+      issues: issues.map(i => ({ id: i.id, tier: i.tier })),
+    };
+    if (onComplete) onComplete(payload); else onExit();
+  }
+
   function backToTable() {
     // A deal voted down isn't the end — you go back, with a floor that trusts you less.
     setWorkers(ws => ws.map(w => ({ ...w, commitment: clamp(w.commitment - 6) })));
@@ -6536,7 +6601,9 @@ function ContractPrototype({ onExit }) {
       <div className="border-b-2 border-stone-800 bg-stone-900 px-4 py-3 sm:px-6 flex items-center justify-between flex-wrap gap-2">
         <div>
           <div className="font-stencil text-2xl sm:text-3xl tracking-wide text-amber-400">THE FIRST CONTRACT</div>
-          <div className="text-xs sm:text-sm tracking-[0.2em] text-stone-500">PROTOTYPE SLICE — NOT A FINISHED ACT</div>
+          <div className="text-xs sm:text-sm tracking-[0.2em] text-stone-500">
+            {carry ? "ACT TWO — CERTIFICATION IS NOT AGREEMENT" : "PROTOTYPE SLICE — NOT A FINISHED ACT"}
+          </div>
         </div>
         <div className="flex items-center gap-4 sm:gap-6 text-sm sm:text-base">
           <div className="text-center">
@@ -6581,7 +6648,9 @@ function ContractPrototype({ onExit }) {
             { lines: [`Play-Eye: ${issueDef("ai").tiers[issues.find(i => i.id === "ai").tier]}.`], quiet: true },
           ]}
           actions={ratification.passed || turn >= CONTRACT_MONTHS ? (
-            <button onClick={onExit} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">BACK TO THE GAME</button>
+            <button onClick={() => finish({ ratified: ratification.passed, survived: true })} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
+              {onComplete ? "TAKE IT TO THE OTHER STUDIOS" : "BACK TO THE GAME"}
+            </button>
           ) : (
             <>
               <button onClick={backToTable} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">BACK TO THE TABLE</button>
@@ -6605,7 +6674,13 @@ function ContractPrototype({ onExit }) {
                  "This is how most first contracts actually fail. Not a lost strike — a year of meetings nobody could see."] },
             { lines: ["The employer never has to agree. They only have to outlast you, and twelve months is not a long time to wait."], quiet: true },
           ]}
-          actions={<button onClick={onExit} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">BACK TO THE GAME</button>}
+          actions={decert.survived
+            ? <button onClick={() => finish({ ratified: false, survived: true })} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
+                {onComplete ? "TAKE IT TO THE OTHER STUDIOS" : "BACK TO THE GAME"}
+              </button>
+            // Decertified is an ending, not a doorway. The unit you spent two acts
+            // building does not exist any more, and nothing carries out of that.
+            : <button onClick={onExit} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">START OVER</button>}
         />
       )}
 
@@ -6614,7 +6689,13 @@ function ContractPrototype({ onExit }) {
           {turn === 1 && phase === "plan" && (
             <div className="mb-4 flex items-start gap-2 text-stone-300 text-sm border border-stone-700 bg-stone-900/60 px-3 py-2">
               <Megaphone size={14} className="shrink-0 mt-0.5" />
-              <span>You won the election. Now the company has to bargain — but not to agree. The number on each card is <span className="text-stone-100 font-bold">commitment</span>: whether they'll actually do something, not whether they support the union. Run an action, and whatever turnout you get is the only argument the company answers to.</span>
+              <span>
+                You won the election. Now the company has to bargain — but not to agree. The number on each card is{" "}
+                <span className="text-stone-100 font-bold">commitment</span>: whether they'll actually do something, not whether they support the union.
+                Run an action, and whatever turnout you get is the only argument the company answers to.
+                {carry && <> These are the same people, and it starts from where you actually left them — the map you drew, what you found they have in
+                common, and how far each of them would really have gone. Nobody was rolled again.</>}
+              </span>
             </div>
           )}
 
@@ -6795,7 +6876,7 @@ function ContractPrototype({ onExit }) {
                       <div key={o.id} className={`border px-3 py-2 ${left < 0 ? "border-red-700 bg-red-950/20" : "border-stone-700"}`}>
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-bold text-amber-400">{o.name} <span className="text-stone-500 font-normal">({TEAM_LABEL[o.team]})</span></span>
-                          <span className={`text-xs font-bold ${left < 0 ? "text-red-400" : left === 0 ? "text-teal-400" : "text-stone-400"}`}>{left} of {CAT_HOURS} hrs left</span>
+                          <span className={`text-xs font-bold ${left < 0 ? "text-red-400" : left === 0 ? "text-teal-400" : "text-stone-400"}`}>{left} of {catHours(o)} hrs left</span>
                         </div>
                         {leading && <div className="text-xs text-amber-300 mt-1">▸ Leads: {leading.label} <span className="text-stone-600">(team prep, {leading.hours}h from the pool)</span></div>}
                         {mine.map(e => (
@@ -6885,7 +6966,9 @@ function ContractPrototype({ onExit }) {
       })()}
 
       <div className="fixed bottom-2 right-2 z-40">
-        <button onClick={onExit} className="text-xs text-stone-600 hover:text-stone-400 underline transition-colors">Leave the prototype</button>
+        <button onClick={onExit} className="text-xs text-stone-600 hover:text-stone-400 underline transition-colors">
+          {carry ? "Start over from the shop floor" : "Leave the prototype"}
+        </button>
       </div>
     </div>
   );
@@ -6896,10 +6979,17 @@ function ContractPrototype({ onExit }) {
 // =====================================================================================
 
 const ACT1_SAVE_KEY = "act1-progress";
+// v2 saves the whole floor, not four names, because the first-contract act now runs on
+// it. A v1 save (leaders only) still loads — it just cannot carry a map that was never
+// written down, so it resumes at the company campaign rather than the contract.
+const SAVE_VERSION = 2;
 
 export default function PermadeathOrganizing() {
-  const [act, setAct] = useState("loading"); // loading, choice, shop, citywide
-  const [recruitedLeaders, setRecruitedLeaders] = useState([]);
+  // One shop, then its first contract, then the rest of the company. Each act hands the
+  // next one the state it earned; nothing in the chain is rolled twice.
+  const [act, setAct] = useState("loading"); // loading, choice, shop, contract, company
+  const [act1, setAct1] = useState(null);       // { leaders, workers, influence, week }
+  const [contract, setContract] = useState(null); // { leaders, tiers, max, ratified, survived }
   const [savedRun, setSavedRun] = useState(null);
 
   useEffect(() => {
@@ -6907,8 +6997,12 @@ export default function PermadeathOrganizing() {
       const raw = localStorage.getItem(ACT1_SAVE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.leaders)) {
-          setSavedRun(parsed);
+        const run = parsed && parsed.v === SAVE_VERSION
+          ? parsed
+          // A save from before the acts were reordered: names only, no floor to carry.
+          : (parsed && Array.isArray(parsed.leaders) ? { v: 1, act1: { leaders: parsed.leaders }, contract: null } : null);
+        if (run && run.act1 && Array.isArray(run.act1.leaders)) {
+          setSavedRun(run);
           setAct("choice");
           return;
         }
@@ -6919,60 +7013,100 @@ export default function PermadeathOrganizing() {
     setAct("shop");
   }, []);
 
-  function saveAct1Win(leaders) {
+  function persist(next) {
     try {
-      localStorage.setItem(ACT1_SAVE_KEY, JSON.stringify({ leaders }));
+      localStorage.setItem(ACT1_SAVE_KEY, JSON.stringify({ v: SAVE_VERSION, ...next }));
     } catch (e) {
-      // if storage fails, the run still proceeds — persistence is a convenience, not a requirement
+      // persistence is a convenience, not a requirement — the run continues either way
     }
   }
 
-  function handleGraduate(leaders, persist = true) {
-    setRecruitedLeaders(leaders);
-    if (persist) saveAct1Win(leaders);
-    setAct("citywide");
+  // Act One is done. The floor it built goes straight into the contract fight.
+  function handleGraduate(payload, save = true) {
+    setAct1(payload);
+    setContract(null);
+    if (save) persist({ act1: payload, contract: null });
+    setAct("contract");
+  }
+
+  // The contract fight is done. Whoever is left on the action team goes company-wide.
+  function handleContractDone(result) {
+    setContract(result);
+    if (act1) persist({ act1, contract: result });
+    setAct("company");
   }
 
   function handleFullRestart() {
-    setRecruitedLeaders([]);
+    setAct1(null);
+    setContract(null);
     try { localStorage.removeItem(ACT1_SAVE_KEY); } catch (e) { /* nothing saved, or storage unavailable */ }
     setSavedRun(null);
     setAct("shop");
   }
 
+  // Leaders reaching the company campaign come off the contract action team when there
+  // was one, and off the Act One committee when the save predates the contract act.
+  const companyLeaders = contract?.leaders?.length ? contract.leaders : (act1?.leaders || []);
+
   let content;
   if (act === "loading") {
     content = <div className="min-h-screen bg-stone-950" />;
   } else if (act === "choice") {
+    const hasContract = !!savedRun.contract;
+    const hasFloor = Array.isArray(savedRun.act1?.workers);
+    const names = (savedRun.contract?.leaders || savedRun.act1.leaders).map(l => l.name).join(", ");
     content = (
       <div className="min-h-screen bg-stone-950 text-stone-200 font-mono flex items-center justify-center px-6">
         <GlobalStyle />
         <div className="max-w-md text-center anim-rise">
           <div className="font-stencil text-4xl text-amber-400 mb-4">WELCOME BACK</div>
           <p className="text-stone-400 text-base leading-relaxed mb-6">
-            You've already organized this shop, with {savedRun.leaders.length} leader{savedRun.leaders.length === 1 ? "" : "s"} who stepped up: {savedRun.leaders.map(l => l.name).join(", ")}.
+            {hasContract
+              ? <>You organized the shop and bargained its first contract — <span className="text-stone-200 font-bold">{savedRun.contract.tiers} of {savedRun.contract.max}</span> tiers{savedRun.contract.ratified ? ", ratified" : ", never signed"}. {names} came through it with you.</>
+              : <>You've already organized this shop, with {savedRun.act1.leaders.length} leader{savedRun.act1.leaders.length === 1 ? "" : "s"} who stepped up: {names}.</>}
           </p>
           <button
-            onClick={() => { setRecruitedLeaders(savedRun.leaders); setAct("citywide"); }}
+            onClick={() => {
+              setAct1(savedRun.act1);
+              setContract(savedRun.contract || null);
+              // A v1 save has no floor to bargain on, so it can only rejoin at the company.
+              setAct(hasContract || !hasFloor ? "company" : "contract");
+            }}
             className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors block w-full mb-3"
           >
-            SKIP TO THE CITYWIDE CAMPAIGN
+            {hasContract || !hasFloor ? "SKIP TO THE COMPANY CAMPAIGN" : "GO BARGAIN THE CONTRACT"}
           </button>
-          <button
-            onClick={handleFullRestart}
-            className="text-sm text-stone-500 hover:text-stone-300 underline"
-          >
+          {hasContract && hasFloor && (
+            <button
+              onClick={() => { setAct1(savedRun.act1); setContract(null); setAct("contract"); }}
+              className="text-sm text-stone-500 hover:text-stone-300 underline block w-full mb-2"
+            >
+              Bargain that first contract again instead
+            </button>
+          )}
+          <button onClick={handleFullRestart} className="text-sm text-stone-500 hover:text-stone-300 underline">
             Replay One Shop from the start instead
           </button>
         </div>
       </div>
     );
   } else if (act === "contract") {
-    content = <ContractPrototype onExit={() => setAct("shop")} />;
+    content = (
+      <ContractPrototype
+        carry={act1 && act1.workers ? { workers: act1.workers, influence: act1.influence } : null}
+        onComplete={handleContractDone}
+        onExit={handleFullRestart}
+      />
+    );
   } else if (act === "shop") {
-    content = <ActOneGame onGraduate={handleGraduate} onPrototype={() => setAct("contract")} />;
+    content = (
+      <ActOneGame
+        onGraduate={handleGraduate}
+        onSkipToCompany={() => { setContract(null); setAct("company"); }}
+      />
+    );
   } else {
-    content = <ActTwoGame recruitedLeaders={recruitedLeaders} onFullRestart={handleFullRestart} />;
+    content = <ActTwoGame recruitedLeaders={companyLeaders} contract={contract} onFullRestart={handleFullRestart} />;
   }
 
   return (

@@ -22,8 +22,13 @@ node sim/act2-anatomy.mjs 1500   # what an Act Two election is made of at the ro
 node sim/act2-platform.mjs       # all 56 platforms against the side-offer line
 node sim/act2-ballot.mjs         # the ballot curve, and what support/fear/recruits/platform buy
 node sim/extract-contract.mjs    # contract pure functions -> core3.mjs
-node sim/contract-report.mjs     # first-contract prototype: tiers, ratification, decert
+node sim/contract-report.mjs     # first-contract act: tiers, ratification, decert
+node sim/carry.mjs               # plays real Act One wins into the contract act
 ```
+
+`contract-engine.mjs` is the headless first-contract act and takes the same `carry` the shipped
+game hands it — Act One's own workers and influence map — so `carry.mjs` measures the real
+handoff rather than a reconstruction of it.
 
 `act2-engine.mjs` and the loop in `contract-report.mjs` are hand ports of the two `resolveTurn`
 functions, which live inside React components and can't be extracted. Keep them in step.

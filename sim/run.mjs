@@ -24,6 +24,9 @@ export function playGame(opts = {}) {
   }
   const w = G.workers;
   return {
+    // The floor and the map, so the next act can be run on what this one actually built
+    // rather than on a fresh roll — which is what the shipped game now does.
+    workers: w, influence: G.influence,
     won: G.ballot?.won ?? false, ballot: G.ballot, weeks: G.week - 1, projError: G.projError ?? 0,
     thresholdOn, filedOn,
     signed: w.filter(x => x.signed).length,
