@@ -189,10 +189,12 @@ export function resolveTurn(G, alloc, resp) {
     const recruitGain = units > 0 ? Math.round(units * 0.35) : 0;
     const newRecruited = Math.min(l.workers, l.recruited + recruitGain + grievanceRecruitBonus);
 
+    const platformPull = G.platform.length >= PLATFORM_SLOTS ? locBlocFactor(l, G.platform, G.priorities) : 1;
     const softPortion = gain + climateGain + eventMoraleBurst;
-    const trueSupportGain = Math.round(softPortion * 0.35) + recruitGain * 1.4 + grievanceSupportBonus - antiUnionPenalty * 1.3
+    let trueSupportGain = Math.round(softPortion * 0.35) + recruitGain * 1.4 + grievanceSupportBonus - antiUnionPenalty * 1.3
       - momentumPenalty + committeeSupportBonus - (buyOffWasActive && !r.reframe ? 3 : 0);
-    const newTrueSupport = clamp(l.trueSupport + trueSupportGain);
+    if (platformPull !== 1 && Math.round(trueSupportGain) > 0) trueSupportGain = Math.round(Math.round(trueSupportGain) * platformPull);
+    const newTrueSupport = Math.round(clamp(l.trueSupport + trueSupportGain));
 
     let visGain = baseVis(units);
     if (units > 0) visGain += Math.floor(l.recruited * 0.6);

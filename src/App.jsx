@@ -217,6 +217,10 @@ const PLATFORM_SLOTS = 3;
 // that is what decides whether ignoring them costs you a grumble or the whole bloc.
 // Exposable the same way affinities are: spend time listening.
 const DEFECT_THRESHOLD = 35;
+// "We'll get you next time" is worth something said to one group and nothing said to
+// four. One pledge a campaign, so it stays a choice about who you are willing to owe
+// rather than a button that dissolves the whole trade-off.
+const ACT2_MAX_PLEDGES = 1;
 function rollBlocPriorities() {
   const pools = {
     salaried: ["aiclause", "pctraise", "justcause"],
@@ -235,16 +239,26 @@ function rollBlocPriorities() {
 // Satisfaction is what the platform does TO a bloc, plus whether you served the thing
 // they actually cared about most. A solidarity pledge softens the miss without buying
 // enthusiasm — you promised them next time, and they have heard that before.
+// The starting point is deliberately BELOW the 50 line where the company can come to a
+// bloc with a side offer. A platform is not a gift you hand out; it is bargaining capital
+// you are spending, and a shop you have said nothing to is a shop somebody else can talk
+// to. Three universals that offend nobody used to keep all four blocs safe in every
+// single priority roll, which made the whole screen a formality — the safe pick was
+// always available and always right, so there was no trade to make.
+//
+// At 42, with the served/unserved swing at 10 points per point of intensity, a platform
+// that keeps everybody out of side-offer range exists in about two thirds of rolls, and
+// finding it usually means knowing what somebody actually wants. That is the listening.
 function blocSatisfaction(blocId, platform, priorities) {
   const pr = priorities[blocId] || { intensity: 2, top: null, pledged: false };
-  let score = 50;
+  let score = 42;
   platform.forEach(id => {
     const d = DEMAND_BY_ID[id];
     if (d) score += (d.effect[blocId] || 0) * 6;
   });
   const served = pr.top && platform.includes(pr.top);
-  if (served) score += pr.intensity * 8;
-  else score -= pr.intensity * 6 * (pr.pledged ? 0.45 : 1);
+  if (served) score += pr.intensity * 10;
+  else score -= pr.intensity * 10 * (pr.pledged ? 0.45 : 1);
   if (pr.heard) score += Math.min(8, pr.heard * 5); // being listened to counts for something
   return clamp(Math.round(score));
 }
@@ -673,6 +687,12 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
 
       // --- True support: the hidden number that actually decides elections. Moves slower and more skeptically than morale. ---
       // "Soft" organizing (conversation, mood, national mood swings) only partially converts into durable commitment.
+      // What the platform is doing HERE, this week. A shop that is three-quarters
+      // contract workers, under a platform that says nothing to contract workers,
+      // organizes worse every week — not only on election day. Without this the player
+      // adopts a platform and then gets no feedback on it until the ballot, which is
+      // much too late for it to have been a decision.
+      const platformPull = platform.length >= PLATFORM_SLOTS ? locBlocFactor(l, platform, blocPriorities) : 1;
       const softPortion = gain + climateGain + eventMoraleBurst;
       let trueSupportGain = Math.round(softPortion * 0.35)
         + recruitGain * 1.4
@@ -681,6 +701,24 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         - momentumPenalty
         + committeeSupportBonus
         - (buyOffWasActive && !r.reframe ? 3 : 0);
+      // Only on the way up: a platform that speaks to this shop makes the work land, one
+      // that ignores it makes the work land softer. It does not deepen a loss.
+      // Rounded before it is scaled as well as after, so the line quotes two whole
+      // numbers that actually differ rather than "+2.8 became +3".
+      if (platformPull !== 1 && Math.round(trueSupportGain) > 0) {
+        const before = Math.round(trueSupportGain);
+        trueSupportGain = Math.round(before * platformPull);
+        if (units > 0 && before !== trueSupportGain && Math.abs(platformPull - 1) >= 0.06) {
+          const worst = BLOCS
+            .filter(b => (LOC_COMPOSITION[l.id]?.[b.id] || 0) >= 0.5)
+            .sort((a, b) => blocSatisfaction(a.id, platform, blocPriorities) - blocSatisfaction(b.id, platform, blocPriorities))[0];
+          feedbackLines.push(platformPull < 1
+            ? `${l.name}: the platform lands badly here. ${worst
+                ? `${worst.label} are ${Math.round(LOC_COMPOSITION[l.id][worst.id] * 100)}% of this shop and the platform gives them ${blocSatisfaction(worst.id, platform, blocPriorities)}.`
+                : "This shop is not really in it."} Organizing converts at ${Math.round(platformPull * 100)}% here: +${before} became +${trueSupportGain} true support.`
+            : `${l.name}: the platform is doing work here on its own — organizing converts at ${Math.round(platformPull * 100)}%, so +${before} became +${trueSupportGain} true support.`);
+        }
+      }
       // Rounded: recruitment contributes a fractional term, and an unrounded number
       // ends up quoted at the ballot as "91.39999999999999 true support".
       let newTrueSupport = Math.round(clamp(l.trueSupport + trueSupportGain));
@@ -1258,7 +1296,10 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
         <PlatformModal
           priorities={blocPriorities}
           locations={locations}
-          onPledge={(blocId) => setBlocPriorities(pr => ({ ...pr, [blocId]: { ...pr[blocId], pledged: true } }))}
+          onPledge={(blocId) => setBlocPriorities(pr => (
+            BLOCS.filter(b => pr[b.id]?.pledged).length >= ACT2_MAX_PLEDGES
+              ? pr
+              : { ...pr, [blocId]: { ...pr[blocId], pledged: true } }))}
           onAdopt={adoptPlatform}
         />
       )}
@@ -1525,6 +1566,7 @@ function ActTwoGame({ recruitedLeaders = [], onFullRestart }) {
           priorities={blocPriorities}
           remaining={remaining}
           factor={turnoutFactorFor(locations.find(l => l.id === selectedLoc.id) || selectedLoc)}
+          platform={platform}
           onFile={() => fileForElection(selectedLoc.id)}
           onSetUnits={(units) => updateAlloc(selectedLoc.id, units)}
           onToggleResponse={(key) => toggleResponse(selectedLoc.id, key)}
@@ -2003,7 +2045,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
   );
 }
 
-function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, factor = 1, onFile = null, onSetUnits, onToggleResponse, onClose }) {
+function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, factor = 1, platform = [], onFile = null, onSetUnits, onToggleResponse, onClose }) {
   const meta = statusMeta[loc.status];
   const isCampaign = loc.status === "campaign";
   const isOrganizing = loc.status === "organizing";
@@ -2109,6 +2151,26 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
             </span>
           </div>
           <div>Recruited: <span className="text-stone-200">{loc.recruited}/{loc.workers}</span> ({Math.round((loc.recruited / loc.workers) * 100)}%)</div>
+          {platform.length >= PLATFORM_SLOTS && priorities && (() => {
+            // The platform read through the people who actually work here. Same number
+            // the vote uses, shown every week instead of once at the count.
+            const comp = LOC_COMPOSITION[loc.id] || {};
+            const thick = BLOCS.filter(b => (comp[b.id] || 0) >= 0.5)
+              .map(b => ({ b, sat: priorities[b.id]?.defected ? 0 : blocSatisfaction(b.id, platform, priorities) }))
+              .sort((x, y) => x.sat - y.sat);
+            return (
+              <div className={factor < 0.95 ? "text-red-400" : factor > 1.05 ? "text-teal-400" : "text-stone-400"}>
+                Platform here: <span className="font-bold">{Math.round(factor * 100)}%</span>
+                <span className="text-stone-500">
+                  {" — "}
+                  {thick.length
+                    ? thick.map(({ b, sat }) => `${b.label} are ${Math.round((comp[b.id] || 0) * 100)}% of this shop, satisfied ${sat}`).join("; ")
+                    : "no bloc is thick enough here to swing it"}
+                  . Organizing and turnout both land at that rate.
+                </span>
+              </div>
+            );
+          })()}
           {isCampaign && <div>Election in <span className="text-stone-200">{Math.max(0, loc.electionTurn - turn)} week{Math.max(0, loc.electionTurn - turn) === 1 ? "" : "s"}</span> — actions here fight the employer's counter-campaign directly.</div>}
           {loc.antiUnion?.active && <div className="text-red-400">Anti-union talk is circulating ({loc.antiUnion.turnsLeft} week{loc.antiUnion.turnsLeft === 1 ? "" : "s"} left)</div>}
           {loc.buyOff?.active && <div className="text-teal-400">Workers just got a surprise raise ({loc.buyOff.turnsLeft} week{loc.buyOff.turnsLeft === 1 ? "" : "s"} of dampened organizing left)</div>}
@@ -2187,6 +2249,8 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
 // Three slots, eight demands, and no combination that pleases everyone. The screen's
 // whole job is to make the trade visible while you are making it, not afterwards.
 function PlatformModal({ priorities, locations, onAdopt, onPledge }) {
+  const pledgesUsed = BLOCS.filter(b => priorities[b.id]?.pledged).length;
+  const pledgesLeft = ACT2_MAX_PLEDGES - pledgesUsed;
   const [chosen, setChosen] = useState([]);
   const full = chosen.length >= PLATFORM_SLOTS;
   const toggle = (id) => setChosen(c => c.includes(id) ? c.filter(x => x !== id) : (c.length < PLATFORM_SLOTS ? [...c, id] : c));
@@ -2271,10 +2335,12 @@ function PlatformModal({ priorities, locations, onAdopt, onPledge }) {
         {anyDefecting.length > 0 && (
           <div className="border border-red-800 bg-red-950/30 px-3 py-2 mb-3 text-xs text-red-300">
             <span className="font-bold">{anyDefecting.map(b => b.label).join(" and ")} will walk.</span>{" "}
-            A bloc below {DEFECT_THRESHOLD} stops counting and starts campaigning against you. You can spend a slot's goodwill
-            instead: pledge them next.
+            A bloc below {DEFECT_THRESHOLD} stops counting and starts campaigning against you.{" "}
+            {pledgesLeft > 0
+              ? <>You can promise one group they are next, which softens the miss without buying any enthusiasm. Only one — a promise made to everybody is a promise to nobody.</>
+              : <>You have already promised {BLOCS.find(b => priorities[b.id]?.pledged)?.label} they are next. There is nobody left to say it to who would believe it.</>}
             <div className="flex gap-2 mt-2 flex-wrap">
-              {anyDefecting.map(b => (
+              {pledgesLeft > 0 && anyDefecting.map(b => (
                 <button key={b.id} onClick={() => onPledge(b.id)}
                   className="border border-amber-700 text-amber-300 px-2 py-1 hover:bg-amber-950/40 transition-colors">
                   Pledge {b.label} next

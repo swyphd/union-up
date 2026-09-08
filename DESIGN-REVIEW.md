@@ -304,7 +304,44 @@ is an argument for doing item 13 next rather than a reason not to.
     *hold* (hearings, lists, the Excelsior list, the employer's unit-scope challenge). Two
     campaigns at once is a stretch; four is impossible, which is the truth.
 
-**The platform (makes F3 interesting):**
+**The platform (makes F3 interesting) - DONE, commit after `2e055d8`:**
+Items 13 and 14 are in; 15 and 16 remain open. `blocSatisfaction` starts at 42 rather than
+50 - deliberately below the line where the company can come to a bloc with a side offer,
+because a platform is capital you are spending, not a gift you hand out - and the
+served/unserved swing is 10 points per point of intensity rather than 8 and 6.
+
+One thing had to be added that the review did not list. The pledge button was free and
+unlimited, and it softens a miss by 55%; strengthening the unserved penalty would have made
+pledging *more* powerful and let a player neutralise the whole retune by promising all four
+blocs they were next. It is now one pledge a campaign. "We'll get you next time" is worth
+something said to one group and nothing said to four, which is also the honest version.
+
+| | before | after |
+|---|---|---|
+| bland platform keeps every bloc >=50 | 100% of rolls | **15%** |
+| some platform keeps every bloc >=50 | 100% | 66% |
+| a safe platform needs a contested demand | never | 63% of rolls |
+| turnout factor at the vote | 1.04 .. 1.28 | **0.81 .. 1.27** |
+| games where a bloc walked, blind | 0% | **17%** |
+| games where a bloc walked, having listened | 0% | **1%** |
+| listening first is worth | +3.7 pts | **+4.7 pts** |
+
+The qualitative change is the defection line. Side offers now fire, blocs now walk, and the
+one reliable way to stop it is to have sat down and asked - which is what the open-bargaining
+action was built for and never previously repaid. Listening beats even an omniscient platform
+(80.0% against 76.6%), because being heard is worth something on its own that simply knowing
+the answer is not.
+
+Item 14 closes the feedback gap: the platform now works on the floor every week, not only at
+the count. A shop's organizing converts at its own bloc factor, the shop's panel reports what
+the platform is worth there, and the week says so in words - "CORE STUDIO: the platform lands
+badly here. VETERANS are 60% of this shop and the platform gives them 0. Organizing converts
+at 92% here: +13 became +12 true support." Before this the player adopted a platform and got
+no feedback on it until the ballot, which is far too late for it to have been a decision.
+
+Depth still beats breadth after the retune: focus 2 shops 68.3%, focus 3 shops 75.3%, spread
+across all 4 65.6%.
+
 13. **Retune satisfaction so the bland platform is not free.** Verified with
     `act2-platform.mjs` variants: at `base 42, served +10/pt, unserved −10/pt` a platform keeps
     every bloc ≥ 50 in only 69% of rolls (vs 100%), nobody-walks stays at 97%, and listening
