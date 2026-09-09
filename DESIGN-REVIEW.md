@@ -375,10 +375,49 @@ across all 4 65.6%.
 14. **Let the platform matter during the campaign, not only at the count.** Weight each site's
     true-support gains by its bloc composition × satisfaction every turn, so a QA-heavy shop
     visibly stalls under a salaried platform *before* the vote and the player can react.
-15. **Make the platform revisable, at a cost.** A "bargaining survey" action (3 actions, company
-    wide) that re-opens one slot and resets `heard`. McAlevey's survey is itself a structure
-    test; treat it as one and report the response rate.
-16. Carry the platform into the contract act as the issue list (see §4).
+15. **Make the platform revisable, at a cost.** — **DONE.** A bargaining survey, 3 actions,
+    company-wide, once a campaign. The response rate is the measurement, and what it measures
+    is whether there is anybody to hand the thing to: a shop with a committee answers, a shop
+    without one gets a link in an email from a stranger. Above 60% you learn every bloc's real
+    priority, gain a point of goodwill with all of them, take +4 true support and +3 morale
+    everywhere (a survey is an excuse to talk to the whole company in a fortnight, and that is
+    the half of it that isn't information), and may change one demand. Above 35% you learn one
+    thing and still get the change. Below that you learn nothing, lose 3 morale everywhere, and
+    everyone who didn't fill it in now knows they were asked.
+
+    | when it goes out | won | response | strong | thin | dead |
+    |---|---|---|---|---|---|
+    | no survey | 74% | — | — | — | — |
+    | month 2 (before any committee) | **70%** | 25% | 0% | 0% | 100% |
+    | month 4 | **69%** | 49% | 0% | 100% | 0% |
+    | month 6 | **79%** | 62% | 86% | 14% | 0% |
+    | month 8 | **82%** | 64% | 97% | 3% | 0% |
+
+    Surveying a floor you have not organized is worse than not asking — which is the whole
+    point of a structure test, and the same shape as a thin turnout in the contract act.
+16. ~~Carry the platform into the contract act as the issue list.~~ **DONE, pointed the other
+    way.** As written this assumed the platform came *before* the contract; after the reorder
+    it comes after, so the carry that survives is the contract carrying forward into the
+    platform — which is what the company campaign's intro had already been promising ("a
+    contract is a document other people can point at"). Two effects, and only for a **ratified**
+    contract, because a year of bargaining with nothing signed proves nothing:
+
+    - **A demand you already won is worth `PROVEN_BONUS` (8) more to every bloc**, marked IN
+      WRITING on the platform screen. Wages proves both raise demands; just cause and the
+      Play-Eye language prove themselves.
+    - **Every shop opens further along**, 1.5 points of true support per tier signed, because
+      four studios under the same parent read the contract the week it was posted.
+
+    | came in with | focus 2 | focus 3 | focus 4 | blocs walked |
+    |---|---|---|---|---|
+    | nothing (skipped the act) | 68% | 78% | 74% | 17% / 8% / 10% |
+    | a year of talks, nothing signed | 66% | 80% | 73% | 17% / 11% / 9% |
+    | ratified, 3 of 6 tiers | 75% | 88% | 83% | 0% |
+    | ratified, all 6 tiers | **79%** | **91%** | **87%** | 0-1% |
+
+    A signed contract is worth 11–13 points of win rate at the next four shops and all but
+    ends bloc defection; an unsigned year is worth nothing at all, which is exactly the
+    difference between having a union and having won something with it.
 
 **Meters (fix F5 or remove):**
 17. Let campaign sites accrue visibility and be retaliated against. Move the "document it"
@@ -564,6 +603,7 @@ node sim/when.mjs                    # Act One: public actions by timing
 node sim/act2-report.mjs 2000        # Act Two: win rate by policy
 node sim/act2-anatomy.mjs 1500       # Act Two: what an election is made of
 node sim/act2-platform.mjs           # Act Two: all 56 platforms, side-offer safety
+node sim/act2-survey.mjs             # the bargaining survey by timing, and what a contract carries
 node sim/act2-ballot.mjs             # Act Two: the ballot curve, and what each input is worth
 node sim/contract-report.mjs 1500    # contract: tiers, ratification, decert by policy
 node sim/carry.mjs 300               # plays real Act One wins into the contract act

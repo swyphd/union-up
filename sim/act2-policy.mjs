@@ -14,7 +14,7 @@ export function rankSites(locs) {
 
 // Choose a platform on what the player can see: known priorities count, unknown ones
 // are assumed at the function's own fallback (no top, intensity 2).
-export function choosePlatform(priorities, mode = 'optimize') {
+export function choosePlatform(priorities, mode = 'optimize', proven = [], keepWithinOneOf = null) {
   if (mode === 'safe') return ['justcause', 'grievance', 'crunchcap'];
   const belief = Object.fromEntries(BLOCS.map(b => {
     const pr = priorities[b.id];
@@ -25,7 +25,9 @@ export function choosePlatform(priorities, mode = 'optimize') {
   let best = null, bestScore = -Infinity;
   for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) for (let k = j + 1; k < ids.length; k++) {
     const p = [ids[i], ids[j], ids[k]];
-    const sats = BLOCS.map(b => blocSatisfaction(b.id, p, belief));
+    // A revision bought by a survey is worth exactly one change of mind.
+    if (keepWithinOneOf && p.filter(x => !keepWithinOneOf.includes(x)).length > 1) continue;
+    const sats = BLOCS.map(b => blocSatisfaction(b.id, p, belief, proven));
     const min = Math.min(...sats), sum = sats.reduce((a, b) => a + b, 0);
     const score = min * 10 + sum;   // lexicographic-ish: lift the floor first
     if (score > bestScore) { bestScore = score; best = p; }
@@ -41,8 +43,9 @@ export function planTurn(G, opts = {}) {
   const campaigns = G.locations.filter(l => l.status === 'campaign');
   const ranked = rankSites(organizing);
   const resp = {}, alloc = {};
-  // Shops at the vote take their upkeep before anything is planned.
-  let left = G.budget - campaigns.length * C.ACT2_CAMPAIGN_UPKEEP;
+  // Shops at the vote take their upkeep before anything is planned, and so does a survey.
+  const wantSurvey = !!opts.survey && !G.surveyDone && G.turn >= (opts.surveyTurn ?? 3);
+  let left = G.budget - campaigns.length * C.ACT2_CAMPAIGN_UPKEEP - (wantSurvey ? C.ACT2_SURVEY_COST : 0);
 
   // 1. Responses at every organizing site, most valuable first.
   organizing.forEach(l => {
@@ -91,7 +94,7 @@ export function planTurn(G, opts = {}) {
   });
   // 5. Anything left trickles to the next site so momentum doesn't rot there.
   ranked.slice(focus).forEach(l => { const u = TIERS.find(t => t <= left) ?? 0; alloc[l.id] = u; left -= u; });
-  return { alloc, resp };
+  return { alloc, resp, wantSurvey };
 }
 
 // Between turns: which sites to file, and what platform to adopt.

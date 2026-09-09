@@ -217,6 +217,60 @@ const PLATFORM_SLOTS = 3;
 // that is what decides whether ignoring them costs you a grumble or the whole bloc.
 // Exposable the same way affinities are: spend time listening.
 const DEFECT_THRESHOLD = 35;
+
+// ---------- A DEMAND YOU HAVE ALREADY WON ----------
+// The company campaign's intro promises that a contract is a document other people can
+// point at. This is where that stops being a line and starts being arithmetic. Language
+// you got signed at the first shop is not a promise any more — there is a contract with
+// it in, and the people at the next shop can read it. Only a RATIFIED contract counts: a
+// year of bargaining with nothing signed proves nothing, which is the whole of Act Two.
+const CONTRACT_PROVES = {
+  wages: ["flatraise", "pctraise"],
+  justcause: ["justcause"],
+  ai: ["aiclause"],
+};
+// Worth about one point of a bloc's intensity. A campaign that skipped the contract act,
+// or bargained a year and signed nothing, gets none of this — which is the difference
+// between having a union and having won something with it.
+const PROVEN_BONUS = 8;
+// And the contract is worth something before anybody writes a platform at all. Four
+// studios under the same parent read the thing the week it was posted, and they started
+// this campaign from a different place than they would have. Only a signed one: a year
+// of bargaining with nothing to show for it is what the other shops are afraid of.
+const CONTRACT_HEADSTART = 1.5;
+function contractHeadstart(contract) {
+  return contract && contract.ratified ? Math.round(CONTRACT_HEADSTART * (contract.tiers || 0)) : 0;
+}
+function provenDemands(contract) {
+  if (!contract || !contract.ratified || !Array.isArray(contract.issues)) return [];
+  return contract.issues.filter(i => i.tier >= 1).flatMap(i => CONTRACT_PROVES[i.id] || []);
+}
+
+// ---------- THE BARGAINING SURVEY ----------
+// McAlevey's survey is not a questionnaire, it is a structure test: the response rate is
+// the measurement, and it measures whether there is anybody to hand the thing to. A shop
+// with a committee has somebody who will put it in your hand and wait. A shop without one
+// has a link in an email from a stranger.
+const ACT2_SURVEY_COST = 3;
+const SURVEY_STRONG = 0.6;
+const SURVEY_WEAK = 0.35;
+// A survey is not a questionnaire, it is an excuse to have a conversation with every
+// worker in the company in the same fortnight. When it lands, that is what it is worth;
+// when it dies, everybody was still asked, and nothing came of it.
+const SURVEY_TRUE_GAIN = 4;
+const SURVEY_MORALE_GAIN = 3;
+const SURVEY_DEAD_MORALE = 3;
+function surveyResponse(locations) {
+  const live = locations.filter(l => l.status === "organizing" || l.status === "campaign");
+  let returned = 0, total = 0;
+  live.forEach(l => {
+    const ts = l.trueSupport ?? l.morale;
+    const share = (l.committee?.active ? clamp(50 + 0.44 * ts, 0, 92) : clamp(12 + 0.30 * ts, 0, 92)) / 100;
+    returned += l.workers * share;
+    total += l.workers;
+  });
+  return { returned: Math.round(returned), total, rate: total ? returned / total : 0 };
+}
 // "We'll get you next time" is worth something said to one group and nothing said to
 // four. One pledge a campaign, so it stays a choice about who you are willing to owe
 // rather than a button that dissolves the whole trade-off.
@@ -249,12 +303,14 @@ function rollBlocPriorities() {
 // At 42, with the served/unserved swing at 10 points per point of intensity, a platform
 // that keeps everybody out of side-offer range exists in about two thirds of rolls, and
 // finding it usually means knowing what somebody actually wants. That is the listening.
-function blocSatisfaction(blocId, platform, priorities) {
+function blocSatisfaction(blocId, platform, priorities, proven = []) {
   const pr = priorities[blocId] || { intensity: 2, top: null, pledged: false };
   let score = 42;
   platform.forEach(id => {
     const d = DEMAND_BY_ID[id];
     if (d) score += (d.effect[blocId] || 0) * 6;
+    // Somebody else already has this in writing. That is worth more than the asking.
+    if (proven.includes(id)) score += PROVEN_BONUS;
   });
   const served = pr.top && platform.includes(pr.top);
   if (served) score += pr.intensity * 10;
@@ -265,7 +321,7 @@ function blocSatisfaction(blocId, platform, priorities) {
 
 // How the platform lands at one specific shop, given who works there. A defected bloc
 // contributes nothing and drags: they aren't neutral, they're campaigning against you.
-function locBlocFactor(loc, platform, priorities) {
+function locBlocFactor(loc, platform, priorities, proven = []) {
   const comp = LOC_COMPOSITION[loc.id];
   if (!comp || !platform.length) return 1;
   let total = 0, weight = 0;
@@ -273,7 +329,7 @@ function locBlocFactor(loc, platform, priorities) {
     const share = comp[b.id] || 0;
     if (share <= 0) return;
     const pr = priorities[b.id];
-    const sat = pr?.defected ? 0 : blocSatisfaction(b.id, platform, priorities);
+    const sat = pr?.defected ? 0 : blocSatisfaction(b.id, platform, priorities, proven);
     // 0 satisfaction -> 0.70x turnout, 50 -> 1.00x, 100 -> 1.30x. Deliberately gentle:
     // the platform should tilt an election, not decide it on its own.
     total += share * (0.7 + 0.6 * (sat / 100));
@@ -402,13 +458,24 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
   }
   const [turn, setTurn] = useState(1);
   const [phase, setPhase] = useState("intro"); // intro, allocate, resolving, escalation, gameover-win, gameover-loss
-  const [locations, setLocations] = useState(START_LOCATIONS.map(l => ({ ...l })));
+  const headstart = contractHeadstart(contract);
+  const [locations, setLocations] = useState(() => START_LOCATIONS.map(l => ({
+    ...l,
+    trueSupport: clamp(l.trueSupport + headstart),
+    morale: clamp(l.morale + Math.round(headstart / 2)),
+  })));
   const [allocations, setAllocations] = useState({ downtown: 0, suburban: 0, airport: 0, university: 0 });
   const [responses, setResponses] = useState({ downtown: {}, suburban: {}, airport: {}, university: {} });
   const [organizer, setOrganizer] = useState({ stamina: 100, breaksTaken: 0, onBreak: 0 });
   // The demand platform is set once, company-wide, the first time you file. Bloc
   // priorities are rolled at the start and stay hidden until somebody listens.
   const [platform, setPlatform] = useState([]);
+  // Language already signed at the first shop. Not a promise — a document.
+  const proven = provenDemands(contract);
+  // The bargaining survey: one a campaign, and it re-opens a slot if it lands.
+  const [surveyPlanned, setSurveyPlanned] = useState(false);
+  const [surveyDone, setSurveyDone] = useState(false);
+  const [platformOpen, setPlatformOpen] = useState(false);
   const [blocPriorities, setBlocPriorities] = useState(() => rollBlocPriorities());
   const [pendingFileLoc, setPendingFileLoc] = useState(null);
   const [moraleClimate, setMoraleClimate] = useState({ tone: "neutral", turnsLeft: 0 });
@@ -445,7 +512,8 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
   // Every shop at the vote takes its upkeep off the top, before anything is allocated.
   const campaignCount = locations.filter(l => l.status === "campaign").length;
   const campaignUpkeep = campaignCount * ACT2_CAMPAIGN_UPKEEP;
-  const totalAllocated = Object.values(allocations).reduce((a, b) => a + b, 0) + totalResponseCost + campaignUpkeep;
+  const surveyCost = surveyPlanned ? ACT2_SURVEY_COST : 0;
+  const totalAllocated = Object.values(allocations).reduce((a, b) => a + b, 0) + totalResponseCost + campaignUpkeep + surveyCost;
 
   function updateAlloc(id, val) {
     val = Math.max(0, Math.min(weeklyBudget, val));
@@ -692,7 +760,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       // organizes worse every week — not only on election day. Without this the player
       // adopts a platform and then gets no feedback on it until the ballot, which is
       // much too late for it to have been a decision.
-      const platformPull = platform.length >= PLATFORM_SLOTS ? locBlocFactor(l, platform, blocPriorities) : 1;
+      const platformPull = platform.length >= PLATFORM_SLOTS ? locBlocFactor(l, platform, blocPriorities, proven) : 1;
       const softPortion = gain + climateGain + eventMoraleBurst;
       let trueSupportGain = Math.round(softPortion * 0.35)
         + recruitGain * 1.4
@@ -711,10 +779,10 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         if (units > 0 && before !== trueSupportGain && Math.abs(platformPull - 1) >= 0.06) {
           const worst = BLOCS
             .filter(b => (LOC_COMPOSITION[l.id]?.[b.id] || 0) >= 0.5)
-            .sort((a, b) => blocSatisfaction(a.id, platform, blocPriorities) - blocSatisfaction(b.id, platform, blocPriorities))[0];
+            .sort((a, b) => blocSatisfaction(a.id, platform, blocPriorities, proven) - blocSatisfaction(b.id, platform, blocPriorities, proven))[0];
           feedbackLines.push(platformPull < 1
             ? `${l.name}: the platform lands badly here. ${worst
-                ? `${worst.label} are ${Math.round(LOC_COMPOSITION[l.id][worst.id] * 100)}% of this shop and the platform gives them ${blocSatisfaction(worst.id, platform, blocPriorities)}.`
+                ? `${worst.label} are ${Math.round(LOC_COMPOSITION[l.id][worst.id] * 100)}% of this shop and the platform gives them ${blocSatisfaction(worst.id, platform, blocPriorities, proven)}.`
                 : "This shop is not really in it."} Organizing converts at ${Math.round(platformPull * 100)}% here: +${before} became +${trueSupportGain} true support.`
             : `${l.name}: the platform is doing work here on its own — organizing converts at ${Math.round(platformPull * 100)}%, so +${before} became +${trueSupportGain} true support.`);
         }
@@ -961,6 +1029,66 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         `Two hours in a room at ${l.name} with nobody presenting anything. They are markedly harder to buy off now, whatever you end up putting in the platform.`
       );
     });
+    // --- THE BARGAINING SURVEY ---
+    // The response rate is the measurement. A strong one tells you what the whole company
+    // wants and buys you the right to change your mind once; a thin one tells the company
+    // that nobody is listening to you, which is worse than not having asked.
+    const surveyLines = [];
+    if (surveyPlanned && !surveyDone) {
+      const sr = surveyResponse(workingLocs);
+      setSurveyDone(true);
+      const pctBack = Math.round(sr.rate * 100);
+      const unknown = BLOCS.filter(b => !prioritiesNext[b.id]?.known && !prioritiesNext[b.id]?.defected);
+      if (sr.rate >= SURVEY_STRONG) {
+        unknown.forEach(b => {
+          const pr = prioritiesNext[b.id];
+          prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, known: true, heard: (pr.heard || 0) + 1 } };
+        });
+        BLOCS.filter(b => prioritiesNext[b.id].known).forEach(b => {
+          const pr = prioritiesNext[b.id];
+          prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, heard: (pr.heard || 0) + 1 } };
+        });
+        setPlatformOpen(true);
+        workingLocs = workingLocs.map(l => (l.status !== "organizing" && l.status !== "campaign") ? l : {
+          ...l,
+          morale: clamp(l.morale + SURVEY_MORALE_GAIN),
+          trueSupport: clamp((l.trueSupport ?? l.morale) + SURVEY_TRUE_GAIN),
+        });
+        surveyLines.push(
+          `THE SURVEY LANDS \u2014 ${sr.returned} of ${sr.total} workers filled it in and handed it back. ${pctBack}%, against the ${Math.round(SURVEY_STRONG * 100)}% this needed. ` +
+          `+${SURVEY_TRUE_GAIN} true support and +${SURVEY_MORALE_GAIN} morale everywhere, because a survey is not a questionnaire \u2014 it is an excuse to talk to every worker in the company inside a fortnight, and somebody just did. ` +
+          `${unknown.length ? `Every bloc's real priority is now on the table: ${unknown.map(b => `${b.label} want ${DEMAND_BY_ID[prioritiesNext[b.id].top]?.label}`).join("; ")}. ` : "Nothing was left to learn, and they told you again anyway. "}` +
+          `A response rate like that is not a questionnaire, it is a headcount \u2014 and it is one the company can also count. You may change one demand.`
+        );
+      } else if (sr.rate >= SURVEY_WEAK) {
+        const b = unknown[0];
+        if (b) {
+          const pr = prioritiesNext[b.id];
+          prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, known: true, heard: (pr.heard || 0) + 1 } };
+        }
+        setPlatformOpen(true);
+        surveyLines.push(
+          `THE SURVEY COMES BACK THIN \u2014 ${sr.returned} of ${sr.total}, ${pctBack}%, short of the ${Math.round(SURVEY_STRONG * 100)}% that would have carried the whole company. ` +
+          `${b ? `You learn one thing: ${b.label} want ${DEMAND_BY_ID[prioritiesNext[b.id].top]?.label}. ` : ""}` +
+          `Enough to justify reopening one demand, not enough to walk into a room with. The shops with a committee answered; the ones without mostly did not, which is the finding.`
+        );
+      } else {
+        BLOCS.forEach(b => {
+          const pr = prioritiesNext[b.id];
+          prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, heard: Math.max(0, (pr.heard || 0) - 1) } };
+        });
+        workingLocs = workingLocs.map(l => (l.status !== "organizing" && l.status !== "campaign") ? l
+          : { ...l, morale: clamp(l.morale - SURVEY_DEAD_MORALE) });
+        surveyLines.push(
+          `THE SURVEY DIES \u2014 ${sr.returned} of ${sr.total} came back. ${pctBack}%, against the ${Math.round(SURVEY_WEAK * 100)}% that would have told you anything. ` +
+          `\u2212${SURVEY_DEAD_MORALE} morale everywhere. ` +
+          `You learn nothing, you get no revision, and everybody who did not fill it in now knows they were asked. ` +
+          `Asking a floor you have not organized is not listening to it \u2014 it is proving, to them and to the company, that there is nobody here to answer.`
+        );
+      }
+    }
+    if (surveyLines.length) steps.push({ label: "THE BARGAINING SURVEY", sub: "The response rate is the measurement.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: surveyLines });
+
     if (bargainLines.length) steps.push({ label: "OPEN BARGAINING", sub: "You cannot write a platform for people you have not asked.", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: bargainLines });
 
     // --- THE SIDE OFFER ---
@@ -971,7 +1099,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     const blocLines = [];
     if (platform.length >= PLATFORM_SLOTS) {
       const unserved = BLOCS
-        .map(b => ({ b, sat: blocSatisfaction(b.id, platform, prioritiesNext), pr: prioritiesNext[b.id] }))
+        .map(b => ({ b, sat: blocSatisfaction(b.id, platform, prioritiesNext, proven), pr: prioritiesNext[b.id] }))
         .filter(x => !x.pr.defected && x.sat < 50)
         .sort((x, y) => x.sat - y.sat);
 
@@ -1011,7 +1139,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         // The platform decides who actually turns out — so it multiplies turnout, which
         // is what it has always claimed to do. Read against THIS turn's priorities: a
         // bloc that walked an hour ago does not get to vote.
-        const factor = locBlocFactor(l, platform, prioritiesNext);
+        const factor = locBlocFactor(l, platform, prioritiesNext, proven);
         const odds = act2WinChance(l, factor);
         const b = act2CastBallot(l, factor);
         const margin = `${b.yes}\u2013${b.no}`;
@@ -1094,6 +1222,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     setLegalClimate(legalClimateNext);
     setAllocations({ downtown: 0, suburban: 0, airport: 0, university: 0 });
     setResponses({ downtown: {}, suburban: {}, airport: {}, university: {} });
+    setSurveyPlanned(false);
 
     if (breaksTaken >= 2) {
       setPhase("gameover-loss");
@@ -1154,6 +1283,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
   }
   function adoptPlatform(chosen) {
     setPlatform(chosen);
+    setPlatformOpen(false);
     if (pendingFileLoc) commitFiling(pendingFileLoc);
     else { setPendingFileLoc(null); setPhase("allocate"); }
   }
@@ -1169,7 +1299,11 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
 
   function restartGame() {
     setTurn(1);
-    setLocations(START_LOCATIONS.map(l => ({ ...l })));
+    setLocations(START_LOCATIONS.map(l => ({
+      ...l,
+      trueSupport: clamp(l.trueSupport + headstart),
+      morale: clamp(l.morale + Math.round(headstart / 2)),
+    })));
     setAllocations({ downtown: 0, suburban: 0, airport: 0, university: 0 });
     setResponses({ downtown: {}, suburban: {}, airport: {}, university: {} });
     setOrganizer({ stamina: 100, breaksTaken: 0, onBreak: 0 });
@@ -1184,6 +1318,9 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     setPendingFileLoc(null);
     setDeadReason(null);
     setSelectedLoc(null);
+    setSurveyPlanned(false);
+    setSurveyDone(false);
+    setPlatformOpen(false);
     setLeaderDeployment({});
     setArmedLeader(null);
     setPhase("allocate");
@@ -1191,7 +1328,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
 
   const remaining = weeklyBudget - totalAllocated;
   // Before a platform exists there is nothing to suppress turnout, so it is a flat 1.
-  const turnoutFactorFor = (loc) => (platform.length ? locBlocFactor(loc, platform, blocPriorities) : 1);
+  const turnoutFactorFor = (loc) => (platform.length ? locBlocFactor(loc, platform, blocPriorities, proven) : 1);
   const locByStatus = (s) => locations.filter(l => l.status === s);
   const escLoc = locations.find(l => l.id === escalationTarget);
 
@@ -1296,6 +1433,8 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         <PlatformModal
           priorities={blocPriorities}
           locations={locations}
+          proven={proven}
+          initial={platform}
           onPledge={(blocId) => setBlocPriorities(pr => (
             BLOCS.filter(b => pr[b.id]?.pledged).length >= ACT2_MAX_PLEDGES
               ? pr
@@ -1314,7 +1453,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
           <span className="text-stone-700">|</span>
           {BLOCS.map(b => {
             const pr = blocPriorities[b.id] || {};
-            const v = pr.defected ? 0 : blocSatisfaction(b.id, platform, blocPriorities);
+            const v = pr.defected ? 0 : blocSatisfaction(b.id, platform, blocPriorities, proven);
             return (
               <span key={b.id} className="flex items-center gap-1.5" title={pr.defected ? `${b.label} have walked` : b.blurb}>
                 <span className="w-2 h-2" style={{ backgroundColor: pr.defected ? "#44403c" : b.hex }} />
@@ -1454,6 +1593,32 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
                 </span>
               </div>
             </div>
+            {(!surveyDone || (platformOpen && platform.length >= PLATFORM_SLOTS)) && (
+              <div className="mb-2 space-y-1.5">
+                {!surveyDone && (
+                  <label className={`flex items-start gap-2 text-xs border px-2 py-1.5 cursor-pointer ${surveyPlanned ? "border-sky-600 bg-sky-950/30 text-sky-200" : "border-sky-900 text-sky-300"}`}>
+                    <input type="checkbox" checked={surveyPlanned} onChange={() => setSurveyPlanned(v => !v)} className="accent-amber-500 mt-0.5" />
+                    <UsersRound size={12} className="shrink-0 mt-0.5" />
+                    <span className="flex-1">
+                      <span className="font-bold">Run a bargaining survey.</span> One a campaign, company-wide. Ask every worker what the union should be
+                      asking for — and count how many hand it back. Above {Math.round(SURVEY_STRONG * 100)}% you learn what every bloc actually wants and you may
+                      change one demand; above {Math.round(SURVEY_WEAK * 100)}% you learn one thing and still get the change; below that you learn nothing and
+                      everybody finds out how few of them answered. Shops with a committee answer; shops without one mostly don't.
+                    </span>
+                    <CostPips hours={ACT2_SURVEY_COST} affordable={ACT2_SURVEY_COST <= remaining + surveyCost} />
+                  </label>
+                )}
+                {platformOpen && platform.length >= PLATFORM_SLOTS && (
+                  <button
+                    onClick={() => setPhase("platform")}
+                    className="w-full text-left border-2 border-amber-600 bg-amber-950/25 px-2 py-1.5 hover:bg-amber-950/50 transition-colors"
+                  >
+                    <div className="text-xs font-bold text-amber-300">THE SURVEY BOUGHT YOU ONE CHANGE — REVISE THE PLATFORM</div>
+                    <div className="text-[11px] text-stone-400">Swap a single demand. You asked and they answered; this is what that answer is worth if you use it.</div>
+                  </button>
+                )}
+              </div>
+            )}
             {campaignUpkeep > 0 && (
               <div className="text-xs text-amber-400 border border-amber-900 bg-amber-950/20 px-2 py-1.5 mb-2">
                 {campaignCount} shop{campaignCount === 1 ? " is" : "s are"} at the vote, which takes <span className="font-bold">{campaignUpkeep}</span> of
@@ -1567,6 +1732,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
           remaining={remaining}
           factor={turnoutFactorFor(locations.find(l => l.id === selectedLoc.id) || selectedLoc)}
           platform={platform}
+          proven={proven}
           onFile={() => fileForElection(selectedLoc.id)}
           onSetUnits={(units) => updateAlloc(selectedLoc.id, units)}
           onToggleResponse={(key) => toggleResponse(selectedLoc.id, key)}
@@ -2045,7 +2211,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
   );
 }
 
-function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, factor = 1, platform = [], onFile = null, onSetUnits, onToggleResponse, onClose }) {
+function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, factor = 1, platform = [], proven = [], onFile = null, onSetUnits, onToggleResponse, onClose }) {
   const meta = statusMeta[loc.status];
   const isCampaign = loc.status === "campaign";
   const isOrganizing = loc.status === "organizing";
@@ -2156,7 +2322,7 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
             // the vote uses, shown every week instead of once at the count.
             const comp = LOC_COMPOSITION[loc.id] || {};
             const thick = BLOCS.filter(b => (comp[b.id] || 0) >= 0.5)
-              .map(b => ({ b, sat: priorities[b.id]?.defected ? 0 : blocSatisfaction(b.id, platform, priorities) }))
+              .map(b => ({ b, sat: priorities[b.id]?.defected ? 0 : blocSatisfaction(b.id, platform, priorities, proven) }))
               .sort((x, y) => x.sat - y.sat);
             return (
               <div className={factor < 0.95 ? "text-red-400" : factor > 1.05 ? "text-teal-400" : "text-stone-400"}>
@@ -2248,23 +2414,34 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
 // ---------- THE PLATFORM SCREEN ----------
 // Three slots, eight demands, and no combination that pleases everyone. The screen's
 // whole job is to make the trade visible while you are making it, not afterwards.
-function PlatformModal({ priorities, locations, onAdopt, onPledge }) {
+function PlatformModal({ priorities, locations, proven = [], initial = [], onAdopt, onPledge }) {
   const pledgesUsed = BLOCS.filter(b => priorities[b.id]?.pledged).length;
   const pledgesLeft = ACT2_MAX_PLEDGES - pledgesUsed;
-  const [chosen, setChosen] = useState([]);
-  const full = chosen.length >= PLATFORM_SLOTS;
+  // Reopened by a survey rather than written from scratch: the platform is already
+  // adopted, and what the survey bought is exactly one change of mind.
+  const revising = initial.length >= PLATFORM_SLOTS;
+  const [chosen, setChosen] = useState(() => (revising ? [...initial] : []));
+  const changes = chosen.filter(id => !initial.includes(id)).length;
+  const full = chosen.length >= PLATFORM_SLOTS && (!revising || changes <= 1);
   const toggle = (id) => setChosen(c => c.includes(id) ? c.filter(x => x !== id) : (c.length < PLATFORM_SLOTS ? [...c, id] : c));
 
-  const sat = Object.fromEntries(BLOCS.map(b => [b.id, blocSatisfaction(b.id, chosen, priorities)]));
+  const sat = Object.fromEntries(BLOCS.map(b => [b.id, blocSatisfaction(b.id, chosen, priorities, proven)]));
   const anyDefecting = BLOCS.filter(b => chosen.length && sat[b.id] < DEFECT_THRESHOLD);
 
   return (
     <div className="fixed inset-0 bg-black/90 z-50 overflow-y-auto px-4 py-6">
       <div className="bg-stone-900 border-2 border-amber-500 max-w-2xl w-full mx-auto p-5 anim-rise">
-        <div className="font-stencil text-2xl text-amber-400 tracking-wide mb-1">WHAT ARE WE ASKING FOR?</div>
+        <div className="font-stencil text-2xl text-amber-400 tracking-wide mb-1">
+          {revising ? "WHAT ARE WE ASKING FOR NOW?" : "WHAT ARE WE ASKING FOR?"}
+        </div>
         <p className="text-sm text-stone-400 mb-4">
-          Everybody wanted a union. Nobody agreed what it was for. Pick <span className="text-amber-400 font-bold">{PLATFORM_SLOTS}</span> demands
-          {" "}— bargaining capital is finite, and every one you take is one you didn't.
+          {revising
+            ? <>You asked the whole company and they answered. That buys <span className="text-amber-400 font-bold">one</span> change — swap a single
+              demand for a single demand. Changing your mind twice on the strength of one survey is not listening, it is drift.</>
+            : <>Everybody wanted a union. Nobody agreed what it was for. Pick <span className="text-amber-400 font-bold">{PLATFORM_SLOTS}</span> demands
+              {" "}— bargaining capital is finite, and every one you take is one you didn't.</>}
+          {proven.length > 0 && <> You already have <span className="text-teal-400 font-bold">{proven.length === 1 ? "one of these" : `${proven.length} of these`}</span> signed
+            at the first shop, and a demand somebody has already won is worth {PROVEN_BONUS} more to everybody than one you are only asking for.</>}
         </p>
 
         {/* The blocs, live, as you choose. */}
@@ -2308,6 +2485,11 @@ function PlatformModal({ priorities, locations, onAdopt, onPledge }) {
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <span className="font-stencil text-base tracking-wide text-stone-100">{d.label}</span>
                   <span className="flex items-center gap-1.5">
+                    {proven.includes(d.id) && (
+                      <span className="text-[10px] font-bold px-1 border border-teal-600 text-teal-400" title={`Won in the first contract. +${PROVEN_BONUS} with every bloc, because it exists in writing.`}>
+                        IN WRITING +{PROVEN_BONUS}
+                      </span>
+                    )}
                     {BLOCS.map(b => {
                       const e = d.effect[b.id] || 0;
                       if (e === 0) return null;
@@ -2356,7 +2538,11 @@ function PlatformModal({ priorities, locations, onAdopt, onPledge }) {
           className={`w-full font-stencil text-lg py-2.5 tracking-wide transition-colors ${
             full ? "bg-amber-500 hover:bg-amber-400 text-stone-950" : "bg-stone-800 text-stone-600 cursor-not-allowed"}`}
         >
-          {full ? "ADOPT THIS PLATFORM" : `PICK ${PLATFORM_SLOTS - chosen.length} MORE`}
+          {revising
+            ? (chosen.length < PLATFORM_SLOTS ? `PICK ${PLATFORM_SLOTS - chosen.length} MORE`
+               : changes > 1 ? "THE SURVEY BOUGHT ONE CHANGE, NOT TWO"
+               : changes === 0 ? "KEEP IT AS IT IS" : "ADOPT THE REVISION")
+            : (full ? "ADOPT THIS PLATFORM" : `PICK ${PLATFORM_SLOTS - chosen.length} MORE`)}
         </button>
       </div>
     </div>
@@ -2761,8 +2947,8 @@ function act2IntroBeats(leaders, contract = null) {
               : `You won one shop and held it through a year of bargaining with nothing signed. The other studios under the same parent heard about that too.`)
           : "You won one shop. The other studios under the same parent heard about it inside a week.",
         contract && contract.ratified
-          ? "A contract is a document other people can point at. That is what makes the second shop easier than the first."
-          : "What they heard is that it can be done, and how long the company is willing to wait.",
+          ? `A contract is a document other people can point at, and these four started from a different place because of it: every shop here opens ${contractHeadstart(contract)} points further along than it would have. Any demand you already got signed is worth ${PROVEN_BONUS} more to every bloc than one you are only asking for.`
+          : "What they heard is that it can be done, and how long the company is willing to wait. None of that is in writing, so none of it is worth anything at the table here.",
       ],
     },
     {

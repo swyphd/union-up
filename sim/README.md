@@ -20,6 +20,7 @@ node sim/extract-act2.mjs        # Act Two pure functions -> core2.mjs
 node sim/act2-report.mjs 2000    # Act Two win rate and what decides it, by policy
 node sim/act2-anatomy.mjs 1500   # what an Act Two election is made of at the roll
 node sim/act2-platform.mjs       # all 56 platforms against the side-offer line
+node sim/act2-survey.mjs         # the bargaining survey by timing, and what a signed contract carries
 node sim/act2-ballot.mjs         # the ballot curve, and what support/fear/recruits/platform buy
 node sim/extract-contract.mjs    # contract pure functions -> core3.mjs
 node sim/contract-report.mjs     # first-contract act: tiers, ratification, decert

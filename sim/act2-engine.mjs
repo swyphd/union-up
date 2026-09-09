@@ -8,13 +8,20 @@ const { clamp, rand, TOTAL_TURNS, START_LOCATIONS, COMMITTEE_COST, COMMITTEE_COS
   PLATFORM_SLOTS, DEFECT_THRESHOLD, rollBlocPriorities, blocSatisfaction, locBlocFactor,
   computeSolidarityScore, baseGain, baseVis, ACT2_SITES_NEEDED, ACT2_FILING_LEAD, ACT2_LAST_FILING_TURN, ACT2_BASE_ACTIONS, filingGates, act2Winnability, act2WinChance, act2CastBallot,
   ACT2_LOSS_MORALE, ACT2_LOSS_TRUE, ACT2_LOSS_FEAR, ACT2_LOSS_STAMINA, ACT2_EMBOLDENED_RETALIATION,
-  ACT2_CAMPAIGN_UPKEEP } = C;
+  ACT2_CAMPAIGN_UPKEEP, provenDemands, contractHeadstart, ACT2_SURVEY_COST, SURVEY_STRONG, SURVEY_WEAK, surveyResponse,
+  SURVEY_TRUE_GAIN, SURVEY_MORALE_GAIN, SURVEY_DEAD_MORALE } = C;
 const roll100 = () => rand(100) + 1;
 
-export function newGame(leaders = []) {
+export function newGame(leaders = [], contract = null) {
   return {
+    contract, proven: provenDemands(contract),
+    surveyDone: false, platformOpen: false,
     turn: 1,
-    locations: START_LOCATIONS.map(l => ({ ...l })),
+    locations: START_LOCATIONS.map(l => ({
+      ...l,
+      trueSupport: clamp(l.trueSupport + contractHeadstart(contract)),
+      morale: clamp(l.morale + Math.round(contractHeadstart(contract) / 2)),
+    })),
     organizer: { stamina: 100, breaksTaken: 0, onBreak: 0 },
     budget: ACT2_BASE_ACTIONS + leaders.length,
     platform: [],
@@ -25,7 +32,8 @@ export function newGame(leaders = []) {
     leaders,               // [{name, trait}]
     deployment: {},        // leaderIndex -> locId
     log: { elections: [], defections: 0, sideOffers: 0, retaliations: 0, grievanceWins: 0,
-      breaks: 0, events: 0, falseAlive: 0, committees: 0, bargains: 0, buyOffs: 0, firings: 0 },
+      breaks: 0, events: 0, falseAlive: 0, committees: 0, bargains: 0, buyOffs: 0, firings: 0,
+      surveyRate: null, surveyTier: null, revisions: 0 },
   };
 }
 
@@ -52,8 +60,9 @@ export function file(G, locId) {
 }
 
 // One turn. alloc: {locId: units}, resp: {locId: {grievance,document,counter,reframe,formCommittee,bargain}}
-export function resolveTurn(G, alloc, resp) {
+export function resolveTurn(G, alloc, resp, wantSurvey = false) {
   const turn = G.turn, L = G.log;
+  const proven = G.proven || [];
   const locHasTrait = (locId, t) => G.leaders.some((l, i) => G.deployment[i] === locId && l.trait === t);
   let orgStamina = G.organizer.stamina, breaksTaken = G.organizer.breaksTaken, onBreak = G.organizer.onBreak;
   const isBreakTurn = onBreak > 0;
@@ -71,7 +80,9 @@ export function resolveTurn(G, alloc, resp) {
   let activeLocationCount = 0;
   const totalResponseCost = workingLocs.reduce((s, l) => s + (l.status === 'organizing' ? responseCostFor(l, resp[l.id]) : 0), 0);
   const campaignUpkeep = workingLocs.filter(l => l.status === 'campaign').length * ACT2_CAMPAIGN_UPKEEP;
-  const totalAllocated = Object.values(alloc).reduce((a, b) => a + b, 0) + totalResponseCost + campaignUpkeep;
+  const doSurvey = wantSurvey && !G.surveyDone;
+  const totalAllocated = Object.values(alloc).reduce((a, b) => a + b, 0) + totalResponseCost + campaignUpkeep
+    + (doSurvey ? ACT2_SURVEY_COST : 0);
 
   workingLocs = workingLocs.map(l => {
     if (l.status === 'won' || l.status === 'lost') return l;
@@ -189,7 +200,7 @@ export function resolveTurn(G, alloc, resp) {
     const recruitGain = units > 0 ? Math.round(units * 0.35) : 0;
     const newRecruited = Math.min(l.workers, l.recruited + recruitGain + grievanceRecruitBonus);
 
-    const platformPull = G.platform.length >= PLATFORM_SLOTS ? locBlocFactor(l, G.platform, G.priorities) : 1;
+    const platformPull = G.platform.length >= PLATFORM_SLOTS ? locBlocFactor(l, G.platform, G.priorities, proven) : 1;
     const softPortion = gain + climateGain + eventMoraleBurst;
     let trueSupportGain = Math.round(softPortion * 0.35) + recruitGain * 1.4 + grievanceSupportBonus - antiUnionPenalty * 1.3
       - momentumPenalty + committeeSupportBonus - (buyOffWasActive && !r.reframe ? 3 : 0);
@@ -309,9 +320,37 @@ export function resolveTurn(G, alloc, resp) {
     L.bargains++;
   });
 
+  // The bargaining survey. The response rate is the measurement.
+  let surveyDoneNext = G.surveyDone, platformOpenNext = G.platformOpen;
+  if (doSurvey) {
+    const sr = surveyResponse(workingLocs);
+    surveyDoneNext = true;
+    L.surveyRate = sr.rate;
+    const unknown = BLOCS.filter(b => !prioritiesNext[b.id]?.known && !prioritiesNext[b.id]?.defected);
+    const bump = (id, extra) => { const pr = prioritiesNext[id]; prioritiesNext = { ...prioritiesNext, [id]: { ...pr, ...extra, heard: (pr.heard || 0) + 1 } }; };
+    if (sr.rate >= SURVEY_STRONG) {
+      L.surveyTier = 'strong';
+      unknown.forEach(b => bump(b.id, { known: true }));
+      BLOCS.filter(b => prioritiesNext[b.id].known && !unknown.includes(b)).forEach(b => bump(b.id, {}));
+      platformOpenNext = true;
+      workingLocs = workingLocs.map(l => (l.status !== 'organizing' && l.status !== 'campaign') ? l : {
+        ...l, morale: clamp(l.morale + SURVEY_MORALE_GAIN),
+        trueSupport: clamp((l.trueSupport ?? l.morale) + SURVEY_TRUE_GAIN) });
+    } else if (sr.rate >= SURVEY_WEAK) {
+      L.surveyTier = 'thin';
+      if (unknown[0]) bump(unknown[0].id, { known: true });
+      platformOpenNext = true;
+    } else {
+      L.surveyTier = 'dead';
+      BLOCS.forEach(b => { const pr = prioritiesNext[b.id]; prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, heard: Math.max(0, (pr.heard || 0) - 1) } }; });
+      workingLocs = workingLocs.map(l => (l.status !== 'organizing' && l.status !== 'campaign') ? l
+        : { ...l, morale: clamp(l.morale - SURVEY_DEAD_MORALE) });
+    }
+  }
+
   // The side offer
   if (G.platform.length >= PLATFORM_SLOTS) {
-    const unserved = BLOCS.map(b => ({ b, sat: blocSatisfaction(b.id, G.platform, prioritiesNext), pr: prioritiesNext[b.id] }))
+    const unserved = BLOCS.map(b => ({ b, sat: blocSatisfaction(b.id, G.platform, prioritiesNext, proven), pr: prioritiesNext[b.id] }))
       .filter(x => !x.pr.defected && x.sat < 50).sort((x, y) => x.sat - y.sat);
     if (unserved.length && Math.random() < 0.45) {
       const { b, sat, pr } = unserved[0];
@@ -328,7 +367,7 @@ export function resolveTurn(G, alloc, resp) {
   workingLocs = workingLocs.map(l => {
     if (l.status === 'campaign' && turn >= l.electionTurn) {
       const raw = l.trueSupport ?? l.morale;
-      const factor = locBlocFactor(l, G.platform, prioritiesNext);
+      const factor = locBlocFactor(l, G.platform, prioritiesNext, proven);
       const winChance = act2WinChance(l, factor);
       const b = act2CastBallot(l, factor);
       L.elections.push({ id: l.id, turn, raw, factor, workers: l.workers, recruited: l.recruited, fear: l.fear,
@@ -355,7 +394,8 @@ export function resolveTurn(G, alloc, resp) {
   }
 
   // Commit (mirrors commitResolution)
-  const next = { ...G, locations: workingLocs, organizer: { stamina: orgStamina, breaksTaken, onBreak }, priorities: prioritiesNext,
+  const next = { ...G, surveyDone: surveyDoneNext, platformOpen: platformOpenNext,
+    locations: workingLocs, organizer: { stamina: orgStamina, breaksTaken, onBreak }, priorities: prioritiesNext,
     moraleClimate: moraleClimateNext, legalClimate: legalClimateNext, soph: sophNext, emboldened: emboldenedNext };
   const wonCount = workingLocs.filter(l => l.status === 'won').length;
   if (breaksTaken >= 2) return { ...next, over: 'burnout' };
