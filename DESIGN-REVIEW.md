@@ -488,6 +488,53 @@ report says so rather than pretending otherwise.
     two more visible traits), which is where the handoff's open question ("if Act 2 ever gets
     named workers, the bloc layer needs rethinking") resolves itself.
 
+**Roster (item 20) — DONE, with one deliberate omission.**
+
+Every site now has one named person per worker — 39 across the four sites, drawn from a
+shared name pool so nobody appears twice, with a role, a status bloc, a tenure bloc, and a
+stable personal `jitter` of ±18 around the site's number. The blocs are drawn independently
+of each other and shuffled against role, so they genuinely cross-cut: the QA division is 80%
+contract and 70% new, but which eight and which seven are not the same eight and seven.
+
+Where a person stands is `act2Standing`: the site's true support, plus their own jitter, plus
+a small tilt from what the platform says to the two blocs they belong to (`ACT2_BLOC_TILT =
+0.2`; a defected bloc is a flat −20). The tilt is deliberately small — `locBlocFactor` already
+charges the platform against turnout at the site level, so this exists to make the trade
+*visible on a person*, not to bill for it twice.
+
+Three things now read off the roster instead of off an index:
+
+| | before | after |
+| --- | --- | --- |
+| map dots | 3–9 decorative dots, hollow past a computed share | one dot per person; hollow = that named person votes no |
+| the ballot | `act2Standings` synthesised a spread from the site's number | walks the actual roster; the same spread, but it belongs to somebody |
+| the site modal | site aggregates only | a THE FLOOR panel: name, role, both bloc marks, and their read |
+
+The read model is the point. Without a shop committee every person reads as a band (±20,
+`ACT2_ROSTER_BAND`) and the panel says why: *"No committee here, so every one of these is an
+estimate."* Build the committee and the same names read as exact numbers. That is Act One's
+central lesson — you do not know your shop until the shop tells you — restated at the scale
+where a player is most tempted to trust the aggregate. The election line now also names up to
+three of the people who stayed home, which is the other half of the same lesson.
+
+**What I did not build: one-on-ones.** The item asked for "the read model and one-on-ones". I
+implemented the first and deliberately left the second. Per-worker actions would erase the
+distinction the act is built on — Act Three's own intro says *"You're not in the room anymore.
+You're one organizer with four sites and one calendar."* The roster is a floor you **read**,
+not one you work person by person; the actions stay at site scale. If you want one-on-ones in
+Act Three, that is a design change to the act's premise, not a completion of this item, and
+worth deciding on its own.
+
+Balance is unmoved (n=2000, and the ordering is what matters):
+
+| policy | won% before | won% after |
+| --- | --- | --- |
+| focus 3 shops | 60.8% | 65.3% |
+| focus 2 shops | 55.7% | 53.6% |
+| spread across all 4 | 52.9% | 55.1% |
+| focus 3, listen first | 76.6% | 76.2% |
+| never builds a committee | 0.0% | 0.0% |
+
 ---
 
 ## 4. The First Contract prototype

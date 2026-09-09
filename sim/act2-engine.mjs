@@ -10,16 +10,19 @@ const { clamp, rand, TOTAL_TURNS, START_LOCATIONS, COMMITTEE_COST, COMMITTEE_COS
   ACT2_LOSS_MORALE, ACT2_LOSS_TRUE, ACT2_LOSS_FEAR, ACT2_LOSS_STAMINA, ACT2_EMBOLDENED_RETALIATION,
   ACT2_CAMPAIGN_UPKEEP, provenDemands, contractHeadstart, ACT2_SURVEY_COST, SURVEY_STRONG, SURVEY_WEAK, surveyResponse,
   SURVEY_TRUE_GAIN, SURVEY_MORALE_GAIN, SURVEY_DEAD_MORALE,
-  ACT2_FILING_VISIBILITY, ACT2_CAMPAIGN_RETALIATION, ACT2_CAMPAIGN_CRACKDOWN_CAP, ACT2_CAMPAIGN_HIT_SCALE, ACT2_RETALIATION_FEAR, ACT2_DOCUMENT_SHIELD, ACT2_DOCUMENT_DETERRENCE } = C;
+  ACT2_FILING_VISIBILITY, ACT2_CAMPAIGN_RETALIATION, ACT2_CAMPAIGN_CRACKDOWN_CAP, ACT2_CAMPAIGN_HIT_SCALE, ACT2_RETALIATION_FEAR, ACT2_DOCUMENT_SHIELD, ACT2_DOCUMENT_DETERRENCE,
+  makeAct2Rosters } = C;
 const roll100 = () => rand(100) + 1;
 
 export function newGame(leaders = [], contract = null) {
+  const rosters = makeAct2Rosters();
   return {
     contract, proven: provenDemands(contract),
     surveyDone: false, platformOpen: false,
     turn: 1,
     locations: START_LOCATIONS.map(l => ({
       ...l,
+      roster: rosters[l.id],
       trueSupport: clamp(l.trueSupport + contractHeadstart(contract)),
       morale: clamp(l.morale + Math.round(contractHeadstart(contract) / 2)),
     })),
@@ -384,8 +387,9 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
     if (l.status === 'campaign' && turn >= l.electionTurn) {
       const raw = l.trueSupport ?? l.morale;
       const factor = locBlocFactor(l, G.platform, prioritiesNext, proven);
-      const winChance = act2WinChance(l, factor);
-      const b = act2CastBallot(l, factor);
+      const ballotCtx = { platform: G.platform, priorities: prioritiesNext, proven };
+      const winChance = act2WinChance(l, factor, ballotCtx);
+      const b = act2CastBallot(l, factor, ballotCtx);
       L.elections.push({ id: l.id, turn, raw, factor, workers: l.workers, recruited: l.recruited, fear: l.fear,
         morale: l.morale, winChance, won: b.won, margin: b.yes - b.no, cast: b.cast, out: b.out,
         committee: !!l.committee?.active });

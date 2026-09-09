@@ -381,6 +381,99 @@ function locBlocFactor(loc, platform, priorities, proven = []) {
   return clamp(weight ? total / weight : 1, 0.55, 1.3);
 }
 
+// ---------- THE ROSTER ----------
+// Act Three's shops stop being a headcount with a mood attached. Every ballot the game
+// rolls is a named person with a status and a tenure, and that is where the bloc layer
+// finally lives: not a composition table applied to an average, but Dario on the QA
+// floor, on contract, eighteen months in, whom your platform says nothing to.
+//
+// They are a floor you READ, not a floor you work one at a time. That is the whole
+// difference between this act and Act One, and it is this act's own premise — you are
+// not in the room any more. What organizing moves here is the shop; who it lands on,
+// and who turns up on the day, is these people.
+const ACT2_NAMES = [
+  "Yusuf", "Nadia", "Bea", "Cormac", "Imani", "Rafa", "Sunny", "Teodora", "Kwame", "Lila",
+  "Anders", "Petra", "Hoang", "Marguerite", "Dario", "Elke", "Nnamdi", "Saoirse", "Vikram", "Odile",
+  "Bram", "Chiara", "Tobias", "Amara", "Jonty", "Ilse", "Rasheed", "Freya", "Milo", "Zainab",
+  "Costas", "Winnie", "Halvard", "Perpetua", "Sami", "Greta", "Obi", "Lourdes", "Ewan", "Ingrid",
+  "Kofi", "Solveig", "Bastien", "Neve",
+];
+const ACT2_ROSTER_ROLES = {
+  downtown: ["gameplay engineer", "environment artist", "level designer", "producer", "technical artist",
+    "animator", "systems designer", "build engineer", "UI artist", "narrative designer", "combat designer", "engine programmer"],
+  suburban: ["QA analyst", "test lead", "automation engineer", "compliance tester", "localisation QA",
+    "release tester", "bug triage", "playtest coordinator", "certification tester", "QA analyst"],
+  airport: ["community manager", "copywriter", "brand designer", "video editor", "marketing analyst",
+    "social lead", "PR coordinator", "storefront producer", "trailer editor"],
+  university: ["remote gameplay engineer", "contract animator", "remote QA", "concept artist",
+    "audio designer", "tools engineer", "remote producer", "technical writer"],
+};
+// How far apart the people in one shop are. The same spread the synthesised ballot used,
+// only now it belongs to somebody instead of to an index.
+const ACT2_ROSTER_SPREAD = 18;
+// And how much of a bloc's satisfaction each of its members carries personally. Kept
+// small on purpose: the platform already decides turnout at the site level, so this is
+// here to make the trade VISIBLE on a person rather than to charge for it twice.
+const ACT2_BLOC_TILT = 0.2;
+const ACT2_DEFECTED_TILT = -20;
+// Without a shop committee nobody is counting honestly, so a person is a range rather
+// than a number — the same rule the site's own true support already follows, made
+// concrete on the people it is actually about.
+const ACT2_ROSTER_BAND = 20;
+function act2Read(loc, w, ctx = null) {
+  const mid = act2Standing(loc, w, ctx);
+  if (loc.committee?.active) return { lo: mid, hi: mid, mid, exact: true };
+  return { lo: clamp(mid - ACT2_ROSTER_BAND), hi: clamp(mid + ACT2_ROSTER_BAND), mid, exact: false };
+}
+
+const shuffled = (a) => a.map(v => ({ v, k: Math.random() })).sort((x, y) => x.k - y.k).map(x => x.v);
+
+function makeAct2Rosters() {
+  const names = shuffled(ACT2_NAMES);
+  let cursor = 0;
+  const out = {};
+  START_LOCATIONS.forEach(loc => {
+    const comp = LOC_COMPOSITION[loc.id] || {};
+    const roles = ACT2_ROSTER_ROLES[loc.id] || [];
+    const n = loc.workers;
+    const nContract = Math.round(n * (comp.contract || 0));
+    const nNew = Math.round(n * (comp.new || 0));
+    // Status and tenure are drawn independently so they cross-cut, which is the whole
+    // reason the blocs are interesting: a shop can be three-quarters contract and still
+    // split down the middle on how long people have been there.
+    const statuses = shuffled(Array.from({ length: n }, (_, i) => (i < nContract ? "contract" : "salaried")));
+    const tenures = shuffled(Array.from({ length: n }, (_, i) => (i < nNew ? "new" : "veteran")));
+    const jitters = shuffled(Array.from({ length: n }, (_, i) =>
+      Math.round(ACT2_ROSTER_SPREAD * (n === 1 ? 0 : (2 * i) / (n - 1) - 1))));
+    out[loc.id] = Array.from({ length: n }, (_, i) => ({
+      id: `${loc.id}-${i}`,
+      name: names[cursor++ % names.length],
+      role: roles[i % roles.length],
+      status: statuses[i],
+      tenure: tenures[i],
+      jitter: jitters[i],
+    }));
+  });
+  return out;
+}
+
+// Where one person stands: the shop's number, their own distance from it, and what the
+// platform says to the two blocs they happen to belong to.
+function act2Standing(loc, w, ctx = null) {
+  const base = loc.trueSupport ?? loc.morale;
+  let tilt = 0;
+  if (ctx && ctx.platform && ctx.platform.length >= PLATFORM_SLOTS && ctx.priorities) {
+    const pr = ctx.priorities;
+    if (pr[w.status]?.defected || pr[w.tenure]?.defected) tilt = ACT2_DEFECTED_TILT;
+    else {
+      const a = blocSatisfaction(w.status, ctx.platform, pr, ctx.proven || []);
+      const b = blocSatisfaction(w.tenure, ctx.platform, pr, ctx.proven || []);
+      tilt = ((a + b) / 2 - 50) * ACT2_BLOC_TILT;
+    }
+  }
+  return clamp(Math.round(base + w.jitter + tilt));
+}
+
 // Act Two's network map board. Act One's floor uses its own, larger board.
 const MAP_W = 160;
 const MAP_H = 100;
@@ -502,8 +595,10 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
   const [turn, setTurn] = useState(1);
   const [phase, setPhase] = useState("intro"); // intro, allocate, resolving, escalation, gameover-win, gameover-loss
   const headstart = contractHeadstart(contract);
+  const [rosters] = useState(makeAct2Rosters);
   const [locations, setLocations] = useState(() => START_LOCATIONS.map(l => ({
     ...l,
+    roster: rosters[l.id],
     trueSupport: clamp(l.trueSupport + headstart),
     morale: clamp(l.morale + Math.round(headstart / 2)),
   })));
@@ -1214,10 +1309,13 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         // is what it has always claimed to do. Read against THIS turn's priorities: a
         // bloc that walked an hour ago does not get to vote.
         const factor = locBlocFactor(l, platform, prioritiesNext, proven);
-        const odds = act2WinChance(l, factor);
-        const b = act2CastBallot(l, factor);
+        const ctx = { platform, priorities: prioritiesNext, proven };
+        const odds = act2WinChance(l, factor, ctx);
+        const b = act2CastBallot(l, factor, ctx);
         const margin = `${b.yes}\u2013${b.no}`;
-        const turnoutLine = `${b.cast} of ${l.workers} cast a ballot${b.out ? `, ${b.out} didn't vote` : ""}`;
+        const named = b.stayed.slice(0, 3).map(w => w.name).join(", ");
+        const turnoutLine = `${b.cast} of ${l.workers} cast a ballot${b.out
+          ? `, ${b.out} didn't vote${named ? ` — ${named}${b.out > 3 ? " and others" : ""}` : ""}` : ""}`;
         const oddsLine = `The odds going in were ${Math.round(odds * 100)}%, on ${raw} true support and ${l.fear} fear; the platform moved turnout ${factor >= 1 ? "+" : ""}${Math.round((factor - 1) * 100)}%.`;
         const gapWarning = l.morale - raw >= 15 ? ` Morale read ${l.morale}. The room was ${l.morale - raw} points warmer than the vote.` : "";
         if (b.won) {
@@ -1376,6 +1474,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     setTurn(1);
     setLocations(START_LOCATIONS.map(l => ({
       ...l,
+      roster: rosters[l.id],
       trueSupport: clamp(l.trueSupport + headstart),
       morale: clamp(l.morale + Math.round(headstart / 2)),
     })));
@@ -1415,6 +1514,8 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
   })();
   // Before a platform exists there is nothing to suppress turnout, so it is a flat 1.
   const turnoutFactorFor = (loc) => (platform.length ? locBlocFactor(loc, platform, blocPriorities, proven) : 1);
+  // What every read of the ballot needs to know about the platform, in one place.
+  const ballotCtx = { platform, priorities: blocPriorities, proven };
   const locByStatus = (s) => locations.filter(l => l.status === s);
   const escLoc = locations.find(l => l.id === escalationTarget);
 
@@ -1660,6 +1761,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
             locations={locations}
             allocations={allocations}
             deployedLeaders={deployedLeadersByLoc}
+            ballotCtx={ballotCtx}
             onSelect={(loc) => { if (armedLeader != null) { deployArmedTo(loc.id); return; } setSelectedLoc(loc); }}
           />
 
@@ -1741,6 +1843,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
           <Act2NetworkMap
             locations={resStep.locs}
             deployedLeaders={deployedLeadersByLoc}
+            ballotCtx={ballotCtx}
             onSelect={() => {}}
             highlights={resHighlights}
             edgePulses={resStep.edgePulses || []}
@@ -1773,6 +1876,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
           loc={escLoc}
           turn={turn}
           factor={turnoutFactorFor(escLoc)}
+          ballotCtx={ballotCtx}
           onFile={() => fileForElection(escLoc.id)}
           onConsolidate={consolidate}
           onPivot={() => pivotAway(escLoc.id)}
@@ -1831,6 +1935,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
           factor={turnoutFactorFor(locations.find(l => l.id === selectedLoc.id) || selectedLoc)}
           platform={platform}
           proven={proven}
+          ballotCtx={ballotCtx}
           onFile={() => fileForElection(selectedLoc.id)}
           onSetUnits={(units) => updateAlloc(selectedLoc.id, units)}
           onToggleResponse={(key) => toggleResponse(selectedLoc.id, key)}
@@ -1943,18 +2048,26 @@ function act2TurnoutChance(yes, fear, factor, recruited) {
 // The shop as a list of voters. The recruited are the most convinced end of the floor,
 // which is what finally gives the recruitment number a job at the ballot box instead of
 // only being a gate on the petition.
-function act2Ballot(loc, factor = 1) {
+function act2Ballot(loc, factor = 1, ctx = null) {
   const n = loc.workers;
   const signedUp = Math.min(n, loc.recruited || 0);
-  return act2Standings(loc.trueSupport ?? loc.morale, n).map((standing, i) => {
-    const recruited = i >= n - signedUp;
+  // The roster if the shop has one, and the old synthesised spread if it does not, so
+  // nothing downstream has to care which.
+  const people = loc.roster && loc.roster.length
+    ? loc.roster.map(w => ({ w, standing: act2Standing(loc, w, ctx) }))
+    : act2Standings(loc.trueSupport ?? loc.morale, n).map(standing => ({ w: null, standing }));
+  // The recruited are the most convinced end of the floor, whoever they turn out to be.
+  const order = [...people].sort((a, b) => a.standing - b.standing);
+  const recruitedSet = new Set(order.slice(order.length - signedUp).map(x => x.w?.id ?? x.standing));
+  return people.map(({ w, standing }) => {
+    const recruited = recruitedSet.has(w?.id ?? standing);
     const yes = act2YesChance(standing, recruited, loc.fear);
-    return { standing, recruited, yes, turnout: act2TurnoutChance(yes, loc.fear, factor, recruited) };
+    return { worker: w, standing, recruited, yes, turnout: act2TurnoutChance(yes, loc.fear, factor, recruited) };
   });
 }
-function act2Projection(loc, factor = 1) {
+function act2Projection(loc, factor = 1, ctx = null) {
   let yes = 0, no = 0, out = 0;
-  act2Ballot(loc, factor).forEach(v => {
+  act2Ballot(loc, factor, ctx).forEach(v => {
     yes += v.turnout * v.yes; no += v.turnout * (1 - v.yes); out += 1 - v.turnout;
   });
   return { yes: Math.round(yes), no: Math.round(no), out: Math.round(out) };
@@ -1963,9 +2076,9 @@ function act2Projection(loc, factor = 1) {
 // a dozen workers, so this is cheap — and it means the percentage the player is quoted
 // before filing is the percentage the ballot actually rolls, rather than a formula that
 // approximates it.
-function act2WinChance(loc, factor = 1) {
+function act2WinChance(loc, factor = 1, ctx = null) {
   let dist = new Map([[0, 1]]);
-  act2Ballot(loc, factor).forEach(v => {
+  act2Ballot(loc, factor, ctx).forEach(v => {
     const next = new Map();
     const add = (k, p) => { if (p > 0) next.set(k, (next.get(k) || 0) + p); };
     dist.forEach((p, k) => {
@@ -1980,13 +2093,14 @@ function act2WinChance(loc, factor = 1) {
   return win;
 }
 // Cast it. Every worker decides whether to show up, then how to vote.
-function act2CastBallot(loc, factor = 1) {
+function act2CastBallot(loc, factor = 1, ctx = null) {
   let yes = 0, no = 0, out = 0;
-  act2Ballot(loc, factor).forEach(v => {
-    if (Math.random() >= v.turnout) { out += 1; return; }
+  const stayed = [];
+  act2Ballot(loc, factor, ctx).forEach(v => {
+    if (Math.random() >= v.turnout) { out += 1; if (v.worker) stayed.push(v.worker); return; }
     if (Math.random() < v.yes) yes += 1; else no += 1;
   });
-  return { yes, no, out, cast: yes + no, won: yes > no };
+  return { yes, no, out, cast: yes + no, won: yes > no, stayed };
 }
 
 // ---------- SUBCOMPONENTS ----------
@@ -2134,7 +2248,7 @@ function FeedbackControls({ loc, response, priorities = null, onToggle }) {
   );
 }
 
-function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = [], stepKey = 0, highlights = null, deployedLeaders = {}, notes = null }) {
+function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = [], stepKey = 0, highlights = null, deployedLeaders = {}, notes = null, ballotCtx = null }) {
   const [hoverId, setHoverId] = useState(null);
   const hovered = locations.find(l => l.id === hoverId);
   const clusterRadius = (loc) => 8 + Math.min(5, Math.round(loc.workers / 3));
@@ -2208,11 +2322,14 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
           const allocation = allocations[loc.id];
           const hl = highlights ? highlights[loc.id] : null;
           const leader = deployedLeaders[loc.id];
-          const dotCount = Math.min(9, Math.max(3, Math.round(loc.workers / 2)));
+          // One dot per actual person on the roster, so the circle is the shop rather
+          // than a decoration sized like it.
+          const people = loc.roster && loc.roster.length ? loc.roster : null;
+          const dotCount = people ? people.length : Math.min(9, Math.max(3, Math.round(loc.workers / 2)));
           const dots = Array.from({ length: dotCount }, (_, i) => {
-            const ang = (2 * Math.PI * i) / dotCount;
-            const rr = r * 0.55;
-            return { x: Math.cos(ang) * rr, y: Math.sin(ang) * rr };
+            const ang = (2 * Math.PI * i) / dotCount - Math.PI / 2;
+            const rr = r * (dotCount > 9 ? 0.62 : 0.55);
+            return { x: Math.cos(ang) * rr, y: Math.sin(ang) * rr, w: people ? people[i] : null };
           });
           return (
             <g
@@ -2243,16 +2360,38 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
               {/* Each dot is a worker. Filled = morale; the hollow ones past the true-support
                   share are the people who talk warmer than they'd vote. */}
               {(() => {
-                const known = loc.committee?.active;
-                const realShare = known ? (loc.trueSupport ?? loc.morale) / 100 : null;
-                const solidUpTo = realShare == null ? dots.length : Math.round(dots.length * realShare / Math.max(0.01, loc.morale / 100));
+                const known = !!loc.committee?.active;
+                // Without a committee you only see the warm surface: every dot filled.
+                // With one you see each person, and the hollow dots are the specific
+                // people who talk warmer than they would vote.
+                if (!known) {
+                  return dots.map((d, i) => (
+                    <circle key={i} cx={d.x} cy={d.y} r="1.1" fill={moraleHex(loc)} strokeOpacity="0.7" />
+                  ));
+                }
+                if (!people) {
+                  const realShare = (loc.trueSupport ?? loc.morale) / 100;
+                  const solidUpTo = Math.round(dots.length * realShare / Math.max(0.01, loc.morale / 100));
+                  return dots.map((d, i) => {
+                    const solid = i < solidUpTo;
+                    return (
+                      <circle
+                        key={i} cx={d.x} cy={d.y} r="1.1"
+                        fill={solid ? moraleHex(loc) : "none"}
+                        stroke={moraleHex(loc)} strokeWidth={solid ? 0 : 0.4} strokeOpacity="0.7"
+                      />
+                    );
+                  });
+                }
                 return dots.map((d, i) => {
-                  const solid = realShare == null || i < solidUpTo;
+                  const pr = ballotCtx?.priorities;
+                  const walked = !!(pr?.[d.w.status]?.defected || pr?.[d.w.tenure]?.defected);
+                  const solid = !walked && act2Standing(loc, d.w, ballotCtx) >= 50;
                   return (
                     <circle
                       key={i} cx={d.x} cy={d.y} r="1.1"
                       fill={solid ? moraleHex(loc) : "none"}
-                      stroke={moraleHex(loc)} strokeWidth={solid ? 0 : 0.4} strokeOpacity="0.7"
+                      stroke={walked ? "#57534e" : moraleHex(loc)} strokeWidth={solid ? 0 : 0.4} strokeOpacity="0.7"
                     />
                   );
                 });
@@ -2317,7 +2456,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
   );
 }
 
-function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, factor = 1, platform = [], proven = [], onFile = null, onSetUnits, onToggleResponse, onClose }) {
+function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, factor = 1, platform = [], proven = [], ballotCtx = null, onFile = null, onSetUnits, onToggleResponse, onClose }) {
   const meta = statusMeta[loc.status];
   const isCampaign = loc.status === "campaign";
   const isOrganizing = loc.status === "organizing";
@@ -2385,8 +2524,8 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
             fighting over, so it belongs where the player decides what to spend here. */}
         {isCampaign && (
           loc.committee?.active ? (() => {
-            const odds = act2WinChance(loc, factor);
-            const p = act2Projection(loc, factor);
+            const odds = act2WinChance(loc, factor, ballotCtx);
+            const p = act2Projection(loc, factor, ballotCtx);
             return (
               <div className="border border-stone-700 bg-stone-950/60 px-3 py-2 mb-4">
                 <div className="text-xs text-stone-500 tracking-wide mb-1">THE COUNT, ON TODAY'S NUMBERS</div>
@@ -2448,6 +2587,42 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
           {loc.buyOff?.active && <div className="text-teal-400">Workers just got a surprise raise ({loc.buyOff.turnsLeft} month{loc.buyOff.turnsLeft === 1 ? "" : "s"} of dampened organizing left)</div>}
           {loc.committee?.active && <div className="text-teal-400">Shop committee active{loc.committee.strikes > 0 ? ` (${loc.committee.strikes} strike${loc.committee.strikes === 1 ? "" : "s"} taken)` : ""}</div>}
         </div>
+
+        {loc.roster && loc.roster.length > 0 && (
+          <div className="border border-stone-800 bg-stone-950/60 px-3 py-2 mb-4">
+            <div className="flex items-baseline justify-between mb-1.5">
+              <div className="text-xs text-stone-500 tracking-wide">THE FLOOR</div>
+              <div className="text-[11px] text-stone-600">
+                {loc.committee?.active
+                  ? "The committee reports honestly, so these are numbers."
+                  : "No committee here, so every one of these is an estimate."}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
+              {loc.roster.map(w => {
+                const r = act2Read(loc, w, ballotCtx);
+                const sb = BLOC_BY_ID[w.status], tb = BLOC_BY_ID[w.tenure];
+                const gone = priorities?.[w.status]?.defected || priorities?.[w.tenure]?.defected;
+                const hex = r.mid >= 62 ? "#2dd4bf" : r.mid >= 45 ? "#fbbf24" : "#f87171";
+                return (
+                  <div key={w.id} className="flex items-center gap-1.5 text-[11px] leading-tight">
+                    <span className="w-1.5 h-1.5 shrink-0" style={{ backgroundColor: sb?.hex }} title={sb?.label} />
+                    <span className="w-1.5 h-1.5 shrink-0 rounded-full" style={{ backgroundColor: tb?.hex }} title={tb?.label} />
+                    <span className={`font-bold shrink-0 ${gone ? "text-stone-600 line-through" : "text-stone-200"}`}>{w.name}</span>
+                    <span className="text-stone-600 truncate flex-1">{w.role}</span>
+                    <span className="font-mono shrink-0" style={{ color: gone ? "#57534e" : hex }}>
+                      {gone ? "walked" : r.exact ? r.mid : `${r.lo}\u2013${r.hi}`}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="text-[11px] text-stone-600 mt-1.5 leading-snug">
+              Square is status, circle is tenure — {BLOCS.map(b => b.label.toLowerCase()).join(", ")}. Both cut across this shop,
+              and the platform speaks to a person through whichever two they happen to be.
+            </div>
+          </div>
+        )}
 
         {canAct ? (
           <>
@@ -2655,7 +2830,7 @@ function PlatformModal({ priorities, locations, proven = [], initial = [], onAdo
   );
 }
 
-function EscalationModal({ loc, turn, factor = 1, onFile, onConsolidate, onPivot }) {
+function EscalationModal({ loc, turn, factor = 1, ballotCtx = null, onFile, onConsolidate, onPivot }) {
   const gates = filingGates(loc, turn);
   const eligible = gates.every(g => g.pass);
   const gap = loc.morale - (loc.trueSupport ?? loc.morale);
@@ -2690,8 +2865,8 @@ function EscalationModal({ loc, turn, factor = 1, onFile, onConsolidate, onPivot
             running. Every worker in the unit gets one secret ballot, and it takes a majority of the ones actually cast.
             {loc.committee?.active
               ? (() => {
-                  const odds = act2WinChance(loc, factor);
-                  const p = act2Projection(loc, factor);
+                  const odds = act2WinChance(loc, factor, ballotCtx);
+                  const p = act2Projection(loc, factor, ballotCtx);
                   return <> At {loc.trueSupport} true support and {loc.fear} fear that projects
                     {" "}<span className="text-teal-400 font-bold">{p.yes} yes</span> to <span className="text-red-400 font-bold">{p.no} no</span>
                     {p.out > 0 && <span className="text-stone-500"> with {p.out} not voting</span>}, which carries
