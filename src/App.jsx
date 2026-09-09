@@ -4499,6 +4499,22 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
     <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
       <div className="flex items-center justify-between px-3 pt-2 flex-wrap gap-y-1">
         <div className="font-stencil text-lg tracking-wide text-stone-200">THE FLOOR</div>
+        {/* What the two card borders mean. The words come from `labels` so a second act
+            can reuse this board without describing its own board in Act One's vocabulary. */}
+        <div className="flex items-center gap-3 flex-wrap text-[10px]">
+          <span className="flex items-center gap-1.5" title="You can spend this person's hours.">
+            <span className="w-2.5 h-2 shrink-0 border" style={{ borderColor: "#f59e0b" }} />
+            <span className="text-stone-400">{labels.organizerLegend}</span>
+          </span>
+          <span className="flex items-center gap-1.5" title="They are with you, but their hours are not yours to spend.">
+            <span className="w-2.5 h-2 shrink-0 border" style={{ borderColor: "#2dd4bf" }} />
+            <span className="text-stone-400">{labels.signedLegend}</span>
+          </span>
+          <span className="flex items-center gap-1.5" title="Not yet — or no longer.">
+            <span className="w-2.5 h-2 shrink-0 border" style={{ borderColor: "#44403c" }} />
+            <span className="text-stone-600">NEITHER</span>
+          </span>
+        </div>
       </div>
 
 
