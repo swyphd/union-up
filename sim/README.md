@@ -22,6 +22,7 @@ node sim/act2-anatomy.mjs 1500   # what an Act Two election is made of at the ro
 node sim/act2-platform.mjs       # all 56 platforms against the side-offer line
 node sim/act2-survey.mjs         # the bargaining survey by timing, and what a signed contract carries
 node sim/act2-ballot.mjs         # the ballot curve, and what support/fear/recruits/platform buy
+node sim/act2-oneonone.mjs       # does asking who else to talk to beat picking the keenest person?
 node sim/extract-contract.mjs    # contract pure functions -> core3.mjs
 node sim/contract-report.mjs     # first-contract act: tiers, ratification, decert
 node sim/carry.mjs               # plays real Act One wins into the contract act

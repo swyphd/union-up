@@ -56,7 +56,7 @@ const START_LOCATIONS = [
   { id: "university", name: "REMOTE TEAM", workers: 8, manager: "neutral", morale: 40, trueSupport: 33, visibility: 5, recruited: 0, legalRisk: 0, fear: 0, status: "organizing", abandonedTurns: 0, electionTurn: null, grievance: null, antiUnion: { active: false, turnsLeft: 0 }, buyOff: { active: false, turnsLeft: 0 }, committee: { active: false, strikes: 0 } },
 ];
 
-const COMMITTEE_COST = 3;
+const COMMITTEE_COST = 2;
 // Building one after the petition is filed, under the employer's campaign and a clock,
 // costs nearly twice as much. You would always rather have done it first.
 const COMMITTEE_COST_CAMPAIGN = 5;
@@ -183,7 +183,7 @@ const EXTERNAL_EVENTS = [
 const ACT2_EFFORT_TIERS = [
   { units: 0, label: "Hold back this month", cost: 0, desc: "Let this site rest — no organizer time spent here. Counts toward recovering stamina." },
   { units: 1, label: "Check in briefly", cost: 1, desc: "A quick pulse-check with a few workers." },
-  { units: 2, label: "Have real conversations", cost: 2, desc: "Deeper one-on-ones, building trust and momentum." },
+  { units: 2, label: "Have real conversations", cost: 2, desc: "Time on the floor with whoever is around, building trust and momentum." },
   { units: 4, label: "Run a full organizing push", cost: 4, desc: "A serious block of organizer time here this month." },
   { units: 6, label: "Go all-in here", cost: 6, desc: "Everything the organizer can give to this site this month." },
 ];
@@ -420,10 +420,58 @@ const ACT2_DEFECTED_TILT = -20;
 // than a number — the same rule the site's own true support already follows, made
 // concrete on the people it is actually about.
 const ACT2_ROSTER_BAND = 20;
+
+// ---------- ONE-ON-ONES ----------
+// The organizer has four sites and one calendar, so a one-on-one is not how you work
+// the floor here — there are 39 people and twelve months. It is how you find the two or
+// three people the floor already follows, so that THEY can work the floor. That is the
+// whole argument for a committee, and it is why the cap is campaign-wide and brutal.
+const ACT2_ONE_ON_ONES_PER_TURN = 2;
+const ACT2_SITDOWN_COST = 1;
+// Social weight: how many people take their cue from this person. Deliberately drawn
+// INDEPENDENTLY of how warm they are. The loudest supporter is very often not the
+// leader, and a player who picks by visible enthusiasm is picking on the wrong axis.
+const ACT2_LEADER_PULL = 55;
+// Most people carry almost nobody; two or three in any shop carry everybody. Tuned so
+// about a quarter of a floor can anchor a committee — rarer than that and twelve months
+// is not enough calendar to find anyone, which stops being a lesson and starts being a
+// wall.
+function rollPull() {
+  const r = Math.random();
+  if (r < 0.52) return 10 + rand(26);   // most of the floor
+  if (r < 0.74) return 36 + rand(19);   // well-liked, not followed
+  return 55 + rand(41);                 // an organic leader
+}
+// Sitting down with somebody moves them, and moves the shop a little: an hour across a
+// table is the highest-quality organizing conversation there is, and pretending it buys
+// only information would be its own kind of lie. It is still small — one person out of
+// twelve. The reason to do it is who it lets you find.
+const ACT2_SITDOWN_LIFT = 6;
+const ACT2_SITDOWN_MORALE = 2;
+const ACT2_SITDOWN_SUPPORT = 2;
+// How many names a person gives you when you ask the only question that matters:
+// "who else should I be talking to?" Weighted by pull, so the network reports itself.
+const ACT2_REFERRALS = 3;
 function act2Read(loc, w, ctx = null) {
   const mid = act2Standing(loc, w, ctx);
-  if (loc.committee?.active) return { lo: mid, hi: mid, mid, exact: true };
+  // A committee reports the whole floor honestly. Short of that, you know exactly the
+  // people you have personally sat down with, and nobody else.
+  if (loc.committee?.active || w.met) return { lo: mid, hi: mid, mid, exact: true };
   return { lo: clamp(mid - ACT2_ROSTER_BAND), hi: clamp(mid + ACT2_ROSTER_BAND), mid, exact: false };
+}
+
+// The people at this site you have sat down with who turned out to carry the floor.
+// These are what a committee is made of; without them there is nobody to form one.
+function metLeaders(loc) {
+  return (loc.roster || []).filter(w => w.met && w.pull >= ACT2_LEADER_PULL);
+}
+// How much weight the committee actually has. A committee of the two people everybody
+// follows is a different object from a committee of whoever put their hand up, and the
+// game should not price them the same.
+function committeeWeight(loc) {
+  const led = metLeaders(loc);
+  if (!led.length) return 0;
+  return led.reduce((t, w) => t + w.pull, 0) / 100;
 }
 
 const shuffled = (a) => a.map(v => ({ v, k: Math.random() })).sort((x, y) => x.k - y.k).map(x => x.v);
@@ -445,14 +493,38 @@ function makeAct2Rosters() {
     const tenures = shuffled(Array.from({ length: n }, (_, i) => (i < nNew ? "new" : "veteran")));
     const jitters = shuffled(Array.from({ length: n }, (_, i) =>
       Math.round(ACT2_ROSTER_SPREAD * (n === 1 ? 0 : (2 * i) / (n - 1) - 1))));
-    out[loc.id] = Array.from({ length: n }, (_, i) => ({
+    const people = Array.from({ length: n }, (_, i) => ({
       id: `${loc.id}-${i}`,
       name: names[cursor++ % names.length],
       role: roles[i % roles.length],
       status: statuses[i],
       tenure: tenures[i],
       jitter: jitters[i],
+      pull: rollPull(),
+      met: false,
     }));
+    // Who each person names when you ask who else to talk to. Drawn by pull, so
+    // following referrals walks you up the social network and picking by enthusiasm
+    // does not. This is the only view of the network the player ever gets.
+    people.forEach(w => {
+      const others = people.filter(o => o.id !== w.id);
+      const picked = [];
+      // Squared, not linear. Asking "who should I talk to?" is a question people answer
+      // with the names that carry weight — that is what the question is FOR. A referral
+      // is a leader about half the time; a cold pick, about one time in seven.
+      const pool = others.map(o => ({ o, weight: (o.pull + 8) * (o.pull + 8) }));
+      for (let k = 0; k < Math.min(ACT2_REFERRALS, pool.length); k++) {
+        let total = pool.reduce((t, x) => t + (picked.includes(x.o.id) ? 0 : x.weight), 0);
+        let roll = Math.random() * total;
+        for (const x of pool) {
+          if (picked.includes(x.o.id)) continue;
+          roll -= x.weight;
+          if (roll <= 0) { picked.push(x.o.id); break; }
+        }
+      }
+      w.points = picked;
+    });
+    out[loc.id] = people;
   });
   return out;
 }
@@ -643,6 +715,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     if (r.reframe && loc.buyOff?.active) cost += 1;
     if (r.formCommittee) cost += (loc.status === "campaign" ? COMMITTEE_COST_CAMPAIGN : COMMITTEE_COST);
     if (r.bargain) cost += 2;
+    cost += (r.sitDown?.length || 0) * ACT2_SITDOWN_COST;
     return cost;
   }
 
@@ -660,6 +733,19 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
 
   function toggleResponse(id, key) {
     setResponses(prev => ({ ...prev, [id]: { ...prev[id], [key]: !prev[id]?.[key] } }));
+  }
+
+  // How many sit-downs are booked anywhere this month. The cap is campaign-wide on
+  // purpose: the scarce thing in this act is the organizer's calendar, not any one site.
+  const sitDownsBooked = locations.reduce((n, l) => n + (responses[l.id]?.sitDown?.length || 0), 0);
+  function toggleSitDown(locId, workerId) {
+    setResponses(prev => {
+      const cur = prev[locId]?.sitDown || [];
+      const has = cur.includes(workerId);
+      const booked = Object.values(prev).reduce((n, r) => n + (r?.sitDown?.length || 0), 0);
+      if (!has && booked >= ACT2_ONE_ON_ONES_PER_TURN) return prev;
+      return { ...prev, [locId]: { ...prev[locId], sitDown: has ? cur.filter(x => x !== workerId) : [...cur, workerId] } };
+    });
   }
 
   // ---------- TURN RESOLUTION ----------
@@ -706,13 +792,38 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       const units = isBreakTurn ? 0 : (allocations[l.id] || 0);
       if (units > 0) activeLocationCount++;
 
+      // --- One-on-ones: whoever the organizer sat down with this month ---
+      // They happen at any site the organizer can reach, campaign or not. The
+      // conversation moves the person a little; what it is actually FOR is the two
+      // things you cannot buy any other way — an honest read on them, and their answer
+      // to "who else should I be talking to?"
+      let newRoster = l.roster;
+      const sitDownLines = [];
+      {
+        const ids = (responses[l.id] || {}).sitDown || [];
+        const satWith = ids.filter(id => (l.roster || []).some(w => w.id === id && !w.met));
+        if (satWith.length) {
+          newRoster = l.roster.map(w => (satWith.includes(w.id) ? { ...w, met: true, jitter: w.jitter + ACT2_SITDOWN_LIFT } : w));
+          satWith.forEach(id => {
+            const w = newRoster.find(x => x.id === id);
+            const names = (w.points || []).map(pid => newRoster.find(x => x.id === pid)?.name).filter(Boolean);
+            const leader = w.pull >= ACT2_LEADER_PULL;
+            sitDownLines.push(`${l.name}: the organizer sits down with ${w.name}, ${w.role}. ${leader
+              ? `People here take their cue from ${w.name} — that is somebody a committee can be built around.`
+              : `${w.name} is with you, but the floor does not follow ${w.name} anywhere.`}${names.length
+              ? ` Asked who else to talk to: ${names.join(", ")}.` : ""}`);
+          });
+        }
+      }
+      const workingLoc = { ...l, roster: newRoster };
+
       if (l.status === "campaign") {
         // A committee can still be built after the petition — it is the only response
         // that means anything once the clock is running, and it costs more up here.
         const rc = responses[l.id] || {};
         let campCommittee = l.committee || { active: false, strikes: 0 };
         let campCommitteeNote = "";
-        if (rc.formCommittee && !campCommittee.active
+        if (rc.formCommittee && !campCommittee.active && metLeaders(workingLoc).length > 0
             && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ) {
           campCommittee = { active: true, strikes: 0 };
           campCommitteeNote = ` ${l.name}: workers form a shop committee in the middle of the campaign. Somebody is finally counting honestly.`;
@@ -738,15 +849,15 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         // A paper trail is a practice you start, not a chore you repeat. One action sets
         // it up and it stands for the rest of the campaign.
         const campDocumented = l.documented || !!rc.document;
-        return { ...l, morale: newMorale, trueSupport: newTrueSupport, fear: newFear, committee: campCommittee,
+        return { ...l, roster: newRoster, morale: newMorale, trueSupport: newTrueSupport, fear: newFear, committee: campCommittee,
           legalRisk: campLegal, documented: campDocumented,
-          _feedbackLines: campCommitteeNote ? [campCommitteeNote.trim()] : [],
+          _feedbackLines: [...sitDownLines, ...(campCommitteeNote ? [campCommitteeNote.trim()] : [])],
           _campaignNote: `Employer pressure this month: ${moraleDelta >= 0 ? "+" : ""}${moraleDelta} morale. ${turnsLeft <= 0 ? "Election is today." : `${turnsLeft} turn(s) until the vote.`}` };
       }
 
       // Normal organizing location
       const r = responses[l.id] || {};
-      const feedbackLines = [];
+      const feedbackLines = [...sitDownLines];
 
       let gain = baseGain(units) + (locHasTrait(l.id, "morale") && units > 0 ? 2 : 0);
       let recruitedBonus = Math.floor(l.recruited * 2 * (units > 0 ? 1 : 0.3));
@@ -784,13 +895,20 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       // --- Shop committee: forming one, and its ongoing effects ---
       let newCommittee = l.committee || { active: false, strikes: 0 };
       const recruitedPctNow = l.recruited / l.workers;
-      const committeeEligible = !newCommittee.active && l.morale >= COMMITTEE_MORALE_REQ && recruitedPctNow >= COMMITTEE_RECRUIT_PCT_REQ;
+      // You do not form a committee by clearing a morale threshold. You form it out of
+      // the people the floor already follows, which means you have to have found them.
+      const leadersHere = metLeaders(workingLoc);
+      const committeeEligible = !newCommittee.active && leadersHere.length > 0
+        && l.morale >= COMMITTEE_MORALE_REQ && recruitedPctNow >= COMMITTEE_RECRUIT_PCT_REQ;
       if (r.formCommittee && committeeEligible) {
         newCommittee = { active: true, strikes: 0 };
-        feedbackLines.push(`${l.name}: Workers form a shop committee. Organizing here no longer depends entirely on the outside organizer.`);
+        feedbackLines.push(`${l.name}: ${leadersHere.map(w => w.name).join(" and ")} ${leadersHere.length > 1 ? "pull" : "pulls"} a shop committee together. Organizing here no longer depends entirely on the outside organizer.`);
       }
-      const committeeMoraleBonus = newCommittee.active ? (locHasTrait(l.id, "committee") ? 5 : 3) : 0;
-      const committeeSupportBonus = newCommittee.active ? (locHasTrait(l.id, "committee") ? 4 : 2) : 0;
+      // A committee made of people the floor actually follows carries more than one made
+      // of whoever was willing. committeeWeight is the summed pull of its leaders.
+      const cw = newCommittee.active ? Math.max(1, committeeWeight(workingLoc)) : 0;
+      const committeeMoraleBonus = newCommittee.active ? Math.round((locHasTrait(l.id, "committee") ? 5 : 3) * cw) : 0;
+      const committeeSupportBonus = newCommittee.active ? Math.round((locHasTrait(l.id, "committee") ? 4 : 2) * cw) : 0;
       const committeeVisDrift = newCommittee.active ? 3 : 0;
 
       // --- Grievance resolution (a committee handles material/noise complaints on its own) ---
@@ -889,7 +1007,8 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       else if (moraleClimateNext.tone === "volatile") climateGain = 1;
       const eventMoraleBurst = firedEvent && firedEvent.immediateOrganizingMorale ? firedEvent.immediateOrganizingMorale : 0;
 
-      let moraleGain = gain + recruitedBonus - momentumPenalty + grievanceBonus - antiUnionPenalty + antiUnionCounterBonus + climateGain + eventMoraleBurst + committeeMoraleBonus;
+      const sitDownMorale = sitDownLines.length * ACT2_SITDOWN_MORALE;
+      let moraleGain = gain + sitDownMorale + recruitedBonus - momentumPenalty + grievanceBonus - antiUnionPenalty + antiUnionCounterBonus + climateGain + eventMoraleBurst + committeeMoraleBonus;
       let newMorale = clamp(l.morale + moraleGain);
 
       // Recruitment growth (computed here so true support can reference it below)
@@ -906,6 +1025,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       const platformPull = platform.length >= PLATFORM_SLOTS ? locBlocFactor(l, platform, blocPriorities, proven) : 1;
       const softPortion = gain + climateGain + eventMoraleBurst;
       let trueSupportGain = Math.round(softPortion * 0.35)
+        + sitDownLines.length * ACT2_SITDOWN_SUPPORT
         + recruitGain * 1.4
         + grievanceSupportBonus
         - antiUnionPenalty * 1.3
@@ -951,6 +1071,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
 
       return {
         ...l,
+        roster: newRoster,
         morale: newMorale,
         trueSupport: newTrueSupport,
         visibility: newVisibility,
@@ -1938,6 +2059,8 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
           ballotCtx={ballotCtx}
           onFile={() => fileForElection(selectedLoc.id)}
           onSetUnits={(units) => updateAlloc(selectedLoc.id, units)}
+          sitDownsLeft={Math.max(0, ACT2_ONE_ON_ONES_PER_TURN - sitDownsBooked)}
+          onSitDown={(wid) => toggleSitDown(selectedLoc.id, wid)}
           onToggleResponse={(key) => toggleResponse(selectedLoc.id, key)}
           onClose={() => setSelectedLoc(null)}
         />
@@ -2158,7 +2281,9 @@ function FeedbackControls({ loc, response, priorities = null, onToggle }) {
   // in the building — so it is on offer every week.
   const inCrackdownBand = campaign ? !loc.documented : (loc.visibility >= 40 && loc.visibility < 60);
   const recruitedPct = loc.recruited / loc.workers;
-  const committeeEligible = !loc.committee?.active && loc.morale >= COMMITTEE_MORALE_REQ && recruitedPct >= COMMITTEE_RECRUIT_PCT_REQ;
+  const leadersFound = metLeaders(loc);
+  const numbersReady = !loc.committee?.active && loc.morale >= COMMITTEE_MORALE_REQ && recruitedPct >= COMMITTEE_RECRUIT_PCT_REQ;
+  const committeeEligible = numbersReady && leadersFound.length > 0;
   const bargainable = !campaign && priorities && BLOCS.some(b => (LOC_COMPOSITION[loc.id]?.[b.id] || 0) >= 0.5 && !priorities[b.id]?.known);
   const hasAny = campaign
     ? (committeeEligible || inCrackdownBand)
@@ -2237,12 +2362,21 @@ function FeedbackControls({ loc, response, priorities = null, onToggle }) {
           <input type="checkbox" checked={!!response.formCommittee} onChange={() => onToggle("formCommittee")} className="accent-amber-500" />
           <UsersRound size={12} />
           <span className="flex-1">
-            <span className="font-bold">{campaign ? "Still no shop committee, and the vote is coming." : "Ready for a shop committee."}</span>{" "}
+            <span className="font-bold">{campaign ? "Still no shop committee, and the vote is coming." : `${leadersFound.map(w => w.name).join(" and ")} can carry a committee.`}</span>{" "}
             {campaign
               ? "Build one now — it is the only thing left that changes the count, and it costs more under a running clock"
-              : "Help workers form one — the petition needs it, and it is what lets anyone here count honestly"}
+              : "Build it around them — the petition needs it, and it is what lets anyone here count honestly"}
           </span><CostPips hours={campaign ? COMMITTEE_COST_CAMPAIGN : COMMITTEE_COST} />
         </label>
+      )}
+      {numbersReady && !leadersFound.length && (
+        <div className="flex items-center gap-2 text-xs border border-stone-700 text-stone-500 px-2 py-1">
+          <UsersRound size={12} />
+          <span className="flex-1">
+            <span className="font-bold text-stone-400">The numbers here are ready for a committee. You have not found anyone to build it around.</span>{" "}
+            A committee is the people the floor already follows. Sit down with them and find out who those are.
+          </span>
+        </div>
       )}
     </div>
   );
@@ -2456,7 +2590,9 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
   );
 }
 
-function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, factor = 1, platform = [], proven = [], ballotCtx = null, onFile = null, onSetUnits, onToggleResponse, onClose }) {
+function LocationActionModal({ loc, turn, allocation, response, priorities = null, remaining = 99, factor = 1, platform = [], proven = [], ballotCtx = null, sitDownsLeft = 0, onSitDown = null, onFile = null, onSetUnits, onToggleResponse, onClose }) {
+  const booking = response?.sitDown || [];
+  const canSitDown = !!onSitDown && (sitDownsLeft > 0 || booking.length > 0) && remaining >= ACT2_SITDOWN_COST;
   const meta = statusMeta[loc.status];
   const isCampaign = loc.status === "campaign";
   const isOrganizing = loc.status === "organizing";
@@ -2598,21 +2734,52 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
                   : "No committee here, so every one of these is an estimate."}
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1">
+            <div className="text-[11px] leading-snug mb-1.5">
+              {sitDownsLeft > 0 || booking.length > 0 ? (
+                <span className="text-amber-400">
+                  Click a name to sit down with them this month — 1 action each, {sitDownsLeft} left on the calendar.
+                  You get an honest read on them, and the names they give you when you ask who else to talk to.
+                </span>
+              ) : (
+                <span className="text-stone-600">
+                  No one-on-ones left this month. You get {ACT2_ONE_ON_ONES_PER_TURN} across the whole campaign — four sites, one calendar.
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-y-0.5">
               {loc.roster.map(w => {
                 const r = act2Read(loc, w, ballotCtx);
                 const sb = BLOC_BY_ID[w.status], tb = BLOC_BY_ID[w.tenure];
                 const gone = priorities?.[w.status]?.defected || priorities?.[w.tenure]?.defected;
                 const hex = r.mid >= 62 ? "#2dd4bf" : r.mid >= 45 ? "#fbbf24" : "#f87171";
+                const booked = booking.includes(w.id);
+                const canBook = canSitDown && !w.met && !gone;
+                // Who has already named this person. The only view of the network there is.
+                const namedBy = loc.roster.filter(o => o.met && (o.points || []).includes(w.id)).map(o => o.name);
+                const leader = w.met && w.pull >= ACT2_LEADER_PULL;
                 return (
-                  <div key={w.id} className="flex items-center gap-1.5 text-[11px] leading-tight">
-                    <span className="w-1.5 h-1.5 shrink-0" style={{ backgroundColor: sb?.hex }} title={sb?.label} />
-                    <span className="w-1.5 h-1.5 shrink-0 rounded-full" style={{ backgroundColor: tb?.hex }} title={tb?.label} />
-                    <span className={`font-bold shrink-0 ${gone ? "text-stone-600 line-through" : "text-stone-200"}`}>{w.name}</span>
-                    <span className="text-stone-600 truncate flex-1">{w.role}</span>
-                    <span className="font-mono shrink-0" style={{ color: gone ? "#57534e" : hex }}>
-                      {gone ? "walked" : r.exact ? r.mid : `${r.lo}\u2013${r.hi}`}
-                    </span>
+                  <div key={w.id}>
+                    <div
+                      className={`flex items-center gap-1.5 text-[11px] leading-tight px-1 -mx-1 ${canBook ? "cursor-pointer hover:bg-stone-900" : ""} ${booked ? "bg-amber-950/40" : ""}`}
+                      onClick={canBook ? () => onSitDown(w.id) : undefined}
+                      title={canBook ? `Sit down with ${w.name} this month (1 action)` : w.met ? `You have sat down with ${w.name}.` : undefined}
+                    >
+                      <span className="w-1.5 h-1.5 shrink-0" style={{ backgroundColor: sb?.hex }} title={sb?.label} />
+                      <span className="w-1.5 h-1.5 shrink-0 rounded-full" style={{ backgroundColor: tb?.hex }} title={tb?.label} />
+                      <span className={`font-bold shrink-0 ${gone ? "text-stone-600 line-through" : leader ? "text-amber-400" : "text-stone-200"}`}>{w.name}</span>
+                      {leader && <span className="shrink-0 text-[9px] text-amber-500 tracking-wide">CARRIES {w.pull}</span>}
+                      {w.met && !leader && <span className="shrink-0 text-[9px] text-stone-600 tracking-wide">carries {w.pull}</span>}
+                      {!w.met && namedBy.length > 0 && (
+                        <span className="shrink-0 text-[9px] text-teal-500 tracking-wide" title={`Named by ${namedBy.join(", ")}`}>
+                          {"\u25b8"} NAMED BY {namedBy.join(", ").toUpperCase()}
+                        </span>
+                      )}
+                      <span className="text-stone-600 truncate flex-1">{w.role}</span>
+                      {booked && <span className="shrink-0 text-[9px] text-amber-400 tracking-wide">BOOKED</span>}
+                      <span className="font-mono shrink-0" style={{ color: gone ? "#57534e" : hex }}>
+                        {gone ? "walked" : r.exact ? r.mid : `${r.lo}\u2013${r.hi}`}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
@@ -2620,6 +2787,8 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
             <div className="text-[11px] text-stone-600 mt-1.5 leading-snug">
               Square is status, circle is tenure — {BLOCS.map(b => b.label.toLowerCase()).join(", ")}. Both cut across this shop,
               and the platform speaks to a person through whichever two they happen to be.
+              {" "}CARRIES is how many people take their cue from someone. You cannot see it until you have sat down with them,
+              and it has nothing to do with how warm they are.
             </div>
           </div>
         )}

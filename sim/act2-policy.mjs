@@ -2,7 +2,55 @@
 import * as C from './core2.mjs';
 import { responseCostFor, fileEligible } from './act2-engine.mjs';
 const { BLOCS, DEMANDS, DEMAND_BY_ID, LOC_COMPOSITION, PLATFORM_SLOTS, DEFECT_THRESHOLD, blocSatisfaction,
-  COMMITTEE_MORALE_REQ, COMMITTEE_RECRUIT_PCT_REQ, TOTAL_TURNS } = C;
+  COMMITTEE_MORALE_REQ, COMMITTEE_RECRUIT_PCT_REQ, TOTAL_TURNS, ACT2_ONE_ON_ONES_PER_TURN,
+  ACT2_LEADER_PULL, act2Read, metLeaders } = C;
+
+// Who to sit down with. The player cannot see pull before the conversation, so every
+// mode below decides on visible information only — which is the whole experiment:
+//   'referral'   ask who else to talk to, then go talk to them (the organizer's method)
+//   'enthusiasm' sit down with whoever reads warmest (the intuitive, wrong one)
+//   'random'     no method at all
+//   'none'       never sit down with anybody
+export function pickSitDowns(G, budgetLeft, mode = 'referral', focus = 99) {
+  if (mode === 'none') return {};
+  const slots = Math.min(ACT2_ONE_ON_ONES_PER_TURN, Math.floor(budgetLeft / C.ACT2_SITDOWN_COST));
+  if (slots <= 0) return {};
+  // WHICH SITE is decided the same way for every mode, so the comparison below measures
+  // the method and nothing else: a site still in play, with no committee, and with no
+  // leader found yet — once you have your person there, more of the organizer's own
+  // hours there is not what the site needs.
+  // A site you are not working is not a site to spend the calendar on: the sit-downs
+  // follow the focus, the same as the hours do.
+  const inPlay = (l) => !l.committee?.active && metLeaders(l).length === 0;
+  const worked = new Set([
+    ...G.locations.filter(l => l.status === 'campaign').map(l => l.id),
+    ...rankSites(G.locations.filter(l => l.status === 'organizing')).slice(0, focus).map(l => l.id),
+  ]);
+  const sites = G.locations.filter(l => worked.has(l.id) && inPlay(l));
+  const ranked = rankSites(sites);
+  const out = {};
+  let used = 0;
+  for (const l of ranked) {
+    if (used >= slots) break;
+    const named = new Set();
+    (l.roster || []).forEach(w => { if (w.met) (w.points || []).forEach(id => named.add(id)); });
+    const pool = (l.roster || []).filter(w => !w.met);
+    if (!pool.length) continue;
+    // WHO, within that site, is the whole experiment.
+    let pick;
+    if (mode === 'referral') {
+      const byName = pool.filter(w => named.has(w.id));
+      pick = (byName.length ? byName : pool)[Math.floor(Math.random() * (byName.length || pool.length))];
+    } else if (mode === 'enthusiasm') {
+      pick = pool.reduce((a, b) => (act2Read(l, b).mid > act2Read(l, a).mid ? b : a));
+    } else {
+      pick = pool[Math.floor(Math.random() * pool.length)];
+    }
+    (out[l.id] = out[l.id] || []).push(pick.id);
+    used += 1;
+  }
+  return out;
+}
 
 const TIERS = [6, 4, 2, 1, 0];
 
@@ -47,6 +95,11 @@ export function planTurn(G, opts = {}) {
   const wantSurvey = !!opts.survey && !G.surveyDone && G.turn >= (opts.surveyTurn ?? 3);
   let left = G.budget - campaigns.length * C.ACT2_CAMPAIGN_UPKEEP - (wantSurvey ? C.ACT2_SURVEY_COST : 0);
 
+  // 0. One-on-ones come off the top: they are what unblocks a committee, and a
+  //    committee is what makes everything else work.
+  const sits = pickSitDowns(G, left, opts.sitDown ?? 'referral', focus);
+  Object.values(sits).forEach(ids => { left -= ids.length * C.ACT2_SITDOWN_COST; });
+
   // 1. Responses at every organizing site, most valuable first.
   organizing.forEach(l => {
     const r = {};
@@ -55,7 +108,11 @@ export function planTurn(G, opts = {}) {
     if (l.grievance && l.grievance.type !== 'noise' && !(l.committee?.active && l.grievance.type !== 'legal')) tryAdd('grievance');
     if (l.antiUnion?.active) tryAdd('counter');
     if (l.buyOff?.active) tryAdd('reframe');
-    const committeeEligible = !l.committee?.active && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ;
+    // The leader test uses this month's sit-downs too — you can find somebody and build
+    // around them in the same month.
+    const willHaveMet = { ...l, roster: (l.roster || []).map(w => ((sits[l.id] || []).includes(w.id) ? { ...w, met: true } : w)) };
+    const committeeEligible = !l.committee?.active && metLeaders(willHaveMet).length > 0
+      && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ;
     if (committeeEligible && !opts.noCommittee) tryAdd('formCommittee');
     if (opts.bargain) {
       const comp = LOC_COMPOSITION[l.id] || {};
@@ -71,7 +128,9 @@ export function planTurn(G, opts = {}) {
   //    still means anything once the petition is in, and it is what makes the count real.
   campaigns.forEach(l => {
     const r = {};
-    const eligible = !l.committee?.active && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ;
+    const willHaveMet = { ...l, roster: (l.roster || []).map(w => ((sits[l.id] || []).includes(w.id) ? { ...w, met: true } : w)) };
+    const eligible = !l.committee?.active && metLeaders(willHaveMet).length > 0
+      && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ;
     if (eligible && !opts.noCommittee && responseCostFor(l, { formCommittee: true }) <= left) {
       r.formCommittee = true; left -= responseCostFor(l, r);
     }
@@ -97,6 +156,7 @@ export function planTurn(G, opts = {}) {
   });
   // 5. Anything left trickles to the next site so momentum doesn't rot there.
   ranked.slice(focus).forEach(l => { const u = TIERS.find(t => t <= left) ?? 0; alloc[l.id] = u; left -= u; });
+  Object.entries(sits).forEach(([id, ids]) => { resp[id] = { ...(resp[id] || {}), sitDown: ids }; });
   return { alloc, resp, wantSurvey };
 }
 

@@ -11,7 +11,8 @@ const { clamp, rand, TOTAL_TURNS, START_LOCATIONS, COMMITTEE_COST, COMMITTEE_COS
   ACT2_CAMPAIGN_UPKEEP, provenDemands, contractHeadstart, ACT2_SURVEY_COST, SURVEY_STRONG, SURVEY_WEAK, surveyResponse,
   SURVEY_TRUE_GAIN, SURVEY_MORALE_GAIN, SURVEY_DEAD_MORALE,
   ACT2_FILING_VISIBILITY, ACT2_CAMPAIGN_RETALIATION, ACT2_CAMPAIGN_CRACKDOWN_CAP, ACT2_CAMPAIGN_HIT_SCALE, ACT2_RETALIATION_FEAR, ACT2_DOCUMENT_SHIELD, ACT2_DOCUMENT_DETERRENCE,
-  makeAct2Rosters } = C;
+  makeAct2Rosters, ACT2_ONE_ON_ONES_PER_TURN, ACT2_SITDOWN_COST, ACT2_LEADER_PULL, ACT2_SITDOWN_LIFT,
+  ACT2_SITDOWN_MORALE, ACT2_SITDOWN_SUPPORT, metLeaders, committeeWeight } = C;
 const roll100 = () => rand(100) + 1;
 
 export function newGame(leaders = [], contract = null) {
@@ -37,7 +38,7 @@ export function newGame(leaders = [], contract = null) {
     deployment: {},        // leaderIndex -> locId
     log: { elections: [], defections: 0, sideOffers: 0, retaliations: 0, grievanceWins: 0,
       breaks: 0, events: 0, falseAlive: 0, committees: 0, bargains: 0, buyOffs: 0, firings: 0,
-      surveyRate: null, surveyTier: null, revisions: 0 },
+      surveyRate: null, surveyTier: null, revisions: 0, sitDowns: 0, leadersFound: 0 },
   };
 }
 
@@ -50,6 +51,7 @@ export function responseCostFor(loc, r) {
   if (r.reframe && loc.buyOff?.active) cost += 1;
   if (r.formCommittee) cost += (loc.status === 'campaign' ? COMMITTEE_COST_CAMPAIGN : COMMITTEE_COST);
   if (r.bargain) cost += 2;
+  cost += (r.sitDown?.length || 0) * ACT2_SITDOWN_COST;
   return cost;
 }
 
@@ -99,10 +101,21 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
     const units = isBreakTurn ? 0 : (alloc[l.id] || 0);
     if (units > 0) activeLocationCount++;
 
+    // One-on-ones happen at any site the organizer can reach, campaign or not.
+    let newRoster = l.roster;
+    const satWith = ((resp[l.id] || {}).sitDown || [])
+      .filter(id => (l.roster || []).some(w => w.id === id && !w.met));
+    if (satWith.length) {
+      newRoster = l.roster.map(w => (satWith.includes(w.id) ? { ...w, met: true, jitter: w.jitter + ACT2_SITDOWN_LIFT } : w));
+      L.sitDowns += satWith.length;
+      satWith.forEach(id => { if (newRoster.find(w => w.id === id).pull >= ACT2_LEADER_PULL) L.leadersFound++; });
+    }
+    const workingLoc = { ...l, roster: newRoster };
+
     if (l.status === 'campaign') {
       const rc = resp[l.id] || {};
       let campCommittee = l.committee || { active: false, strikes: 0 };
-      if (rc.formCommittee && !campCommittee.active
+      if (rc.formCommittee && !campCommittee.active && metLeaders(workingLoc).length > 0
           && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ) {
         campCommittee = { active: true, strikes: 0 }; L.committees++;
       }
@@ -120,7 +133,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
       const newMorale = clamp(l.morale + moraleDelta);
       const newFear = clamp(l.fear + fearDelta);
       const trueSupportDelta = Math.round(moraleDelta * 0.5) + (campCommittee.active ? 1 : 0);
-      return { ...l, morale: newMorale, trueSupport: clamp((l.trueSupport ?? l.morale) + trueSupportDelta), fear: newFear, committee: campCommittee,
+      return { ...l, roster: newRoster, morale: newMorale, trueSupport: clamp((l.trueSupport ?? l.morale) + trueSupportDelta), fear: newFear, committee: campCommittee,
         legalRisk: clamp(l.legalRisk - (rc.document ? 8 : 0) - 2, 0, 100),
         documented: l.documented || !!rc.document };
     }
@@ -150,10 +163,13 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
     if (newAbandonedTurns >= 3) momentumPenalty = 10;
 
     let newCommittee = l.committee || { active: false, strikes: 0 };
-    const committeeEligible = !newCommittee.active && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ;
+    const leadersHere = metLeaders(workingLoc);
+    const committeeEligible = !newCommittee.active && leadersHere.length > 0
+      && l.morale >= COMMITTEE_MORALE_REQ && l.recruited / l.workers >= COMMITTEE_RECRUIT_PCT_REQ;
     if (r.formCommittee && committeeEligible) { newCommittee = { active: true, strikes: 0 }; L.committees++; }
-    const committeeMoraleBonus = newCommittee.active ? (locHasTrait(l.id, 'committee') ? 5 : 3) : 0;
-    const committeeSupportBonus = newCommittee.active ? (locHasTrait(l.id, 'committee') ? 4 : 2) : 0;
+    const cw = newCommittee.active ? Math.max(1, committeeWeight(workingLoc)) : 0;
+    const committeeMoraleBonus = newCommittee.active ? Math.round((locHasTrait(l.id, 'committee') ? 5 : 3) * cw) : 0;
+    const committeeSupportBonus = newCommittee.active ? Math.round((locHasTrait(l.id, 'committee') ? 4 : 2) * cw) : 0;
     const committeeVisDrift = newCommittee.active ? 3 : 0;
 
     let newGrievance = l.grievance, grievanceBonus = 0, grievanceRecruitBonus = 0, grievanceSupportBonus = 0;
@@ -201,7 +217,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
 
     let climateGain = moraleClimateNext.tone === 'positive' ? 2 : moraleClimateNext.tone === 'negative' ? -2 : moraleClimateNext.tone === 'volatile' ? 1 : 0;
     const eventMoraleBurst = firedEvent && firedEvent.immediateOrganizingMorale ? firedEvent.immediateOrganizingMorale : 0;
-    const moraleGain = gain + recruitedBonus - momentumPenalty + grievanceBonus - antiUnionPenalty + antiUnionCounterBonus + climateGain + eventMoraleBurst + committeeMoraleBonus;
+    const moraleGain = gain + satWith.length * ACT2_SITDOWN_MORALE + recruitedBonus - momentumPenalty + grievanceBonus - antiUnionPenalty + antiUnionCounterBonus + climateGain + eventMoraleBurst + committeeMoraleBonus;
     const newMorale = clamp(l.morale + moraleGain);
 
     const recruitGain = units > 0 ? Math.round(units * 0.35) : 0;
@@ -210,7 +226,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
     const platformPull = G.platform.length >= PLATFORM_SLOTS ? locBlocFactor(l, G.platform, G.priorities, proven) : 1;
     const softPortion = gain + climateGain + eventMoraleBurst;
     let trueSupportGain = Math.round(softPortion * 0.35) + recruitGain * 1.4 + grievanceSupportBonus - antiUnionPenalty * 1.3
-      - momentumPenalty + committeeSupportBonus - (buyOffWasActive && !r.reframe ? 3 : 0);
+      - momentumPenalty + committeeSupportBonus + satWith.length * ACT2_SITDOWN_SUPPORT - (buyOffWasActive && !r.reframe ? 3 : 0);
     if (platformPull !== 1 && Math.round(trueSupportGain) > 0) trueSupportGain = Math.round(Math.round(trueSupportGain) * platformPull);
     const newTrueSupport = Math.round(clamp(l.trueSupport + trueSupportGain));
 
@@ -226,7 +242,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
     const eventLegalBurst = firedEvent && firedEvent.immediateLegalRiskAll ? firedEvent.immediateLegalRiskAll : 0;
     const newLegalRisk = clamp(l.legalRisk - (l._retaliatedLastTurn ? 0 : 3) + legalRiskAdjust + legalClimateDrift + eventLegalBurst, 0, 100);
 
-    return { ...l, morale: newMorale, trueSupport: newTrueSupport, visibility: clamp(l.visibility + visGain), recruited: newRecruited,
+    return { ...l, roster: newRoster, morale: newMorale, trueSupport: newTrueSupport, visibility: clamp(l.visibility + visGain), recruited: newRecruited,
       legalRisk: newLegalRisk, abandonedTurns: newAbandonedTurns, grievance: newGrievance, antiUnion: newAntiUnion, buyOff: newBuyOff,
       committee: newCommittee, _retaliatedLastTurn: false };
   });

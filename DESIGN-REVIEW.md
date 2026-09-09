@@ -517,13 +517,75 @@ central lesson — you do not know your shop until the shop tells you — restat
 where a player is most tempted to trust the aggregate. The election line now also names up to
 three of the people who stayed home, which is the other half of the same lesson.
 
-**What I did not build: one-on-ones.** The item asked for "the read model and one-on-ones". I
-implemented the first and deliberately left the second. Per-worker actions would erase the
-distinction the act is built on — Act Three's own intro says *"You're not in the room anymore.
-You're one organizer with four sites and one calendar."* The roster is a floor you **read**,
-not one you work person by person; the actions stay at site scale. If you want one-on-ones in
-Act Three, that is a design change to the act's premise, not a completion of this item, and
-worth deciding on its own.
+**One-on-ones — DONE, as a deliberate change to the act's premise.**
+
+I first left these out, on the grounds that per-worker actions would erase what separates
+this act from Act One. That objection was right about the *wrong* design — one-on-ones as a
+way to work the floor. It is answered by the design that is actually true to the source
+material: at four sites and 39 people you cannot work a floor person by person, and neither
+can a real lead organizer. What you can do is find the two or three people the floor already
+follows, and let **them** work it. That is McAlevey's entire argument for a committee, and the
+act had been asserting it in prose while gating the committee on a morale threshold.
+
+So: **a sit-down is 1 action, capped at two per month across the whole campaign** — four
+sites, one calendar. What it buys:
+
+- an **exact read** on that person, permanently, with no committee needed
+- their **pull**: how many people take their cue from them, invisible until you sit down
+- the **names they give you** when you ask who else you should be talking to
+- a small real gain for the shop (+2 morale, +2 true support): an hour across a table is the
+  best organizing conversation there is, and pretending it buys only information would be its
+  own kind of lie
+
+**Pull is drawn independently of standing.** The warmest person in the shop is no likelier to
+be a leader than anyone else. This is the trap, and it is the point.
+
+**And the committee is now built out of people, not numbers.** The old gate (morale ≥ 55,
+30% recruited) still applies, but on top of it you must have *found somebody to build it
+around* — a met worker with pull ≥ 55. A site that clears the numbers and has nobody says so:
+*"The numbers here are ready for a committee. You have not found anyone to build it around."*
+A committee's ongoing bonus then scales with the summed pull of its leaders, so a committee of
+the people the floor follows is a different object from a committee of whoever was willing.
+
+**The lesson is in the rules, not the prose.** `sim/act2-oneonone.mjs` plays the same game
+four ways, varying only who the organizer picks inside a site, each deciding on what the UI
+shows and never on the hidden pull:
+
+| method | won% | sit-downs/game | leader hit rate |
+| --- | --- | --- | --- |
+| ask who else to talk to, then go | **60.8%** | **11.3** | **33%** |
+| sit down with whoever reads warmest | 53.7% | 14.0 | 26% |
+| pick at random | 54.1% | 13.9 | 26% |
+| never sit down with anyone | 0.0% | 0.0 | — |
+
+Picking by visible enthusiasm is *no better than picking at random* — 26% either way. Following
+referrals is worth about seven points, and it buys them by needing **three fewer conversations
+per campaign**: three actions handed back to organizing. The referral edge is real but not a
+giveaway — the first name you are given is a leader 38% of the time against 15% cold.
+
+Tuning it took three passes. The first cost the game 54 points of win rate (65% → 11%): leaders
+were too rare for twelve months of calendar to reach, which stops being a lesson and becomes a
+wall. Leaders went from ~15% of a floor to ~25%, the committee's own cost went 3 → 2 since the
+identification work is now explicit and paid for separately, and the sit-down got its small
+site-level gain. Two apparent findings along the way were my own sim policy, not the rules:
+referral mode kept chaining referrals at a site where it had *already* found its leader, and
+sit-downs were being booked at sites the policy never worked.
+
+Balance after (n=2000):
+
+| policy | before one-on-ones | after |
+| --- | --- | --- |
+| focus 3 shops | 65.3% | 62.0% |
+| focus 2 shops | 53.6% | 56.2% |
+| spread across all 4 | 55.1% | 53.4% |
+| focus 3, listen first | 76.2% | 72.0% |
+| focus 3 + 4 leaders | 71.0% | 81.4% |
+| never builds a committee | 0.0% | 0.0% |
+
+One strategy moved a long way: **working a single shop fell from 54.6% to 19.8%.** That is a
+real change and worth knowing about, but I think it is a correction rather than damage — the
+objective is two certified shops, and a player who only ever works one should not have been
+winning half the time.
 
 Balance is unmoved (n=2000, and the ordering is what matters):
 
