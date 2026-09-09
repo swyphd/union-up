@@ -3391,6 +3391,10 @@ function OutcomeRoster({ workers }) {
 
 // Act Two's beats depend on who survived Act One, so they're built rather than declared.
 function act2IntroBeats(leaders, contract = null) {
+  // What an intro is for is the things the board cannot hold: the bridge from the last
+  // act, and the premise of this one. Everything else was cut because it is already on
+  // screen permanently — the objective bar states the goal in the same words, the hour
+  // pie counts the actions, and the team panel explains stationing a leader.
   const beats = [
     {
       kicker: "AFTER THE CONTRACT",
@@ -3398,12 +3402,12 @@ function act2IntroBeats(leaders, contract = null) {
       lines: [
         contract
           ? (contract.ratified
-              ? `You won one shop, and then you won it a contract — ${contract.tiers} of ${contract.max} tiers, signed. The other studios under the same parent read it the week it was posted.`
-              : `You won one shop and held it through a year of bargaining with nothing signed. The other studios under the same parent heard about that too.`)
+              ? `You won one shop, then won it a contract — ${contract.tiers} of ${contract.max} tiers, signed. The other studios under the same parent read it the week it was posted.`
+              : "You won one shop and held it through a year of bargaining with nothing signed. The other studios heard about that too.")
           : "You won one shop. The other studios under the same parent heard about it inside a week.",
         contract && contract.ratified
-          ? `A contract is a document other people can point at, and these four started from a different place because of it: every shop here opens ${contractHeadstart(contract)} points further along than it would have. Any demand you already got signed is worth ${PROVEN_BONUS} more to every bloc than one you are only asking for.`
-          : "What they heard is that it can be done, and how long the company is willing to wait. None of that is in writing, so none of it is worth anything at the table here.",
+          ? `Every shop here opens ${contractHeadstart(contract)} points further along because of it.`
+          : "What they heard is how long the company is willing to wait. None of that is in writing, so none of it is worth anything at the table here.",
       ],
     },
     {
@@ -3415,14 +3419,6 @@ function act2IntroBeats(leaders, contract = null) {
       ],
       tone: "red",
     },
-    {
-      kicker: "YOUR JOB CHANGED",
-      title: "YOU'RE NOT IN THE ROOM ANYMORE",
-      lines: [
-        "You're one organizer with four sites and one calendar.",
-        `Every month you decide where your ${ACT2_BASE_ACTIONS} actions of time go — and where they don't.`,
-      ],
-    },
   ];
   if (leaders.length) {
     beats.push({
@@ -3430,16 +3426,16 @@ function act2IntroBeats(leaders, contract = null) {
       title: "THE SHOP FLOOR CAME WITH YOU",
       lines: [
         `${["Nobody", "One person", "Two people", "Three people", "Four people"][leaders.length] || `${leaders.length} people`} who ran the first shop${contract ? " and bargained its contract" : ""} came with you.`,
-        "Station each of them at a site — their strength only helps where you post them. And each of them is one more action every week.",
       ],
       visual: "roster",
     });
   }
+  // Last, so the premise is the thing still on screen when the button is pressed.
   beats.push({
-    kicker: "THE GOAL",
-    title: "TWELVE MONTHS. TWO WINS.",
+    kicker: "YOUR JOB CHANGED",
+    title: "YOU'RE NOT IN THE ROOM ANYMORE",
     lines: [
-      "Unionize two of the four sites and the campaign carries.",
+      "You're one organizer with four sites and one calendar.",
       "Visibility brings retaliation, people lose their nerve, and none of it resets.",
     ],
   });

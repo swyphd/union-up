@@ -649,6 +649,30 @@ The band leans downward rather than sitting symmetrically around the estimate, b
 wrong in the flattering direction exactly where the player has not done the work — which
 is the lesson Act One is built on, now visible in the one number they watch most.
 
+**The intro sequences.**
+
+Act Three's opening ran five or six beats. Three of its claims were duplicating surfaces
+that are on screen permanently, one of them from the very next click:
+
+| Intro said | Already on screen |
+| --- | --- |
+| "Unionize two of the four sites and the campaign carries." | the objective bar, always visible: *"Win union elections at 2 of 4 shops within 12 months."* |
+| "Every month you decide where your 10 actions of time go." | the hour pie: *"7 of 11 actions left this month"* |
+| "Station each of them at a site — their strength only helps where you post them." | the team panel: *"YOUR TEAM — click a leader, then click a site to station them there"* |
+| "Any demand you already got signed is worth 8 more to every bloc." | the platform screen says this at the moment you are picking demands |
+
+Four beats now, from six, and 979 characters from 1,511. What survives is what the board
+cannot hold: the bridge from the last act, the thesis (*"What worked once wasn't a fluke.
+It was a system"*), the premise (*"You're one organizer with four sites and one calendar"*),
+and permadeath (*"none of it resets"*) — which nothing on the board states.
+
+The premise beat moved to **last**, so it is the thing still on screen when BEGIN CAMPAIGN
+is pressed rather than a goal restatement the objective bar is about to repeat.
+
+**Act Two has no intro sequence at all.** It opens on `phase: "plan"` with the two-line
+banner and the board. That is a gap rather than a redundancy, and filling it would mean
+adding text rather than cutting it, so it is left as a decision rather than taken.
+
 ---
 
 ## 4. The First Contract prototype
