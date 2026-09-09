@@ -419,7 +419,59 @@ across all 4 65.6%.
     ends bloc defection; an unsigned year is worth nothing at all, which is exactly the
     difference between having a union and having won something with it.
 
-**Meters (fix F5 or remove):**
+**Meters (fix F5 or remove) — DONE, commit after `7111746`:**
+All three, though 18 and 19 both turned out to have false premises once measured, and the
+report says so rather than pretending otherwise.
+
+17. **DONE.** Filing puts a shop's visibility at 62 and retaliation now reaches shops at the
+    vote — previously the single most dangerous stretch of a real campaign was the safest
+    stretch of this one. It is rated rather than constant: a much lower roll than an
+    organizing shop that has drawn attention, capped at two crackdowns a campaign, and what
+    it costs is mostly *fear* (the weekly counter-campaign is already eating support), which
+    is the term that decides who turns out. Documenting is now a one-off practice you start
+    rather than a chore you repeat, offered every month at a shop that has filed, and it both
+    **deters** (half as many crackdowns) and **softens** (a third of the fear). Worth +7 points
+    of win rate. Before: retaliations 0.000 and firings 0.000 in every policy. After: 1.1–2.0
+    and 0.55–0.95 a game.
+
+    Fixing this exposed a dead chain of my own making. `employerSophistication` rises when a
+    firing *fails* to shut a shop down, but the watch that detects it was gated on
+    `!targetCommittee` — and once a committee became the price of a petition, every shop had
+    one, so every firing targeted one, so the watch never started, so sophistication never
+    rose and the quiet buy-off never existed. It now turns on whether the committee *held*,
+    which is the question that was always being asked. Sophistication reaches 1 in 63% of
+    games, up from 0%.
+18. ~~Stamina: cut the pool to 60, or delete it.~~ **PREMISE GONE.** The item assumed a meter
+    that never moves. Since the defeat cascade started costing 22 stamina, it moves: 38% of
+    focus-3 games and 44% of spread-4 games now hit a forced break, with the minimum dipping
+    to 15. It stays flat only for a *focused* campaign — which is correct, because stamina is
+    now the cost of breadth, and a pool tight enough to bite two shops would punish the
+    strategy the game is built to reward (measured: pool 70 gives focus 2 a 43% break rate and
+    focus 3 a 75% one). So the pool stays at 100 and the fix is legibility instead: the
+    allocate screen forecasts the month — "STAMINA 74 → 67 after this month — a heavy month, 3
+    shops in one calendar. A crackdown anywhere costs 3 more."
+19. **HALF DONE, HALF REJECTED, ON EVIDENCE.** Act Three now runs on **months**: twelve months
+    for four studios is credible where twelve weeks never was, and it lines up with Act One's
+    twenty-six weeks and the contract act's certification year.
+
+    Cutting the filing lead to 2 was implemented, measured and reverted. It reads better on
+    paper and plays much worse: the stretch between petition and ballot is where a player
+    fights — driving fear down, answering the captive-audience meetings, getting a committee
+    built under pressure — and at two turns it becomes a formality you file into and hope.
+    Election odds fell from 53–82% to 33–47%, and a single shop became the dominant strategy
+    at 68% against focus-3's 43%. Five months is also the truer number: a contested petition
+    means hearings, unit-scope challenges, and an employer with every reason to take its time.
+
+| policy | before 17–19 | after |
+|---|---|---|
+| focus 1 shop | 53.6% | 55.4% |
+| focus 2 shops | 53.3% | 55.7% |
+| **focus 3 shops** | 63.5% | **60.8%** |
+| spread across all 4 | 52.3% | 52.9% |
+| focus 3 + document | — | **68%** |
+| focus 3 + survey + document | — | **72%** |
+| never builds a committee | 0.0% | 0.0% |
+
 17. Let campaign sites accrue visibility and be retaliated against. Move the "document it"
     action into the campaign phase where the paper trail actually matters (ULP charges).
 18. Stamina: either cut the pool to 60 with all-in weeks costing 10, or delete it and let the

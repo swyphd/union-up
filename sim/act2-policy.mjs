@@ -75,6 +75,9 @@ export function planTurn(G, opts = {}) {
     if (eligible && !opts.noCommittee && responseCostFor(l, { formCommittee: true }) <= left) {
       r.formCommittee = true; left -= responseCostFor(l, r);
     }
+    // Keeping the paper trail while the ballot is pending: one action, and it more than
+    // halves what a crackdown costs you in fear.
+    if (opts.document && !l.documented && left >= 1) { r.document = true; left -= 1; }
     resp[l.id] = r;
   });
 

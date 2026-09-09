@@ -6,10 +6,11 @@ import * as C from './core2.mjs';
 const { clamp, rand, TOTAL_TURNS, START_LOCATIONS, COMMITTEE_COST, COMMITTEE_COST_CAMPAIGN, COMMITTEE_MORALE_REQ,
   COMMITTEE_RECRUIT_PCT_REQ, GRIEVANCE_META, EXTERNAL_EVENTS, BLOCS, LOC_COMPOSITION, DEMAND_BY_ID,
   PLATFORM_SLOTS, DEFECT_THRESHOLD, rollBlocPriorities, blocSatisfaction, locBlocFactor,
-  computeSolidarityScore, baseGain, baseVis, ACT2_SITES_NEEDED, ACT2_FILING_LEAD, ACT2_LAST_FILING_TURN, ACT2_BASE_ACTIONS, filingGates, act2Winnability, act2WinChance, act2CastBallot,
+  computeSolidarityScore, baseGain, baseVis, ACT2_SITES_NEEDED, ACT2_FILING_LEAD, ACT2_LAST_FILING_TURN, ACT2_BASE_ACTIONS, ACT2_STAMINA_POOL, filingGates, act2Winnability, act2WinChance, act2CastBallot,
   ACT2_LOSS_MORALE, ACT2_LOSS_TRUE, ACT2_LOSS_FEAR, ACT2_LOSS_STAMINA, ACT2_EMBOLDENED_RETALIATION,
   ACT2_CAMPAIGN_UPKEEP, provenDemands, contractHeadstart, ACT2_SURVEY_COST, SURVEY_STRONG, SURVEY_WEAK, surveyResponse,
-  SURVEY_TRUE_GAIN, SURVEY_MORALE_GAIN, SURVEY_DEAD_MORALE } = C;
+  SURVEY_TRUE_GAIN, SURVEY_MORALE_GAIN, SURVEY_DEAD_MORALE,
+  ACT2_FILING_VISIBILITY, ACT2_CAMPAIGN_RETALIATION, ACT2_CAMPAIGN_CRACKDOWN_CAP, ACT2_CAMPAIGN_HIT_SCALE, ACT2_RETALIATION_FEAR, ACT2_DOCUMENT_SHIELD, ACT2_DOCUMENT_DETERRENCE } = C;
 const roll100 = () => rand(100) + 1;
 
 export function newGame(leaders = [], contract = null) {
@@ -22,7 +23,7 @@ export function newGame(leaders = [], contract = null) {
       trueSupport: clamp(l.trueSupport + contractHeadstart(contract)),
       morale: clamp(l.morale + Math.round(contractHeadstart(contract) / 2)),
     })),
-    organizer: { stamina: 100, breaksTaken: 0, onBreak: 0 },
+    organizer: { stamina: ACT2_STAMINA_POOL, breaksTaken: 0, onBreak: 0 },
     budget: ACT2_BASE_ACTIONS + leaders.length,
     platform: [],
     priorities: rollBlocPriorities(),
@@ -56,7 +57,8 @@ export function fileEligible(l, turn) {
 // Filing happens between turns, at the escalation prompt. Mirrors commitFiling.
 export function file(G, locId) {
   return { ...G, locations: G.locations.map(l => l.id !== locId || !fileEligible(l, G.turn) ? l
-    : { ...l, status: 'campaign', electionTurn: G.turn + ACT2_FILING_LEAD, fear: 35 + rand(15) }) };
+    : { ...l, status: 'campaign', electionTurn: G.turn + ACT2_FILING_LEAD, fear: 35 + rand(15),
+        visibility: Math.max(l.visibility, ACT2_FILING_VISIBILITY) }) };
 }
 
 // One turn. alloc: {locId: units}, resp: {locId: {grievance,document,counter,reframe,formCommittee,bargain}}
@@ -115,7 +117,9 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
       const newMorale = clamp(l.morale + moraleDelta);
       const newFear = clamp(l.fear + fearDelta);
       const trueSupportDelta = Math.round(moraleDelta * 0.5) + (campCommittee.active ? 1 : 0);
-      return { ...l, morale: newMorale, trueSupport: clamp((l.trueSupport ?? l.morale) + trueSupportDelta), fear: newFear, committee: campCommittee };
+      return { ...l, morale: newMorale, trueSupport: clamp((l.trueSupport ?? l.morale) + trueSupportDelta), fear: newFear, committee: campCommittee,
+        legalRisk: clamp(l.legalRisk - (rc.document ? 8 : 0) - 2, 0, 100),
+        documented: l.documented || !!rc.document };
     }
 
     const r = resp[l.id] || {};
@@ -227,13 +231,17 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
   // Retaliation
   let retaliated = 0, sophisticationGain = 0;
   workingLocs = workingLocs.map(l => {
-    if (l.status !== 'organizing') return l;
+    if (l.status !== 'organizing' && l.status !== 'campaign') return l;
+    const atVote = l.status === 'campaign';
+    const documented = !!l.documented || !!resp[l.id]?.document;
     const u = { ...l };
     if (l._watchRecovery && l.morale >= l._watchFloor) { sophisticationGain = 1; u._watchRecovery = false; }
-    if (l.visibility >= 60) {
-      const forceRetaliate = l.visibility >= 90;
-      const retaliateThreshold = (legalClimateNext.tone === 'hostile' ? 65 : legalClimateNext.tone === 'favorable' ? 35 : 50)
-        + (G.emboldened ? ACT2_EMBOLDENED_RETALIATION : 0);
+    const spent = (l.crackdowns || 0) >= ACT2_CAMPAIGN_CRACKDOWN_CAP;
+    if (l.visibility >= 60 && !(atVote && spent)) {
+      const forceRetaliate = !atVote && l.visibility >= 90;
+      const base = atVote ? Math.round(ACT2_CAMPAIGN_RETALIATION * (documented ? ACT2_DOCUMENT_DETERRENCE : 1))
+        : (legalClimateNext.tone === 'hostile' ? 65 : legalClimateNext.tone === 'favorable' ? 35 : 50);
+      const retaliateThreshold = base + (G.emboldened ? ACT2_EMBOLDENED_RETALIATION : 0);
       if (forceRetaliate || roll100() <= retaliateThreshold) {
         const typeRoll = rand(100);
         const buyOffChance = G.soph >= 1 ? 15 + G.soph * 8 : 0;
@@ -244,18 +252,26 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
         else if (typeRoll < buyOffChance + fireChance + 30) { moraleHit = 10; legalHit = 5; }
         else { moraleHit = 5; visHit = -10; legalHit = 8; }
         retaliated++; L.retaliations++;
-        u.morale = clamp(u.morale - moraleHit);
-        u.trueSupport = clamp((u.trueSupport ?? u.morale) - Math.round(moraleHit * 0.8));
+        const hit = atVote ? Math.round(moraleHit * ACT2_CAMPAIGN_HIT_SCALE) : moraleHit;
+        u.morale = clamp(u.morale - hit);
+        u.trueSupport = clamp((u.trueSupport ?? u.morale) - Math.round(hit * 0.8));
         u.visibility = clamp(u.visibility + visHit);
         u.legalRisk = clamp(u.legalRisk + legalHit);
         u._retaliatedLastTurn = true;
+        if (atVote) u.crackdowns = (u.crackdowns || 0) + 1;
+        if (atVote && moraleHit > 0) {
+          const raw = Math.round(moraleHit * ACT2_RETALIATION_FEAR);
+          u.fear = clamp(u.fear + (documented ? Math.round(raw * ACT2_DOCUMENT_SHIELD) : raw));
+          L.campaignHits = (L.campaignHits || 0) + 1;
+        }
         if (setBuyOff) u.buyOff = { active: true, turnsLeft: 3 };
         if (targetCommittee) {
           const strikes = (u.committee.strikes || 0) + 1;
           if (strikes >= 2) { u.committee = { active: false, strikes: 0 }; u.morale = clamp(u.morale - 15); }
           else u.committee = { ...u.committee, strikes };
         }
-        if (moraleHit >= 20 && !targetCommittee) { u._watchRecovery = true; u._watchFloor = 55; }
+        const committeeHeld = !targetCommittee || !!u.committee?.active;
+        if (moraleHit >= 20 && committeeHeld) { u._watchRecovery = true; u._watchFloor = 55; }
       }
     }
     return u;
@@ -306,7 +322,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
   }
   let justBroke = false;
   if (orgStamina <= 0 && onBreak === 0) { onBreak = 2; breaksTaken += 1; justBroke = true; L.breaks++; }
-  if (onBreak > 0 && !justBroke) { onBreak -= 1; if (onBreak === 0) orgStamina = 80; }
+  if (onBreak > 0 && !justBroke) { onBreak -= 1; if (onBreak === 0) orgStamina = Math.round(ACT2_STAMINA_POOL * 0.8); }
 
   // Open bargaining
   let prioritiesNext = { ...G.priorities };
