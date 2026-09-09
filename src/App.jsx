@@ -4392,6 +4392,29 @@ function ladderOf(w) {
   if ((w.history && w.history.length > 0) || w.revealed) return LADDER_BY_ID.contacted;
   return LADDER_BY_ID.cold;
 }
+
+// The contract act climbs the same shape, but the rungs are different acts. Signing a
+// card is not what is being asked for any more, so SIGNED cannot be the rung that
+// matters — turning out is. The board takes these as props the way it takes `labels`.
+const CONTRACT_LADDER = [
+  { id: "committee", label: "ACTION TEAM", pips: 4, hex: "#fbbf24", blurb: "Runs the actions and brings other people out. Their relationships are yours to direct." },
+  { id: "signed", label: "TURNED OUT", pips: 3, hex: "#2dd4bf", blurb: "Showed up at the last action. This is the only thing the company actually counts." },
+  { id: "supporter", label: "SAYS YES", pips: 2, hex: "#a3e635", blurb: "Says they're in. Has not shown up to anything yet." },
+  { id: "contacted", label: "SPOKEN TO", pips: 1, hex: "#a8a29e", blurb: "Sat down with recently, so you know where they actually are." },
+  { id: "cold", label: "OUT OF TOUCH", pips: 0, hex: "#57534e", blurb: "Nobody has been near them lately. Whatever you think you know about them is old." },
+];
+const CONTRACT_LADDER_BY_ID = Object.fromEntries(CONTRACT_LADDER.map(r => [r.id, r]));
+// Everyone carries an Act One history and arrives revealed, so "have you ever spoken to
+// them" is true of the whole floor and says nothing. What matters now is whether the
+// read is still good, which is the same test the panel and the projection already use.
+function contractLadderOf(w, month = 1) {
+  if (w.organizer) return CONTRACT_LADDER_BY_ID.committee;
+  if (w.signed) return CONTRACT_LADDER_BY_ID.signed;
+  if (w.support >= 55) return CONTRACT_LADDER_BY_ID.supporter;
+  if (month - (w.spokenMonth ?? -99) <= CONTRACT_READ_FRESH) return CONTRACT_LADDER_BY_ID.contacted;
+  return CONTRACT_LADDER_BY_ID.cold;
+}
+
 function LadderBadge({ worker, showLabel = true }) {
   const r = ladderOf(worker);
   return (
@@ -4609,9 +4632,9 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
 
 // labels lets a second act reuse this board with its own vocabulary — the geometry,
 // influence arrows and card layout are identical, only the words change.
-const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD" };
+const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD", numberLegend: "SUPPORT" };
 
-function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, hoursLeft = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
+function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, ladder = LADDER, rungOf = ladderOf, hoursLeft = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
   // Which common-ground mark the cursor is on. The tooltip is HTML rather than SVG so
   // its type is real pixels — the SVG version scaled down to about eight of them.
@@ -4683,13 +4706,20 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
             <span className="w-2.5 h-2 shrink-0 border" style={{ borderColor: "#44403c" }} />
             <span className="text-stone-600">NEITHER</span>
           </span>
+          {labels.numberLegend && (
+            <span className="flex items-center gap-1.5 border-l border-stone-800 pl-3" title="What the big number on each card is measuring.">
+              <span className="font-mono text-stone-400 font-bold">42</span>
+              <span className="text-stone-500">=</span>
+              <span className="text-stone-300 font-bold">{labels.numberLegend}</span>
+            </span>
+          )}
         </div>
       </div>
 
 
       {/* THE LADDER. Left to right is the whole campaign. */}
       <div className="flex items-center gap-3 flex-wrap text-[10px] mb-2 px-0.5">
-        {[...LADDER].reverse().map((r, i) => (
+        {[...ladder].reverse().map((r, i) => (
           <span key={r.id} className="flex items-center gap-1.5" title={r.blurb}>
             {i > 0 && <span className="text-stone-700 mr-1">{"\u203a"}</span>}
             <Pips filled={r.pips} total={4} hex={r.hex} size={5} gap={1.5} />
@@ -4838,7 +4868,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
               {/* Commitment ladder in the top-right corner, where the trait tick used to
                   sit. Small, because it is a state you glance at rather than read. */}
               {(() => {
-                const rung = ladderOf(w);
+                const rung = rungOf(w);
                 return (
                   <g opacity={w.burned ? 0.3 : 1}>
                     {[0, 1, 2, 3].map(i => (
@@ -7438,7 +7468,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
     ...w, support: w.commitment, organizer: w.cat, signed: w.participated,
     trueSupport: w.commitment, trueKnown: true, trueKnownWeek: 1,
   }));
-  const labels = { organizerLegend: "ON THE ACTION TEAM", signedLegend: "TURNED OUT LAST TIME" };
+  const labels = { organizerLegend: "ON THE ACTION TEAM", signedLegend: "TURNED OUT LAST TIME", numberLegend: "COMMITMENT" };
   const canResolve = planEntries.length > 0 || actionPlan;
   const overBudget = cat.some(o => hoursLeft(o) < 0) || totalUsed > totalHours;
   const poolLeft = totalHours - totalUsed;
@@ -7562,14 +7592,12 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
           {turn === 1 && phase === "plan" && (
             <div className="mb-4 flex items-start gap-2 text-stone-300 text-sm border border-stone-700 bg-stone-900/60 px-3 py-2">
               <Megaphone size={14} className="shrink-0 mt-0.5" />
+              {/* Two lines. Everything this used to explain — what repetition pays, what a
+                  milestone month is worth, what the number on a card measures — is now on
+                  the board itself, live and numeric, where it is still there in month 9. */}
               <span>
-                You won the election. Now the company has to bargain — but not to agree. The number on each card is{" "}
-                <span className="text-stone-100 font-bold">commitment</span>: whether they'll actually do something, not whether they support the union.
-                Run an action, and whatever turnout you get is the only argument the company answers to.
-                {carry && <> These are the same people, and it starts from where you actually left them — the map you drew, what you found they have in
-                common, and how far each of them would really have gone. Nobody was rolled again.</>}
-                {" "}Running the same action twice tells them nothing the first one didn't, so it pays a fraction: climb the ladder, don't camp on it.
-                And the months marked MILESTONE are the ones where withholding labour actually costs them something.</span>
+                You won the election. Now the company has to bargain — <span className="text-stone-100 font-bold">but not to agree</span>.
+                Run an action; the turnout you get is the only argument they answer to.</span>
             </div>
           )}
 
@@ -7648,6 +7676,8 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
             notes={phase === "result" ? result?.notes : null}
             stepKey={turn}
             labels={labels}
+            ladder={CONTRACT_LADDER}
+            rungOf={(w) => contractLadderOf(w, turn)}
             hoursLeft={phase === "plan" ? Object.fromEntries(cat.map(o => [o.id, hoursLeft(o)])) : null}
           />
 
