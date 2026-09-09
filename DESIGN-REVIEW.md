@@ -599,6 +599,58 @@ Balance is unmoved (n=2000, and the ordering is what matters):
 
 ---
 
+## 3.5 The text audit (all three acts)
+
+Every player-facing prose block in the game, extracted by script and measured. The rule:
+**more than two lines is a bug unless the board genuinely cannot say it.** A block that
+survives has to be carrying something no number, colour, band or rung on screen already
+carries.
+
+Seven screen regions ran to 200+ characters of standing prose. Four survive, and all four
+are structural rather than expository: a confirm dialog for an irreversible action, three
+choice buttons that each describe their choice, an on-demand hover tooltip, and two
+independent one-line event banners that happened to sit next to each other.
+
+**Cut as already-said-elsewhere:**
+
+| Where | What it said | Where the board already said it |
+| --- | --- | --- |
+| Act One, filing banner | what filing does, the ballot rule, the projection, the cushion advice | the modal it opens, one click away — the banner now gives the count and whether you have a cushion |
+| Act One, filing modal | the card count and the 30% again | the banner you clicked to get here |
+| Act One, public-actions unlock | reach, proportionality, exposure risk | the tier cards: "Reaches 4 coworkers — about +11 support in total", "Exposure risk: high", "has already done this once — it isn't news anymore" |
+| Act Three, allocate screen | "unassigned actions count as rest" | the first entry of every site's effort list, and the stamina forecast directly above |
+| Act Three, escalation modal | true support, fear and the odds, restated | the "IF YOU FILE TODAY" block one line above, which quotes all three |
+| Act Three, site panel | "a majority of the ballots cast decides it" | the escalation prompt states it at the moment of filing; the yes/no projection shows it |
+| Act Three, map caption | "every site shares the same company" | the edges drawn between the sites |
+
+**Act One's ballot rule now appears once** — in the confirm dialog, at the point of
+decision — instead of three times across a banner, a panel and a modal.
+
+**Built into the board instead: the projection is now a band.**
+
+The campaign panel said, under a single hard number, *"This is an estimate, not a promise:
+the booth is secret, people who signed still vote no…"* — prose apologising for a number
+the game was presenting as exact. The contract act had already solved this: its turnout
+projection reads `13–14 of 20` because it is built from each worker's read. Act One has the
+same read model and was throwing it away in `voteProjection`.
+
+`voteProjectionBand` keeps it. PROJECTED YES now reads `9–15` on an unread floor and
+collapses to a single number when every worker is signed or freshly read. The width is the
+warning, so the sentence is gone:
+
+| floor | projection |
+| --- | --- |
+| mixed reads, week 10 | 7–12 |
+| same floor, week 14 (reads aging) | 6–12 |
+| every worker signed | 12 |
+
+The band leans downward rather than sitting symmetrically around the estimate, because
+`readOf` puts warm words at the *top* of a person's band. The projection is therefore
+wrong in the flattering direction exactly where the player has not done the work — which
+is the lesson Act One is built on, now visible in the one number they watch most.
+
+---
+
 ## 4. The First Contract prototype
 
 ### 4.1 What the sim says

@@ -1946,7 +1946,9 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
                 At zero the organizer is off for two months, and the second time that happens the campaign is over.
               </span>
             </div>
-            <p className="text-xs text-stone-500 mb-3">Click a location above to choose what the organizer does there this month. Tap it again to change the plan. Unassigned actions count as rest — they help the organizer recover stamina but do nothing for the campaign.</p>
+            {/* "Unassigned counts as rest" is already the first entry in every site's
+                effort list and is already priced in the stamina forecast above. */}
+            <p className="text-xs text-stone-500 mb-3">Click a site above to plan its month.</p>
             <button
               onClick={resolveTurn}
               disabled={totalAllocated > weeklyBudget}
@@ -2582,7 +2584,7 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
           </div>
         ) : (
           <div className="text-xs text-stone-600 italic">
-            Every site shares the same company — anti-union talk and organizing momentum both travel along these lines. Hover a site for details, click to plan.
+            Anti-union talk and momentum both travel these lines. Hover a site for details, click to plan.
           </div>
         )}
       </div>
@@ -2673,9 +2675,11 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
                     {Math.round(odds * 100)}%
                   </span>
                 </div>
+                {/* The escalation prompt states the ballot rule at the moment you file,
+                    and the yes/no projection above shows it. What is left here is the part
+                    no number on this panel explains: what fear actually does. */}
                 <div className="text-xs text-stone-500 mt-1 leading-snug">
-                  A majority of the ballots cast decides it. Fear keeps people at their desks rather than changing their vote —
-                  every month of the employer's campaign is a month it goes up.
+                  Fear keeps your people at their desks rather than changing their vote, and every month of the employer's campaign is a month it goes up.
                 </div>
               </div>
             );
@@ -3047,13 +3051,14 @@ function EscalationModal({ loc, turn, factor = 1, ballotCtx = null, onFile, onCo
           </div>
         </div>
 
-        {loc.committee?.active ? (
-          <div className="mb-4 text-xs border border-teal-800 bg-teal-950/30 text-teal-300 px-3 py-2">
-            The shop committee gives you an honest read: true support sits at <span className="font-bold">{loc.trueSupport}</span>, not the {loc.morale} morale number.
-          </div>
-        ) : gap >= 12 ? (
+        {/* The block above already quotes true support, fear and the odds. Restating them
+            here was the same sentence twice. Only the no-committee case says anything the
+            projection cannot: that there is no projection. */}
+        {!loc.committee?.active && gap >= 12 ? (
           <div className="mb-4 text-xs border border-amber-800 bg-amber-950/30 text-amber-300 px-3 py-2">
-            No shop committee here, so true support is hidden and the election odds above cannot be calculated. Morale reads {loc.morale}; the number the vote uses could be {Math.max(0, loc.morale - 25)}.
+            {/* The line above already says it cannot be projected. This adds the one
+                thing it does not: how big the hole is. */}
+            Morale reads {loc.morale}. The number the vote actually uses could be as low as {Math.max(0, loc.morale - 25)}.
           </div>
         ) : null}
 
@@ -3660,6 +3665,24 @@ function voteProjection(workers) {
     out += 1 - t;
   });
   return { yes: Math.round(yes), no: Math.round(no), out: Math.round(out) };
+}
+// The same projection with its uncertainty left in, the way the contract act's turnout
+// band already does it. Every worker is a read rather than a number, so the yes count is a
+// range as wide as the reads behind it — and the width IS the warning. Somebody looking at
+// "9-15 yes" does not need to be told in prose that the booth is secret and the number is
+// soft. Somebody looking at "12 yes" does, and will not believe it anyway.
+function voteProjectionBand(workers, week = 1) {
+  let lo = 0, hi = 0, exact = true;
+  workers.forEach(w => {
+    const r = readOf(w, week);
+    if (!r.exact) exact = false;
+    const at = (v) => {
+      const believed = { ...w, support: v, trueSupport: v, trueKnown: true };
+      return turnoutChance(believed) * yesChance(believed);
+    };
+    lo += at(r.lo); hi += at(r.hi);
+  });
+  return { lo: Math.round(lo), hi: Math.round(hi), exact };
 }
 // Employers voluntarily recognize when the count is so lopsided that fighting it looks
 // worse than losing. A union-avoidance consultant on the payroll is there to argue the
@@ -6207,7 +6230,10 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           {unlockPublic && !anyPublicDone && (
             <div className="mb-4 flex items-start gap-2 text-teal-300 text-sm border border-teal-700 bg-teal-950/30 px-3 py-2">
               <Megaphone size={14} className="shrink-0 mt-0.5" />
-              <span><span className="font-bold text-teal-400">NEW — PUBLIC ACTIONS.</span> Instead of one conversation, have one of your people do something visible. It moves everyone they carry weight with at once, in proportion to that weight. The bigger the action, the bigger the ripple — and the bigger the chance management pulls them out of play.</span>
+              {/* The tier cards in the worker panel already quote the reach, the support
+                  it moves, the exposure risk and what repeating one costs — live, per
+                  person, per tier. This only has to say the option now exists. */}
+              <span><span className="font-bold text-teal-400">NEW — PUBLIC ACTIONS.</span> One of your people can do something visible instead of having one more conversation. Open anyone on the committee to see what it reaches, and what it risks.</span>
             </div>
           )}
           {anyRecruitable && (
@@ -6237,9 +6263,12 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
                   <div className="text-2xl font-bold text-stone-400">{projection.out}</div>
                 </div>
               </div>
+              {/* The band above says "estimate, not promise" better than a sentence can,
+                  so the sentence is gone. What stays is the one fact no number shows: the
+                  employer owns every week left on that clock. */}
               <div className="text-xs text-stone-400 leading-relaxed">
-                It takes a majority of the ballots actually cast — <span className="text-stone-200 font-bold">{projection.yes > projection.no ? "you are ahead on today's numbers" : "you are behind on today's numbers"}</span>.
-                This is an estimate, not a promise: the booth is secret, people who signed still vote no, and every week between now and the ballot is a week the employer campaigns and you lose ground. A one-vote projection is a loss waiting to happen.
+                Majority of ballots cast wins it, and <span className="text-stone-200 font-bold">{projection.yes > projection.no ? "you are ahead" : "you are behind"}</span> on today's read.
+                Every week left on the clock is a week the employer campaigns.
               </div>
             </div>
           )}
@@ -6249,11 +6278,13 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="flex-1 min-w-[16rem]">
                   <div className="font-stencil text-lg tracking-wide text-teal-400">YOU CAN FILE TODAY</div>
+                  {/* A prompt and the live count. What filing costs you is the modal's
+                      job — saying it here too just means saying it twice. */}
                   <div className="text-xs text-stone-400 leading-relaxed mt-1">
-                    {signedCount} of {ACT1_TOTAL_WORKERS} cards is {cardPct}% — past the 30% the NLRB requires to petition for an election.
-                    Filing starts a {ELECTION_WEEKS}-week clock you cannot stop, and the vote needs a majority of ballots cast, not 30%.
-                    On today's support that ballot projects <span className="text-teal-400 font-bold">{projection.yes} yes</span> to <span className="text-red-400 font-bold">{projection.no} no</span>, with {projection.out} not voting.
-                    Organizers almost never file at the minimum — they build a cushion first, because the four weeks after filing belong to the employer.
+                    {signedCount} of {ACT1_TOTAL_WORKERS} cards is <span className="text-stone-200 font-bold">{cardPct}%</span> — past the 30% the NLRB needs to schedule an election.
+                    {projection.yes > projection.no + 2
+                      ? " Organizers file on a cushion, and you have one."
+                      : " Organizers almost never file at the minimum."}
                   </div>
                 </div>
                 <button
@@ -6417,19 +6448,19 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto" onClick={() => setShowFilePrompt(false)}>
           <div className="bg-stone-900 border-2 border-teal-800 max-w-lg w-full p-5 my-auto" onClick={e => e.stopPropagation()}>
             <div className="font-stencil text-2xl text-teal-400 mb-1">FILE THE PETITION?</div>
+            {/* The banner you clicked to get here already gave the count and the 30%.
+                What it did not say is the part that matters. */}
             <p className="text-sm text-stone-400 leading-relaxed mb-3">
-              You have {signedCount} cards out of {ACT1_TOTAL_WORKERS} — {cardPct}% of the unit. Thirty percent is all the labor board
-              needs to schedule an election. It is not what wins one.
+              Thirty percent schedules an election. It is not what wins one.
             </p>
             <div className="border border-stone-700 bg-stone-950/60 p-3 mb-3 space-y-2 text-[13px] text-stone-400 leading-relaxed">
               <div>
                 <span className="text-stone-200 font-bold">What filing does.</span> You demand recognition and petition the NLRB the same day.
-                If the count is lopsided enough the company may recognize you outright and skip the vote — that is rare, and rarer still
-                once they're paying a consultant to tell them not to.
+                A lopsided enough count can win recognition outright — rare, and rarer once they are paying a consultant.
               </div>
               <div>
-                <span className="text-stone-200 font-bold">Otherwise, a secret ballot in {ELECTION_WEEKS} weeks.</span> Every worker in the unit gets one.
-                It is decided by a majority of the ballots actually cast, so someone who stays at their desk is a vote you didn't get.
+                <span className="text-stone-200 font-bold">Otherwise, a secret ballot in {ELECTION_WEEKS} weeks.</span> Decided by a majority of the
+                ballots actually cast — someone who stays at their desk is a vote you didn't get.
               </div>
               <div>
                 <span className="text-stone-200 font-bold">Those {ELECTION_WEEKS} weeks belong to them.</span> Mandatory meetings every week, one-on-ones

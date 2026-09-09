@@ -53,7 +53,7 @@ export { ACT1_WORKERS_SEED, ACT1_CARDS_NEEDED, ACT1_TOTAL_WORKERS, ACT1_ACTION, 
   PUBLIC_TIERS, publicFatigue, publicGain, signChance, infTrait, senderMult, recvMult, holdsFast,
   ORG_TIERS, orgTier, orgMult, committeeHours, idlePenalty, makeAct1Workers, generateInfluence,
   infOn, outgoingTies, incomingTies, influenceKnown, shownInfluence, signedBacking, orgChartResistance,
-  clamp, rand, readOf, floorClarity, tieOn, tieFrom, tieBonus, turnoutChance, yesChance, voteProjection, OUTSIDERS, PERK_WEEKS,
+  clamp, rand, readOf, floorClarity, tieOn, tieFrom, tieBonus, turnoutChance, yesChance, voteProjection, voteProjectionBand, OUTSIDERS, PERK_WEEKS,
   poisonedAff, TEAM_LABEL, ACT1_CARD_THRESHOLD, ELECTION_WEEKS };
 `;
 fs.writeFileSync(new URL('core.mjs', import.meta.url), out);
