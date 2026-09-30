@@ -40,11 +40,11 @@ export function pickSitDowns(G, budgetLeft, mode = 'referral', focus = 99) {
     let pick;
     if (mode === 'referral') {
       const byName = pool.filter(w => named.has(w.id));
-      pick = (byName.length ? byName : pool)[Math.floor(Math.random() * (byName.length || pool.length))];
+      pick = (byName.length ? byName : pool)[C.rand(byName.length || pool.length)];
     } else if (mode === 'enthusiasm') {
       pick = pool.reduce((a, b) => (act2Read(l, b).mid > act2Read(l, a).mid ? b : a));
     } else {
-      pick = pool[Math.floor(Math.random() * pool.length)];
+      pick = pool[C.rand(pool.length)];
     }
     (out[l.id] = out[l.id] || []).push(pick.id);
     used += 1;

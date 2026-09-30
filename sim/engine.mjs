@@ -45,7 +45,7 @@ export function resolveWeek(G, plan) {
     const g = convoGain(actor, target, tie);
     target.revealed = true;
     revealAffinities(target, revealCount(e.type, actor, target));
-    if (e.type === 'deep' && Math.random() < misfireChance(actor, target)) {
+    if (e.type === 'deep' && C.random() < misfireChance(actor, target)) {
       target.guarded = 3; gainXp(actor, 3); bump(target, -2, -4); T.misfires++;
       return;
     }
@@ -80,7 +80,7 @@ export function resolveWeek(G, plan) {
     if (tier.burn > 0) {
       const lastOne = w.filter(x => x.organizer && !x.burned).length <= 1;
       const risk = tier.burn * (0.6 + heatNext / 100) * (infTrait(actor).burnMult ?? 1);
-      if (Math.random() < risk) {
+      if (C.random() < risk) {
         if (lastOne) { heatNext = clamp(heatNext + 8); actor.shaken = 1; }
         else {
           actor.burned = true; actor.organizer = false; T.burns++;
@@ -103,7 +103,7 @@ export function resolveWeek(G, plan) {
     const tie = tieOn(influence, actor, target);
     const chance = signChance(actor, target, tie);
     target.revealed = true; touched.add(target.id); T.asks++;
-    if (Math.random() < chance) {
+    if (C.random() < chance) {
       target.signed = true; target.signedWeek = week; T.signs++;
       target.support = Math.max(target.support, 78);
       target.trueSupport = clamp(Math.max(target.trueSupport ?? 0, 72));
@@ -205,14 +205,14 @@ export function resolveWeek(G, plan) {
       if (outsidersNext.includes(o.id) || o.id === 'consultant') return;
       if (o.arrival(ctx)) outsidersNext.push(o.id);
     });
-    if (outsidersNext.includes('boss') && Math.random() < 0.5) {
+    if (outsidersNext.includes('boss') && C.random() < 0.5) {
       w.forEach(x => {
         if (x.burned || x.organizer) return;
         x.support = clamp(x.support + 4 + rand(4));
         x.trueSupport = clamp((x.trueSupport ?? x.support) - 2);
       });
     }
-    if (outsidersNext.includes('corporate') && Math.random() < 0.45) {
+    if (outsidersNext.includes('corporate') && C.random() < 0.45) {
       const teams = ['engineering', 'qa', 'production'];
       const t = teams[rand(teams.length)];
       w.forEach(x => {
@@ -222,7 +222,7 @@ export function resolveWeek(G, plan) {
       });
       heatNext = clamp(heatNext + 5);
     }
-    if (outsidersNext.includes('celebrity') && Math.random() < 0.4) {
+    if (outsidersNext.includes('celebrity') && C.random() < 0.4) {
       w.forEach(x => {
         if (x.burned) return;
         const t = infTrait(x);
@@ -240,7 +240,7 @@ export function resolveWeek(G, plan) {
 
   // --- MANAGEMENT ---
   heatNext = clamp(heatNext - (5 + Math.floor(heatNext / 12)), 0, 100);
-  if (heatNext >= 45 && Math.random() < 0.55) {
+  if (heatNext >= 45 && C.random() < 0.55) {
     const roll = rand(100);
     const teams = ['engineering', 'qa', 'production'];
     if (roll < 45) {
@@ -338,7 +338,7 @@ export function resolveWeek(G, plan) {
         const mark = [...threatPool].sort((a, b) => mb(a) - mb(b))[0];
         const foldChance = Math.max(0.1, Math.min(0.5, 0.5 - mb(mark) / 300));
         consultantNext = { ...consultantNext, threats: consultantNext.threats + 1, lastSetPiece: week };
-        if (Math.random() < foldChance) {
+        if (C.random() < foldChance) {
           mark.organizer = false; mark.support = clamp(mark.support - 25); mark.underPressure = 2;
           outgoingTies(influence, mark.id).forEach(t => {
             const o = byId(t.id);
@@ -355,7 +355,7 @@ export function resolveWeek(G, plan) {
         const mark = [...raisePool].sort((a, b) => a.support - b.support)[0];
         const takeChance = Math.min(0.7, Math.max(0.05, (100 - mark.support) / 60));
         consultantNext = { ...consultantNext, raises: consultantNext.raises + 1, lastSetPiece: week };
-        if (Math.random() < takeChance) {
+        if (C.random() < takeChance) {
           mark.signed = false; mark.support = clamp(mark.support - 35);
           mark.underPressure = 2; heatNext = clamp(heatNext - 5);
         } else {
@@ -374,8 +374,8 @@ export function resolveWeek(G, plan) {
   if (stage === 'campaign' && G.electionWeek != null && week >= G.electionWeek) {
     let yes = 0, no = 0, out = 0;
     w.forEach(x => {
-      if (Math.random() >= turnoutChance(x)) { out++; return; }
-      if (Math.random() < yesChance(x)) yes++; else no++;
+      if (C.random() >= turnoutChance(x)) { out++; return; }
+      if (C.random() < yesChance(x)) yes++; else no++;
     });
     ballot = { yes, no, out, cast: yes + no, won: yes > no };
   }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { random, rand, clamp } from "./engine/rng.js";
 import { AlertTriangle, Eye, Zap, Scale, Vote, X, CheckCircle2, FileWarning, Wrench, MessageCircle, Radio, Megaphone, HandCoins, UsersRound, Brain } from "lucide-react";
 
 // ---------- FONTS / GLOBAL STYLE ----------
@@ -196,8 +197,6 @@ const ACT2_CAMPAIGN_TIERS = [
   { units: 6, label: "All-in for the vote", cost: 6, desc: "Everything the organizer has, fighting for this election." },
 ];
 
-const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
-const rand = (n) => Math.floor(Math.random() * n);
 
 // ---------- BLOCS AND THE DEMAND PLATFORM ----------
 // You cannot make everyone happy. Winning recognition is a unifying fight — everybody
@@ -437,7 +436,7 @@ const ACT2_LEADER_PULL = 55;
 // is not enough calendar to find anyone, which stops being a lesson and starts being a
 // wall.
 function rollPull() {
-  const r = Math.random();
+  const r = random();
   if (r < 0.52) return 10 + rand(26);   // most of the floor
   if (r < 0.74) return 36 + rand(19);   // well-liked, not followed
   return 55 + rand(41);                 // an organic leader
@@ -474,7 +473,7 @@ function committeeWeight(loc) {
   return led.reduce((t, w) => t + w.pull, 0) / 100;
 }
 
-const shuffled = (a) => a.map(v => ({ v, k: Math.random() })).sort((x, y) => x.k - y.k).map(x => x.v);
+const shuffled = (a) => a.map(v => ({ v, k: random() })).sort((x, y) => x.k - y.k).map(x => x.v);
 
 function makeAct2Rosters() {
   const names = shuffled(ACT2_NAMES);
@@ -515,7 +514,7 @@ function makeAct2Rosters() {
       const pool = others.map(o => ({ o, weight: (o.pull + 8) * (o.pull + 8) }));
       for (let k = 0; k < Math.min(ACT2_REFERRALS, pool.length); k++) {
         let total = pool.reduce((t, x) => t + (picked.includes(x.o.id) ? 0 : x.weight), 0);
-        let roll = Math.random() * total;
+        let roll = random() * total;
         for (const x of pool) {
           if (picked.includes(x.o.id)) continue;
           roll -= x.weight;
@@ -764,7 +763,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     let moraleClimateNext = moraleClimate.turnsLeft > 0 ? { ...moraleClimate, turnsLeft: moraleClimate.turnsLeft - 1 } : { tone: "neutral", turnsLeft: 0 };
     let legalClimateNext = legalClimate.turnsLeft > 0 ? { ...legalClimate, turnsLeft: legalClimate.turnsLeft - 1 } : { tone: "neutral", turnsLeft: 0 };
     let firedEvent = null;
-    if (!isBreakTurn && Math.random() < 0.18) {
+    if (!isBreakTurn && random() < 0.18) {
       firedEvent = EXTERNAL_EVENTS[rand(EXTERNAL_EVENTS.length)];
       if (firedEvent.moraleClimate) moraleClimateNext = { ...firedEvent.moraleClimate };
       if (firedEvent.legalClimate) legalClimateNext = { ...firedEvent.legalClimate };
@@ -785,7 +784,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         // Nobody's left to counter anti-union talk here — it festers uncontested and can seed on its own.
         let au = l.antiUnion || { active: false, turnsLeft: 0 };
         if (au.active) au = { active: true, turnsLeft: au.turnsLeft };
-        else if (Math.random() < 0.12) au = { active: true, turnsLeft: 2 };
+        else if (random() < 0.12) au = { active: true, turnsLeft: 2 };
         return { ...l, antiUnion: au };
       }
 
@@ -922,7 +921,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         const responded = r.grievance || committeeHandlesIt;
         if (responded) {
           if (l.grievance.type === "legal") {
-            if (Math.random() < (locHasTrait(l.id, "legal") ? 0.97 : 0.9)) {
+            if (random() < (locHasTrait(l.id, "legal") ? 0.97 : 0.9)) {
               grievanceBonus = 20;
               grievanceRecruitBonus = 2;
               grievanceSupportBonus = 18; // a real, provable win — this is what true support is built on
@@ -957,7 +956,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
           }
         }
       } else {
-        const roll = Math.random();
+        const roll = random();
         if (l.morale >= 50 && roll < 0.12) newGrievance = { type: "legal", turnsActive: 0 };
         else if (roll < 0.27) newGrievance = { type: "material", turnsActive: 0 };
         else if (roll < 0.52) newGrievance = { type: "noise", turnsActive: 0 };
@@ -995,7 +994,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         if (firedEvent && firedEvent.seedAntiUnion) {
           newAntiUnion = { active: true, turnsLeft: 2 };
           feedbackLines.push(`${l.name}: The national PR blitz reaches workers here directly.`);
-        } else if (eligible && Math.random() < 0.22) {
+        } else if (eligible && random() < 0.22) {
           newAntiUnion = { active: true, turnsLeft: 2 };
           feedbackLines.push(`${l.name}: Word comes back that management's been talking down the union informally.`);
         }
@@ -1218,7 +1217,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       const cureChance = Math.min(0.5, turnSolidarityScore * 0.07);
       workingLocs = workingLocs.map(l => {
         if (!l.antiUnion?.active || l.status === "won" || l.status === "lost") return l;
-        if (Math.random() >= cureChance) return l;
+        if (random() >= cureChance) return l;
         solidarityLines.push(`${l.name}: Word of what's happening elsewhere makes the anti-union talk here feel small. It fizzles out on its own.`);
         strongSites.filter(s => s.id !== l.id).forEach(s => solidarityPulses.push({ from: s.id, to: l.id, tone: "up" }));
         return { ...l, antiUnion: { active: false, turnsLeft: 0 }, morale: clamp(l.morale + 3) };
@@ -1259,7 +1258,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         const availableSources = contagionSources.filter(s => s.id !== l.id);
         if (!availableSources.length) return l;
         const spreadChance = Math.max(0.02, 0.12 + employerSophistication * 0.05 + (employerEmboldened ? 0.05 : 0) - turnSolidarityScore * 0.04);
-        if (Math.random() >= spreadChance) return l;
+        if (random() >= spreadChance) return l;
         const source = availableSources[rand(availableSources.length)];
         contagionPulses.push({ from: source.id, to: l.id, tone: "down" });
         if (l.status === "campaign") {
@@ -1393,7 +1392,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         .filter(x => !x.pr.defected && x.sat < 50)
         .sort((x, y) => x.sat - y.sat);
 
-      if (unserved.length && Math.random() < 0.45) {
+      if (unserved.length && random() < 0.45) {
         const { b, sat, pr } = unserved[0];
         // Representation: is this bloc thick anywhere that has an active committee?
         const represented = workingLocs.some(l =>
@@ -1401,7 +1400,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
         const takeChance = clamp(
           (DEFECT_THRESHOLD + 25 - sat) / 100 + pr.intensity * 0.08 - (represented ? 0.35 : 0) - (pr.pledged ? 0.12 : 0),
           0, 0.85) ;
-        if (Math.random() < takeChance) {
+        if (random() < takeChance) {
           prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, defected: true } };
           blocLines.push(
             `${b.label} WALK \u2014 the company offers them ${DEMAND_BY_ID[pr.top]?.label || "a side deal"} directly, outside the union. ` +
@@ -2121,7 +2120,7 @@ function act2Winnability(locations, turn) {
 
 // ---------- THE BALLOT ----------
 // A shop's election is decided the way Act One's is: one ballot per worker, each with
-// their own odds, counted up. Not one Math.random() against an aggregate probability —
+// their own odds, counted up. Not one random roll against an aggregate probability —
 // that made a well-run campaign lose a quarter of the time for no reason the player
 // could see, and it meant the margin said nothing about the work.
 //
@@ -2222,8 +2221,8 @@ function act2CastBallot(loc, factor = 1, ctx = null) {
   let yes = 0, no = 0, out = 0;
   const stayed = [];
   act2Ballot(loc, factor, ctx).forEach(v => {
-    if (Math.random() >= v.turnout) { out += 1; if (v.worker) stayed.push(v.worker); return; }
-    if (Math.random() < v.yes) yes += 1; else no += 1;
+    if (random() >= v.turnout) { out += 1; if (v.worker) stayed.push(v.worker); return; }
+    if (random() < v.yes) yes += 1; else no += 1;
   });
   return { yes, no, out, cast: yes + no, won: yes > no, stayed };
 }
@@ -3810,12 +3809,12 @@ function generateInfluence(seed) {
   seed.forEach(a => {
     const others = seed.filter(o => o.id !== a.id);
     const ranked = others
-      .map(b => ({ b, roll: Math.random() * (b.team === a.team ? 1 : 0.5) }))
+      .map(b => ({ b, roll: random() * (b.team === a.team ? 1 : 0.5) }))
       .sort((x, y) => y.roll - x.roll);
     const count = 2 + rand(2); // each person carries real weight with 2-3 coworkers
     ranked.slice(0, count).forEach(({ b }) => {
       const sameTeam = b.team === a.team;
-      const weight = clamp(Math.round((sameTeam ? 45 : 28) + Math.random() * 45), 15, 95);
+      const weight = clamp(Math.round((sameTeam ? 45 : 28) + random() * 45), 15, 95);
       inf[a.id][b.id] = Math.max(inf[a.id][b.id] || 0, weight);
     });
   });
@@ -3833,7 +3832,7 @@ function generateInfluence(seed) {
   seed.filter(w => w.organizer).forEach(o => {
     const strong = Object.values(inf[o.id]).filter(v => v >= 40).length;
     if (strong >= 3) return;
-    const pool = seed.filter(b => b.id !== o.id && !b.organizer).sort(() => Math.random() - 0.5);
+    const pool = seed.filter(b => b.id !== o.id && !b.organizer).sort(() => random() - 0.5);
     let added = strong;
     pool.forEach(b => {
       if (added >= 3) return;
@@ -3881,7 +3880,7 @@ function makeAct1Workers() {
     ...(() => {
       // 3-5 affinities each. Your own two organizers start fully known — you already
       // know what your people talk about.
-      const pool = [...AFFINITY_POOL].sort(() => Math.random() - 0.5);
+      const pool = [...AFFINITY_POOL].sort(() => random() - 0.5);
       const affinities = pool.slice(0, 3 + rand(3)).map(a => a.id);
       return { affinities, knownAffinities: w.organizer ? [...affinities] : [], poisoned: [] };
     })(),
@@ -4251,7 +4250,7 @@ function revealCount(kind, actor, target) {
 }
 function revealAffinities(target, n) {
   const hidden = affList(target).filter(t => !knownAff(target).includes(t));
-  const picked = hidden.sort(() => Math.random() - 0.5).slice(0, n);
+  const picked = hidden.sort(() => random() - 0.5).slice(0, n);
   target.knownAffinities = [...knownAff(target), ...picked];
   return picked;
 }
@@ -5290,7 +5289,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
       const found = revealAffinities(target, revealCount(e.type, actor, target));
       const foundNames = found.map(t => AFF_BY_ID[t].label.toLowerCase());
 
-      if (e.type === "deep" && Math.random() < misfireChance(actor, target)) {
+      if (e.type === "deep" && random() < misfireChance(actor, target)) {
         // Cold deep talk. They hear a pitch, not a conversation.
         target.guarded = 3;
         gainXp(actor, 3); // you learn something even from a conversation that goes badly
@@ -5370,7 +5369,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
         const lastOne = w.filter(x => x.organizer && !x.burned).length <= 1;
         // HOTHEADs are the ones who get walked out. The CAUTIOUS almost never are.
         const risk = tier.burn * (0.6 + heatNext / 100) * (infTrait(actor).burnMult ?? 1);
-        if (Math.random() < risk) {
+        if (random() < risk) {
           if (lastOne) {
             heatNext = clamp(heatNext + 8);
             publicLines.push(`${actor.name} gets pulled aside about "tone" the next morning. It's a warning shot — and they're the only organizer left, so they take it and keep going.`);
@@ -5409,7 +5408,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
       const chance = signChance(actor, target, tie);
       target.revealed = true;
       touched.add(target.id);
-      if (Math.random() < chance) {
+      if (random() < chance) {
         target.signed = true;
         target.signedWeek = week;
         target.support = Math.max(target.support, 78);
@@ -5612,7 +5611,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
       // DANIELS, the studio head. He is genuinely liked, and that is the weapon: he
       // moves what people SAY by a lot and what they'd DO by almost nothing. Playing
       // him well means the morale number lies to you worse than it already did.
-      if (outsidersNext.includes("boss") && Math.random() < 0.5) {
+      if (outsidersNext.includes("boss") && random() < 0.5) {
         let moved = 0, stated = 0;
         w.forEach(x => {
           if (x.burned || x.organizer) return;
@@ -5629,7 +5628,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
 
       // VANTAGE PARTNERS. Ownership does not persuade. It threatens the whole studio,
       // which raises fulfillment-as-risk across the board — everyone has more to lose.
-      if (outsidersNext.includes("corporate") && Math.random() < 0.45) {
+      if (outsidersNext.includes("corporate") && random() < 0.45) {
         const teams = ["engineering", "qa", "production"];
         const t = teams[rand(teams.length)];
         let n = 0;
@@ -5648,7 +5647,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
 
       // THE PODCAST. Fires at everyone, ignores the social map entirely, and lands
       // backwards on the people who resent being told what to think.
-      if (outsidersNext.includes("celebrity") && Math.random() < 0.4) {
+      if (outsidersNext.includes("celebrity") && random() < 0.4) {
         let hit = 0, backfired = 0;
         w.forEach(x => {
           if (x.burned) return;
@@ -5678,7 +5677,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     // aggressive stretch pins heat at 100 and the shop never gets back off the radar.
     heatNext = clamp(heatNext - (5 + Math.floor(heatNext / 12)), 0, 100);
     const mgmtLines = [];
-    if (heatNext >= 45 && Math.random() < 0.55) {
+    if (heatNext >= 45 && random() < 0.55) {
       const roll = rand(100);
       if (roll < 45) {
         // ORG-CHART MOVE. He books a department, not a set of relationships, so the
@@ -5912,7 +5911,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           const mark = [...threatPool].sort((a, b) => markBacking(a) - markBacking(b))[0];
           const foldChance = Math.max(0.1, Math.min(0.5, 0.5 - markBacking(mark) / 300));
           consultantNext = { ...consultantNext, threats: consultantNext.threats + 1, lastSetPiece: week };
-          if (Math.random() < foldChance) {
+          if (random() < foldChance) {
             mark.organizer = false;
             mark.support = clamp(mark.support - 25);
             mark.underPressure = 2;
@@ -5943,7 +5942,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           const before35 = mark.support;
           const takeChance = Math.min(0.7, Math.max(0.05, (100 - mark.support) / 60));
           consultantNext = { ...consultantNext, raises: consultantNext.raises + 1, lastSetPiece: week };
-          if (Math.random() < takeChance) {
+          if (random() < takeChance) {
             const wasSigned = mark.signed;
             mark.signed = false;
             mark.support = clamp(mark.support - 35);
@@ -5989,8 +5988,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
       let yes = 0, no = 0;
       const nonVoters = [];
       w.forEach(x => {
-        if (Math.random() >= turnoutChance(x)) { nonVoters.push(x.name); return; }
-        if (Math.random() < yesChance(x)) yes += 1; else no += 1;
+        if (random() >= turnoutChance(x)) { nonVoters.push(x.name); return; }
+        if (random() < yesChance(x)) yes += 1; else no += 1;
       });
       ballot = { yes, no, out: nonVoters.length, cast: yes + no, won: yes > no };
       steps.push({
@@ -6106,7 +6105,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     // the day the petition lands.
     setConsultant(c => (c.active ? c : { ...c, active: true, arrivedWeek: week }));
     const share = signedCount / ACT1_TOTAL_WORKERS;
-    if (Math.random() < recognitionChance(share, consultant.active, heat)) {
+    if (random() < recognitionChance(share, consultant.active, heat)) {
       setPhase("recognized");
       setWonOnWeek(week);
     } else {
@@ -7305,7 +7304,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
       const sat = [];
       w.forEach(x => {
         const backing = catBacking(influence, w, x.id) + infOn(influence, lead.id, x.id) * 0.5;
-        if (Math.random() < participationChance(x, tier, backing)) { x.participated = true; showed.push(x); }
+        if (random() < participationChance(x, tier, backing)) { x.participated = true; showed.push(x); }
         else sat.push(x);
       });
       const share = showed.length / w.length;
@@ -7359,11 +7358,11 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
     }
     const buyable = w.filter(x => !x.cat && (x.bought || 0) <= 0 && x.commitment >= 20)
       .sort((a, b) => a.commitment - b.commitment);
-    if (buyable.length && Math.random() < 0.3) {
+    if (buyable.length && random() < 0.3) {
       const mark = buyable[0];
       const before = mark.commitment;
       const takeChance = Math.min(0.75, Math.max(0.1, (100 - before) / 90));
-      if (Math.random() < takeChance) {
+      if (random() < takeChance) {
         mark.commitment = clamp(before - 26);
         mark.bought = 3;
         notes[mark.id] = "TAKES THE OFFER";
@@ -7382,7 +7381,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
         );
       }
     }
-    if (actionResult && tier.rank >= 3 && actionResult.showed > 0 && Math.random() < 0.35) {
+    if (actionResult && tier.rank >= 3 && actionResult.showed > 0 && random() < 0.35) {
       const pool = w.filter(x => x.participated && x.cat);
       const mark = pool.length
         ? [...pool].sort((a, b) => catBacking(influence, w, a.id) - catBacking(influence, w, b.id))[0]
@@ -7434,7 +7433,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
   function callRatification() {
     const yes = [];
     const no = [];
-    workers.forEach(w => (Math.random() < ratifyYesChance(w, issues) ? yes : no).push(w.name));
+    workers.forEach(w => (random() < ratifyYesChance(w, issues) ? yes : no).push(w.name));
     setRatification({ yes: yes.length, no: no.length, passed: yes.length > no.length, month: turn });
     setPhase("ratify");
   }
@@ -7442,7 +7441,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
   function runDecert() {
     const keep = [];
     const drop = [];
-    workers.forEach(w => (Math.random() < keepUnionChance(w, issues) ? keep : drop).push(w.name));
+    workers.forEach(w => (random() < keepUnionChance(w, issues) ? keep : drop).push(w.name));
     setDecert({ keep: keep.length, drop: drop.length, survived: keep.length > drop.length });
     setPhase("decert");
   }

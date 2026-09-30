@@ -1,3 +1,4 @@
+import './seed.mjs';
 import * as E from './act2-engine.mjs';
 import * as C from './core2.mjs';
 import { planTurn, decideFiling, choosePlatform } from './act2-policy.mjs';

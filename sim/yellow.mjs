@@ -16,7 +16,7 @@ let linesShown = 0;
 for (let g = 0; g < N; g++) {
   const ws = C.makeAct1Workers(); const inf = C.generateInfluence(ws);
   // mid-game: floor mapped, a couple of rounds of scouting done
-  ws.forEach(x => { x.revealed = true; if (Math.random() < 0.6) x.knownAffinities = [...C.affList(x)]; });
+  ws.forEach(x => { x.revealed = true; if (C.random() < 0.6) x.knownAffinities = [...C.affList(x)]; });
   for (const a of ws.filter(x => x.organizer)) {
     const targets = ws.filter(x => x.id !== a.id && !x.burned && !x.signed);
     if (!targets.length) continue;

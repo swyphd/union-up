@@ -4,6 +4,7 @@
 //
 // The simulated player decides on what the UI actually shows — the turnout BAND, never
 // the exact chance — so this measures the rules rather than a cheat.
+import './seed.mjs';
 import * as C from './core.mjs';
 import * as K from './core3.mjs';
 const { clamp, rand, infOn, tieOn, generateInfluence, outgoingTies, orgTier, ACT1_WORKERS_SEED } = C;
@@ -100,7 +101,7 @@ export function playContract(opts = {}) {
       const showed = [];
       w.forEach(x => {
         const b = catBacking(influence, w, x.id) + infOn(influence, lead.id, x.id) * 0.5;
-        if (Math.random() < participationChance(x, tier, b)) { x.participated = true; showed.push(x); }
+        if (C.random() < participationChance(x, tier, b)) { x.participated = true; showed.push(x); }
       });
       const share = showed.length / w.length, strong = share >= tier.threshold;
       const uses = rungUses[tier.key] || 0;
@@ -129,13 +130,13 @@ export function playContract(opts = {}) {
     // --- the other side of the table ---
     const buyable = w.filter(x => !x.cat && (x.bought || 0) <= 0 && x.commitment >= 20)
       .sort((a, b) => a.commitment - b.commitment);
-    if (buyable.length && Math.random() < 0.3) {
+    if (buyable.length && C.random() < 0.3) {
       const mark = buyable[0];
       const take = Math.min(0.75, Math.max(0.1, (100 - mark.commitment) / 90));
-      if (Math.random() < take) { mark.commitment = clamp(mark.commitment - 26); mark.bought = 3; log.bought++; }
+      if (C.random() < take) { mark.commitment = clamp(mark.commitment - 26); mark.bought = 3; log.bought++; }
       else { mark.commitment = clamp(mark.commitment + 6); mark.spokenMonth = month; }
     }
-    if (acted && acted.rank >= 3 && acted.showed > 0 && Math.random() < 0.35) {
+    if (acted && acted.rank >= 3 && acted.showed > 0 && C.random() < 0.35) {
       const pool2 = w.filter(x => x.participated && x.cat);
       const mark = pool2.length
         ? [...pool2].sort((a, b) => catBacking(influence, w, a.id) - catBacking(influence, w, b.id))[0] : null;
@@ -162,8 +163,8 @@ export function playContract(opts = {}) {
 
   const tiers = contractTierSum(issues);
   if (dead) return { dead: true, tiers, ratified: false, survives: false, cat: 0, commitment: mean(w.map(x => x.commitment)), ...log };
-  const yes = w.filter(x => Math.random() < ratifyYesChance(x, issues)).length;
-  const keep = w.filter(x => Math.random() < keepUnionChance(x, issues)).length;
+  const yes = w.filter(x => C.random() < ratifyYesChance(x, issues)).length;
+  const keep = w.filter(x => C.random() < keepUnionChance(x, issues)).length;
   return { dead: false, tiers, ratified: yes > w.length - yes, survives: keep > w.length - keep,
     cat: w.filter(x => x.cat).length, commitment: mean(w.map(x => x.commitment)), ...log };
 }

@@ -1,3 +1,4 @@
+import './seed.mjs';
 import * as E from './engine.mjs';
 import * as C from './core.mjs';
 import { planWeek } from './policy.mjs';

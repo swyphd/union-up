@@ -12,6 +12,7 @@ function block(marker, until) {
 }
 
 let out = [
+  "import { random, rand, clamp } from '../src/engine/rng.js';",
   block('const TOTAL_TURNS = ', '// Act Two\'s network map board'),
   block('function computeSolidarityScore', 'const statusMeta = {'),
   block('const ACT2_SITES_NEEDED', '// ---------- SUBCOMPONENTS'),
@@ -24,7 +25,7 @@ out += `
 export { TOTAL_TURNS, START_LOCATIONS, COMMITTEE_COST, COMMITTEE_MORALE_REQ, COMMITTEE_RECRUIT_PCT_REQ,
   COMMITTEE_COST_CAMPAIGN, ACT2_LOSS_MORALE, ACT2_LOSS_TRUE, ACT2_LOSS_FEAR, ACT2_LOSS_STAMINA,
   ACT2_EMBOLDENED_RETALIATION, ACT2_CAMPAIGN_UPKEEP,
-  GRIEVANCE_META, EXTERNAL_EVENTS, ACT2_EFFORT_TIERS, ACT2_CAMPAIGN_TIERS, clamp, rand,
+  GRIEVANCE_META, EXTERNAL_EVENTS, ACT2_EFFORT_TIERS, ACT2_CAMPAIGN_TIERS, clamp, rand, random,
   BLOCS, BLOC_BY_ID, LOC_COMPOSITION, DEMANDS, DEMAND_BY_ID, PLATFORM_SLOTS, DEFECT_THRESHOLD,
   rollBlocPriorities, blocSatisfaction, locBlocFactor, computeSolidarityScore, baseGain, baseVis,
   ACT2_SITES_NEEDED, ACT2_FILING_LEAD, ACT2_LAST_FILING_TURN, ACT2_BASE_ACTIONS, ACT2_STAMINA_POOL, filingGates, act2Winnability,

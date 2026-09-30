@@ -1,5 +1,6 @@
 // The Act Two ballot, in isolation: what a shop's numbers are actually worth at the
 // count, and how much the margin moves. Run after changing any ballot constant.
+import './seed.mjs';
 import * as C from './core2.mjs';
 const { act2WinChance, act2Projection, act2Ballot, START_LOCATIONS } = C;
 const shop = (workers, trueSupport, fear, recruited, committee = true) =>

@@ -12,8 +12,7 @@ function block(marker, until) {
 }
 
 const parts = [
-  'const clamp = (v, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));',
-  'const rand = (n) => Math.floor(Math.random() * n);',
+  "import { random, rand, clamp } from '../src/engine/rng.js';",
   (() => { const i = src.indexOf('const ACT1_WORKERS_SEED = ['); const j = src.indexOf('\n];', i); return src.slice(i, j + 3); })(),
   block('function generateInfluence', 'function makeAct1Workers'),
   block('const ORG_TIERS = [', '// ---------- INFLUENCE TRAITS'),
@@ -53,7 +52,7 @@ export { ACT1_WORKERS_SEED, ACT1_CARDS_NEEDED, ACT1_TOTAL_WORKERS, ACT1_ACTION, 
   PUBLIC_TIERS, publicFatigue, publicGain, signChance, infTrait, senderMult, recvMult, holdsFast,
   ORG_TIERS, orgTier, orgMult, committeeHours, idlePenalty, makeAct1Workers, generateInfluence,
   infOn, outgoingTies, incomingTies, influenceKnown, shownInfluence, signedBacking, orgChartResistance,
-  clamp, rand, readOf, floorClarity, tieOn, tieFrom, tieBonus, turnoutChance, yesChance, voteProjection, voteProjectionBand, OUTSIDERS, PERK_WEEKS,
+  clamp, rand, random, readOf, floorClarity, tieOn, tieFrom, tieBonus, turnoutChance, yesChance, voteProjection, voteProjectionBand, OUTSIDERS, PERK_WEEKS,
   poisonedAff, TEAM_LABEL, ACT1_CARD_THRESHOLD, ELECTION_WEEKS };
 `;
 fs.writeFileSync(new URL('core.mjs', import.meta.url), out);

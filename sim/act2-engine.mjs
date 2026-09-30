@@ -78,7 +78,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
   let moraleClimateNext = G.moraleClimate.turnsLeft > 0 ? { ...G.moraleClimate, turnsLeft: G.moraleClimate.turnsLeft - 1 } : { tone: 'neutral', turnsLeft: 0 };
   let legalClimateNext = G.legalClimate.turnsLeft > 0 ? { ...G.legalClimate, turnsLeft: G.legalClimate.turnsLeft - 1 } : { tone: 'neutral', turnsLeft: 0 };
   let firedEvent = null;
-  if (!isBreakTurn && Math.random() < 0.18) {
+  if (!isBreakTurn && C.random() < 0.18) {
     firedEvent = EXTERNAL_EVENTS[rand(EXTERNAL_EVENTS.length)]; L.events++;
     if (firedEvent.moraleClimate) moraleClimateNext = { ...firedEvent.moraleClimate };
     if (firedEvent.legalClimate) legalClimateNext = { ...firedEvent.legalClimate };
@@ -95,7 +95,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
     if (l.status === 'won' || l.status === 'lost') return l;
     if (l.status === 'abandoned') {
       let au = l.antiUnion || { active: false, turnsLeft: 0 };
-      if (!au.active && Math.random() < 0.12) au = { active: true, turnsLeft: 2 };
+      if (!au.active && C.random() < 0.12) au = { active: true, turnsLeft: 2 };
       return { ...l, antiUnion: au };
     }
     const units = isBreakTurn ? 0 : (alloc[l.id] || 0);
@@ -178,7 +178,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
       const responded = r.grievance || committeeHandlesIt;
       if (responded) {
         if (l.grievance.type === 'legal') {
-          if (Math.random() < (locHasTrait(l.id, 'legal') ? 0.97 : 0.9)) {
+          if (C.random() < (locHasTrait(l.id, 'legal') ? 0.97 : 0.9)) {
             grievanceBonus = 20; grievanceRecruitBonus = 2; grievanceSupportBonus = 18; newGrievance = null; L.grievanceWins++;
           } else newGrievance = { ...l.grievance, turnsActive: l.grievance.turnsActive + 1 };
         } else if (l.grievance.type === 'material') { grievanceBonus = 15; grievanceSupportBonus = 8; newGrievance = null; }
@@ -190,7 +190,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
         else newGrievance = { ...l.grievance, turnsActive: nextTurnsActive };
       }
     } else {
-      const roll = Math.random();
+      const roll = C.random();
       if (l.morale >= 50 && roll < 0.12) newGrievance = { type: 'legal', turnsActive: 0 };
       else if (roll < 0.27) newGrievance = { type: 'material', turnsActive: 0 };
       else if (roll < 0.52) newGrievance = { type: 'noise', turnsActive: 0 };
@@ -212,7 +212,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
     } else {
       const eligible = l.visibility >= 50 || l.manager === 'hostile';
       if (firedEvent && firedEvent.seedAntiUnion) newAntiUnion = { active: true, turnsLeft: 2 };
-      else if (eligible && Math.random() < 0.22) newAntiUnion = { active: true, turnsLeft: 2 };
+      else if (eligible && C.random() < 0.22) newAntiUnion = { active: true, turnsLeft: 2 };
     }
 
     let climateGain = moraleClimateNext.tone === 'positive' ? 2 : moraleClimateNext.tone === 'negative' ? -2 : moraleClimateNext.tone === 'volatile' ? 1 : 0;
@@ -303,7 +303,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
     const cureChance = Math.min(0.5, turnSolidarityScore * 0.07);
     workingLocs = workingLocs.map(l => {
       if (!l.antiUnion?.active || l.status === 'won' || l.status === 'lost') return l;
-      if (Math.random() >= cureChance) return l;
+      if (C.random() >= cureChance) return l;
       return { ...l, antiUnion: { active: false, turnsLeft: 0 }, morale: clamp(l.morale + 3) };
     });
     const moraleTrickle = Math.min(6, turnSolidarityScore * 2);
@@ -325,7 +325,7 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
       const avail = contagionSources.filter(s => s.id !== l.id);
       if (!avail.length) return l;
       const spreadChance = Math.max(0.02, 0.12 + G.soph * 0.05 + (G.emboldened ? 0.05 : 0) - turnSolidarityScore * 0.04);
-      if (Math.random() >= spreadChance) return l;
+      if (C.random() >= spreadChance) return l;
       if (l.status === 'campaign') return { ...l, fear: clamp(l.fear + 8) };
       return { ...l, antiUnion: { active: true, turnsLeft: 2 } };
     });
@@ -387,12 +387,12 @@ export function resolveTurn(G, alloc, resp, wantSurvey = false) {
   if (G.platform.length >= PLATFORM_SLOTS) {
     const unserved = BLOCS.map(b => ({ b, sat: blocSatisfaction(b.id, G.platform, prioritiesNext, proven), pr: prioritiesNext[b.id] }))
       .filter(x => !x.pr.defected && x.sat < 50).sort((x, y) => x.sat - y.sat);
-    if (unserved.length && Math.random() < 0.45) {
+    if (unserved.length && C.random() < 0.45) {
       const { b, sat, pr } = unserved[0];
       L.sideOffers++;
       const represented = workingLocs.some(l => l.committee?.active && (LOC_COMPOSITION[l.id]?.[b.id] || 0) >= 0.5 && l.status !== 'lost');
       const takeChance = clamp((DEFECT_THRESHOLD + 25 - sat) / 100 + pr.intensity * 0.08 - (represented ? 0.35 : 0) - (pr.pledged ? 0.12 : 0), 0, 0.85);
-      if (Math.random() < takeChance) { prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, defected: true } }; L.defections++; }
+      if (C.random() < takeChance) { prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, defected: true } }; L.defections++; }
       else prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, heard: (pr.heard || 0) + 1 } };
     }
   }
