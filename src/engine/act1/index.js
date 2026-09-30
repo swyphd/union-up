@@ -10,3 +10,4 @@ export * from "./traits.js";
 export * from "./affinities.js";
 export * from "./actions.js";
 export * from "./ladder.js";
+export * from "./resolveWeek.js";
