@@ -2,7 +2,7 @@
 // and (b) the real rolled priorities, and count how many keep every bloc out of side-offer
 // range (sat >= 50) and out of walking range (sat >= 35).
 import './seed.mjs';
-import * as C from './core2.mjs';
+import * as C from '../src/engine/company/index.js';
 const { BLOCS, DEMANDS, blocSatisfaction, rollBlocPriorities } = C;
 const ids = DEMANDS.map(d => d.id);
 const platforms = [];

@@ -1,12 +1,12 @@
 // A headless first-contract act. Port of ContractPrototype.resolveTurn with the
-// narration stripped; the numbers come from core3.mjs, generated out of App.jsx.
+// narration stripped; the numbers come from src/engine/contract, the modules the game runs.
 // Accepts the same `carry` the shipped game hands it: Act One's own floor and map.
 //
 // The simulated player decides on what the UI actually shows — the turnout BAND, never
 // the exact chance — so this measures the rules rather than a cheat.
 import './seed.mjs';
 import * as C from '../src/engine/act1/index.js';
-import * as K from './core3.mjs';
+import * as K from '../src/engine/contract/index.js';
 const { clamp, rand, infOn, tieOn, generateInfluence, outgoingTies, orgTier, ACT1_WORKERS_SEED } = C;
 const { CONTRACT_MONTHS, LEVERAGE_COOLING, CAT_HOURS, CAT_JOIN_REQ, ACTION_LADDER, CONTRACT_ISSUES,
   CONTRACT_MAX_TIERS, makeContractWorkers, catBacking, participationChance, contractTierSum,

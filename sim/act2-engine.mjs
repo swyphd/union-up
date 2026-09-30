@@ -1,8 +1,8 @@
-// A headless Act Two. Constants and pure functions come from core2.mjs (generated from
-// App.jsx). resolveTurn below is a PORT of ActTwoGame.resolveTurn with the narration
+// A headless Act Two. Constants and pure functions come from src/engine/company, the modules
+// the game itself runs. resolveTurn below is a PORT of ActTwoGame.resolveTurn with the narration
 // stripped — it lives inside a React component, so it can't be extracted verbatim.
 // Keep it in step with App.jsx by hand; the order of operations matters.
-import * as C from './core2.mjs';
+import * as C from '../src/engine/company/index.js';
 const { clamp, rand, TOTAL_TURNS, START_LOCATIONS, COMMITTEE_COST, COMMITTEE_COST_CAMPAIGN, COMMITTEE_MORALE_REQ,
   COMMITTEE_RECRUIT_PCT_REQ, GRIEVANCE_META, EXTERNAL_EVENTS, BLOCS, LOC_COMPOSITION, DEMAND_BY_ID,
   PLATFORM_SLOTS, DEFECT_THRESHOLD, rollBlocPriorities, blocSatisfaction, locBlocFactor,

@@ -1,5 +1,5 @@
 // A competent Act Two player. Decides only on what the UI shows.
-import * as C from './core2.mjs';
+import * as C from '../src/engine/company/index.js';
 import { responseCostFor, fileEligible } from './act2-engine.mjs';
 const { BLOCS, DEMANDS, DEMAND_BY_ID, LOC_COMPOSITION, PLATFORM_SLOTS, DEFECT_THRESHOLD, blocSatisfaction,
   COMMITTEE_MORALE_REQ, COMMITTEE_RECRUIT_PCT_REQ, TOTAL_TURNS, ACT2_ONE_ON_ONES_PER_TURN,
