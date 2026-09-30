@@ -415,8 +415,9 @@ src/App.jsx             routing between acts, saves
 ```
 
 `resolveWeek` moves out of the component into the engine as a pure function of
-`(state, plan, rng) → { state, steps }`, which is what `sim/engine.mjs` already re-implements
-by hand. The sim then imports `src/engine/act1/*` directly and `sim/extract.mjs` is deleted,
+`(state, plan) → { steps, pending, stats }`, which is what `sim/engine.mjs` used to re-implement
+by hand. (As built: randomness is a module-level source in `rng.js` that `seedRng` swaps,
+rather than a parameter threaded through every call; the acceptance test is the same.) The sim then imports `src/engine/act1/*` directly and `sim/extract.mjs` is deleted,
 along with the drift risk the review flagged for the Act Two and contract ports.
 
 Add a seedable RNG threaded through the engine. Proof the split changed nothing: run
@@ -431,7 +432,7 @@ Each one is playable in the browser and measurable in the sim before the next st
 
 | # | milestone | size | done when |
 |---|---|---|---|
-| M0 | engine split, seeded RNG, sim imports engine | M | seeded sim output identical pre/post |
+| M0 | engine split, seeded RNG, sim imports engine | M | **done**, branch `plan/social-floor`: seeded output identical at every step; the real `resolveWeek` runs in the sim |
 | M1 | titles; friends + circles replace influence; rating glyph; new card; percentages gone; target-first + drag; armed mode removed | L | careful/sloppy/careless still separate in `verify-ballot.mjs` after re-tuning `tieOn` |
 | M2 | social view + toggle; sticky layout; conversation map payloads; coverage dots | M | a `mapper` sim policy that recruits for coverage exists and beats the current `careful` |
 | M3 | committee redesign: recruit as judgment, leaks, size heat, coverage in the filing prompt and the unwinnable detector | M | a policy that recruits everyone loses to one that recruits for coverage |

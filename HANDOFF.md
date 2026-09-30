@@ -1,7 +1,7 @@
 # Union Up — Handoff: P0–P3 + Demand Platform
 
 **Base commit:** `340aecd`
-**Scope:** ~1,660 insertions in `src/App.jsx`. Single-file React app.
+**Scope:** ~1,660 insertions, originally in a single-file `src/App.jsx`; see the working notes at the end for the current layout.
 **Status:** Compiles clean (esbuild). 131 logic tests pass. **Never run in a browser.**
 
 This document exists so a fresh session can pick up the work without re-deriving the
@@ -123,10 +123,17 @@ not a decider.
 
 ## Working notes for this repo
 
-- `App.jsx` is ~5,000 lines. Use `grep -n "^const\|^function\|// ---"` for a structural
-  map before editing.
+- **Layout (since M0 of `PLAN-SOCIAL-FLOOR.md`).** `src/engine/` is every number the game
+  runs on and imports no React: `act1/` (with the week itself in `resolveWeek.js`),
+  `company/`, `contract/`, and `rng.js`, the one source of randomness. `src/ui/` is the
+  components, one act per folder, `shared.jsx` for what they have in common. `src/App.jsx`
+  is routing and saves. `src/save.js` holds the save key and version.
+- The sim imports the engine directly; there is nothing to regenerate. `SEED=7 node
+  sim/verify-ballot.mjs` is replayable byte for byte, which is the acceptance test for any
+  engine refactor. See `sim/README.md`.
 - Compile check without a full install:
-  `npx esbuild src/App.jsx --loader:.jsx=jsx --bundle --external:react --external:lucide-react --external:recharts --outfile=/tmp/o.js`
-- The logic tests were built by extracting pure-function blocks from `App.jsx` into a
-  node harness. They aren't committed. Worth formalizing into a real test file.
+  `npx esbuild src/App.jsx --loader:.jsx=jsx --bundle --external:react --external:react-dom --external:lucide-react --outfile=/tmp/o.js`
+- The Act Two and contract turn loops are still hand ports in `sim/act2-engine.mjs` and
+  `sim/contract-engine.mjs`. Extracting them the way Act One's week was is the obvious
+  next engine step when either act is next touched.
 - Deploy: Vercel, auto-builds every pushed branch to its own preview URL.
