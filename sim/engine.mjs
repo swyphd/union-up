@@ -1,6 +1,6 @@
-// A headless Act One. Every number comes from core.mjs, which is generated straight out
+// A headless Act One. Every number comes from src/engine/act1, the same modules the game runs
 // of src/App.jsx — the narration is dropped, the arithmetic is not.
-import * as C from './core.mjs';
+import * as C from '../src/engine/act1/index.js';
 const { clamp, rand, infOn, outgoingTies, signedBacking, orgChartResistance, holdsFast,
   infTrait, affList, poisonedAff, convoGain, publicGain, signChance,
   misfireChance, revealCount, revealAffinities, sharedAffinities, visibleShared, tieOn, tieFrom,

@@ -1,7 +1,8 @@
+import './seed.mjs';
 // Does the read model actually track how much organizing has been done? Play real games
 // and watch what the player can see, against what is true.
 import * as E from './engine.mjs';
-import * as C from './core.mjs';
+import * as C from '../src/engine/act1/index.js';
 import { planWeek } from './policy.mjs';
 
 const PLAYERS = { careful: {}, sloppy: { blindDeep: true }, careless: { blindDeep: true, askBar: 58 } };

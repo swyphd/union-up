@@ -5,7 +5,7 @@
 // The simulated player decides on what the UI actually shows — the turnout BAND, never
 // the exact chance — so this measures the rules rather than a cheat.
 import './seed.mjs';
-import * as C from './core.mjs';
+import * as C from '../src/engine/act1/index.js';
 import * as K from './core3.mjs';
 const { clamp, rand, infOn, tieOn, generateInfluence, outgoingTies, orgTier, ACT1_WORKERS_SEED } = C;
 const { CONTRACT_MONTHS, LEVERAGE_COOLING, CAT_HOURS, CAT_JOIN_REQ, ACTION_LADDER, CONTRACT_ISSUES,

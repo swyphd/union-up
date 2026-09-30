@@ -1,5 +1,6 @@
 // Now that the ballot runs on commitment, a move that only touches stated support cannot
 // change the result — it can only corrupt the player's read. Worth knowing which is which.
+import './seed.mjs';
 import fs from 'fs';
 const src = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
 const MOVES = {
