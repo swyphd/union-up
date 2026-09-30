@@ -1,6 +1,6 @@
 # Union Up — Plan: The Social Floor
 
-**Status:** plan only. Nothing below is implemented.
+**Status:** plan, decisions settled (§10). Nothing below is implemented.
 **Base commit:** `87fce6a`
 **Scope:** the nine requests in the September brief: 1–5 ratings, a representative committee,
 two floor views, the falling-out event, three explicit phases, a redesigned card, mapping as
@@ -482,16 +482,17 @@ campaign, the same rule v1 saves follow today.
 
 ---
 
-## 10. Decisions for you
+## 10. Decisions, settled
 
-1. **Rating direction**: 5 = strongest (recommended, intuitive) or 1 = strongest (field
-   convention)?
-2. **Friend count visible before mapping** (recommended) or slots appear as they are found?
-3. **Affinities**: become the circle's shared thing (recommended), stay personal on the card,
-   or cut?
-4. **Company campaign**: keep as an epilogue on the adapter (recommended), or drop it?
-5. **Phase 1 public actions**: only the open-letter structure test (recommended), or none?
-6. **Phase 2 length**: six weeks to start, sim decides?
-7. **Committee leak odds and size heat** are first guesses; fine to let the sim set them?
+Answered 2026-09-30. Every recommendation above was taken, so the body of this document
+stands as written and M0 can start.
 
-Answer these and M0 can start.
+| # | decision | answer | where it lands |
+|---|---|---|---|
+| 1 | rating direction | **5 = strongest** | §2.1; one constant if the field convention is ever wanted |
+| 2 | friend count visible before mapping | **show the count** as empty rings | §3 |
+| 3 | affinities | **become the circle's shared thing**; off the card, in the bubble | F5, §2.2, §7.2 (perk aims at a circle) |
+| 4 | company campaign | **keep as an epilogue** on the `influence` adapter, untouched | §8, §9.4 |
+| 5 | Phase 1 public actions | **only the open-letter structure test**, near the filing line | §6.1; the three drive-phase tiers go in M5 |
+| 6 | Phase 2 length | **six weeks to start; the sim sets the final number** | §7, `ELECTION_WEEKS` 4 → 6 |
+| 7 | leak odds (0.5 on a hollow recruit) and size heat (+1 per member above four) | **first guesses; the sim tunes them** | §6.2, §9.3: coverage-first must beat recruit-everyone, and leaks must bite without dominating |
