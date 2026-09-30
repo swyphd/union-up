@@ -6,7 +6,8 @@ import { random } from "../../engine/rng.js";
 import { ACT1_INTRO_BEATS, IntroCommitteeVisual, IntroInfluenceVisual } from "./intro.jsx";
 import { Act1FloorMap, ORG_LAYOUT } from "./FloorMap.jsx";
 import { Act1WorkerModal } from "./WorkerPanel.jsx";
-import { generateInfluence, makeAct1Workers } from "../../engine/act1/influence.js";
+import { makeAct1Workers } from "../../engine/act1/influence.js";
+import { generateSocial } from "../../engine/act1/friends.js";
 import { ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_PUBLIC_UNLOCK_WEEK, ACT1_RECRUIT_REQ, ACT1_SHIP_WEEK, ACT1_TOTAL_WORKERS, ACT1_WORKERS_SEED, act1Stars, cardStaleSoon } from "../../engine/act1/constants.js";
 import { committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { ACT1_ACTION } from "../../engine/act1/actions.js";
@@ -19,8 +20,11 @@ import { AFF_BY_ID } from "../../engine/act1/affinities.js";
 function ActOneGame({ onGraduate, onSkipToCompany }) {
   const [week, setWeek] = useState(1);
   const [phase, setPhase] = useState("intro"); // intro, plan, resolving, victory
-  const [influence] = useState(() => generateInfluence(ACT1_WORKERS_SEED));
-  const [workers, setWorkers] = useState(makeAct1Workers);
+  // The floor's social structure is rolled once and never re-rolled: who is friends with
+  // whom is the thing the whole act is about learning. `influence` is derived from it.
+  const [social, setSocial] = useState(() => generateSocial(ACT1_WORKERS_SEED));
+  const influence = social.influence;
+  const [workers, setWorkers] = useState(() => makeAct1Workers(social));
   const [planEntries, setPlanEntries] = useState([]); // {key, actorId, type, targetId?}
   const [heat, setHeat] = useState(0);
   const [consultant, setConsultant] = useState({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0, perks: 0 });
@@ -122,7 +126,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   // ---------- WEEK RESOLUTION ----------
   function resolveWeek() {
     const { steps, pending } = runWeek(
-      { workers, influence, week, stage, heat, consultant, perks, outsiders, electionWeek },
+      { workers, influence, social, week, stage, heat, consultant, perks, outsiders, electionWeek },
       planEntries,
     );
     setResolutionSteps(steps);
@@ -156,7 +160,9 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
 
   function startOver() {
     setWeek(1);
-    setWorkers(makeAct1Workers());
+    const fresh = generateSocial(ACT1_WORKERS_SEED);
+    setSocial(fresh);
+    setWorkers(makeAct1Workers(fresh));
     setPlanEntries([]);
     setHeat(0);
     setConsultant({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0, perks: 0 });
@@ -185,7 +191,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
       .filter(w => w.organizer && !w.burned)
       .slice(0, 4)
       .map(w => ({ name: w.name, trait: w.trait }));
-    onGraduate({ leaders: committee, workers, influence, week }, persist);
+    onGraduate({ leaders: committee, workers, influence, social, week }, persist);
   }
 
   const cardShare = signedCount / ACT1_TOTAL_WORKERS;

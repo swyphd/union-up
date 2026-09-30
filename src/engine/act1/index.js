@@ -5,6 +5,7 @@ export * from "./constants.js";
 export * from "./election.js";
 export * from "./consultant.js";
 export * from "./influence.js";
+export * from "./friends.js";
 export * from "./committee.js";
 export * from "./traits.js";
 export * from "./affinities.js";

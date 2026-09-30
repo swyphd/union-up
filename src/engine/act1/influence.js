@@ -2,51 +2,15 @@
 import { clamp, rand, random } from "../rng.js";
 import { ACT1_WORKERS_SEED } from "./constants.js";
 import { AFFINITY_POOL } from "./affinities.js";
+import { generateSocial, friendsOf, circleOfId, CIRCLE_BY_ID } from "./friends.js";
 import { influenceKnown } from "./actions.js";
 
 // ---------- THE INFLUENCE MAP ----------
-// Directed and weighted: influence[a][b] is how much A moves B, which is not the same as
-// how much B moves A. Same-team coworkers talk more, so ties cluster there, but the whole
-// point is that team is a hint about who talks to whom, not the answer.
-function generateInfluence(seed) {
-  const inf = {};
-  seed.forEach(w => { inf[w.id] = {}; });
-  seed.forEach(a => {
-    const others = seed.filter(o => o.id !== a.id);
-    const ranked = others
-      .map(b => ({ b, roll: random() * (b.team === a.team ? 1 : 0.5) }))
-      .sort((x, y) => y.roll - x.roll);
-    const count = 2 + rand(2); // each person carries real weight with 2-3 coworkers
-    ranked.slice(0, count).forEach(({ b }) => {
-      const sameTeam = b.team === a.team;
-      const weight = clamp(Math.round((sameTeam ? 45 : 28) + random() * 45), 15, 95);
-      inf[a.id][b.id] = Math.max(inf[a.id][b.id] || 0, weight);
-    });
-  });
-  // Nobody is unreachable: everyone has at least one person who can move them.
-  seed.forEach(b => {
-    const hasIncoming = seed.some(a => a.id !== b.id && (inf[a.id][b.id] || 0) > 0);
-    if (!hasIncoming) {
-      const pool = seed.filter(a => a.id !== b.id && a.team === b.team);
-      const a = (pool.length ? pool : seed.filter(x => x.id !== b.id))[rand(pool.length || seed.length - 1)];
-      if (a) inf[a.id][b.id] = 35 + rand(25);
-    }
-  });
-  // The two people you start with have to have somewhere to start. Guarantee each of them
-  // real weight with at least three coworkers, or week one is a coin flip on the seed.
-  seed.filter(w => w.organizer).forEach(o => {
-    const strong = Object.values(inf[o.id]).filter(v => v >= 40).length;
-    if (strong >= 3) return;
-    const pool = seed.filter(b => b.id !== o.id && !b.organizer).sort(() => random() - 0.5);
-    let added = strong;
-    pool.forEach(b => {
-      if (added >= 3) return;
-      if ((inf[o.id][b.id] || 0) >= 40) return;
-      inf[o.id][b.id] = 45 + rand(30);
-      added++;
-    });
-  });
-  return inf;
+// Kept for the acts that still read a weighted map. It is now derived from the friend
+// graph in friends.js: a friend is worth FRIEND_TIE, a circle-mate CIRCLE_TIE, and the
+// direction that used to be a random weight is the sender's trait.
+function generateInfluence(seed = ACT1_WORKERS_SEED) {
+  return generateSocial(seed).influence;
 }
 
 // Authored per worker, not randomised — each one should be readable off their hook.
@@ -72,8 +36,9 @@ const INFLUENCE_ASSIGN = {
   19: "wellliked",// Marcus — still mentors people on his own time
   20: "stubborn", // Delphine — narrative lead, thinks this slows the ship
 };
-function makeAct1Workers() {
-  return ACT1_WORKERS_SEED.map(w => ({
+function makeAct1Workers(social = null) {
+  const soc = social || generateSocial(ACT1_WORKERS_SEED);
+  const workers = ACT1_WORKERS_SEED.map(w => ({
     ...w,
     organizer: !!w.organizer,
     signed: !!w.organizer,
@@ -83,12 +48,18 @@ function makeAct1Workers() {
     experience: w.organizer ? 45 : 0, // your two starters have already done this before
     weeksIdle: 0,
     ...(() => {
-      // 3-5 affinities each. Your own two organizers start fully known — you already
+      // The thing their circle shares comes first; two or three more are their own. An
+      // isolate has only their own. Your two organizers start fully known — you already
       // know what your people talk about.
-      const pool = [...AFFINITY_POOL].sort(() => random() - 0.5);
-      const affinities = pool.slice(0, 3 + rand(3)).map(a => a.id);
+      const circleAff = CIRCLE_BY_ID[circleOfId(soc, w.id)]?.affinity || null;
+      const pool = [...AFFINITY_POOL].filter(a => a.id !== circleAff).sort(() => random() - 0.5);
+      const affinities = [...(circleAff ? [circleAff] : []), ...pool.slice(0, 2 + rand(2)).map(a => a.id)];
       return { affinities, knownAffinities: w.organizer ? [...affinities] : [], poisoned: [] };
     })(),
+    // Who they are friends with is on the card as slots; which slot is whom you learn by
+    // talking to them. You know your own people's friends from day one.
+    knownFriends: w.organizer ? [...friendsOf(soc, w.id)] : [],
+    circleKnown: !!w.organizer,
     // What they SAY is a signal the player can pick up for free. What they'd DO is the
     // card in front of them, and it starts lower for everyone but your own people.
     support: clamp(w.support + rand(9) - 4),
@@ -108,6 +79,12 @@ function makeAct1Workers() {
     askedRecently: 0,
     history: [],
   }));
+  // Knowing a friendship is symmetric: your organizers' friends know them back.
+  workers.filter(x => x.organizer).forEach(o => o.knownFriends.forEach(f => {
+    const fw = workers.find(x => x.id === f);
+    if (fw && !fw.knownFriends.includes(o.id)) fw.knownFriends = [...fw.knownFriends, o.id];
+  }));
+  return workers;
 }
 
 const infOn = (influence, aId, bId) => (influence[aId] && influence[aId][bId]) || 0;

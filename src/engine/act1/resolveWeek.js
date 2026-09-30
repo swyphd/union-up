@@ -11,12 +11,14 @@ import { ACT1_ACTION, EDGE_MIN_DRAW, PUBLIC_TIERS, convoGain, misfireChance, pub
 import { AFFINITY_POOL, AFF_BY_ID, PERK_WEEKS, affList, poisonedAff, tieBonus, tieFrom, tieOn, visibleShared } from "./affinities.js";
 import { infTrait, recvMult } from "./traits.js";
 import { outgoingTies } from "./influence.js";
+import { learnFriends } from "./friends.js";
 import { ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, ACT1_TOTAL_WORKERS, BURN_NARRATIVES, CARD_LIFESPAN, TEAM_LABEL } from "./constants.js";
 import { CONSULTANT_FIRM, CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_NAME_UC, CONSULTANT_ONE_ON_ONES, CONSULTANT_SETPIECE_GAP, CONSULTANT_TRIGGER_COMMITTEE, KIRKMAN_SIGHT, OUTSIDERS, holdsFast, orgChartResistance, signedBacking } from "./consultant.js";
 import { turnoutChance, voteProjection, yesChance } from "./election.js";
 
 export function resolveWeek(state, planEntries) {
   const { workers, influence, week, stage, heat, consultant, perks, outsiders, electionWeek } = state;
+  const social = state.social || { friends: {}, circleOf: {} };
   const organizers = workers.filter(x => x.organizer && !x.burned);
   const totalHours = organizers.reduce((s, o) => s + committeeHours(o), 0);
   const totalUsed = planEntries.reduce((s, e) => s + ACT1_ACTION[e.type].hours, 0);
@@ -54,6 +56,7 @@ export function resolveWeek(state, planEntries) {
     const before = target.support;
     target.revealed = true; // you learn who they listen to by sitting down with them
     target.spokenTo = true; // and you learn something about where they actually are
+    learnFriends(w, social, target.id); // and who their friends are
 
     // Surface what they have in common. This is the payload of the quick chat.
     const found = revealAffinities(target, revealCount(e.type, actor, target));
@@ -242,6 +245,8 @@ export function resolveWeek(state, planEntries) {
     target.signedWeek = week; // joining the committee is itself a fresh commitment
     gainXp(actor, XP_PER_ACTION);
     target.knownAffinities = [...affList(target)]; // your own people hold nothing back
+    target.circleKnown = true;
+    learnFriends(w, social, target.id);
     recruitReveal(target);
     recruitNotes[target.id] = "joins the committee";
     recruitLines.push(`${target.name} joins the organizing committee. That's ${ACT1_HOURS_PER_ORGANIZER} more hours on the floor every week, a whole set of relationships you couldn't reach before — and an honest read on where the people they know actually stand.`);

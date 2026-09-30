@@ -5,10 +5,10 @@ import * as C from '../src/engine/act1/index.js';
 
 export function newGame() {
   // Same order as ActOneGame: the map is rolled from the seed, then the floor.
-  const influence = C.generateInfluence(C.ACT1_WORKERS_SEED);
-  const workers = C.makeAct1Workers();
+  const social = C.generateSocial(C.ACT1_WORKERS_SEED);
+  const workers = C.makeAct1Workers(social);
   return {
-    workers, influence, week: 1, heat: 0, stage: 'drive',
+    workers, influence: social.influence, social, week: 1, heat: 0, stage: 'drive',
     consultant: { active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0, perks: 0 },
     perks: [], outsiders: [], filedWeek: null, electionWeek: null, ballot: null,
     tally: { convoGain: 0, publicGain: 0, passiveGain: 0, misfires: 0, asks: 0, signs: 0, burns: 0 },
