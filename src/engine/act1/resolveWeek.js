@@ -14,7 +14,7 @@ import { outgoingTies } from "./influence.js";
 import { learnFriends } from "./friends.js";
 import { ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, ACT1_TOTAL_WORKERS, BURN_NARRATIVES, CARD_LIFESPAN, TEAM_LABEL } from "./constants.js";
 import { CONSULTANT_FIRM, CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_NAME_UC, CONSULTANT_ONE_ON_ONES, CONSULTANT_SETPIECE_GAP, CONSULTANT_TRIGGER_COMMITTEE, KIRKMAN_SIGHT, OUTSIDERS, holdsFast, orgChartResistance, signedBacking } from "./consultant.js";
-import { turnoutChance, voteProjection, yesChance } from "./election.js";
+import { rating, turnoutChance, voteProjection, yesChance } from "./election.js";
 
 export function resolveWeek(state, planEntries) {
   const { workers, influence, week, stage, heat, consultant, perks, outsiders, electionWeek } = state;
@@ -98,10 +98,10 @@ export function resolveWeek(state, planEntries) {
     // now know something. Lead with that, because that is what the player just bought.
     convoLines.push(
       e.type === "deep"
-        ? `${target.name}: a long, honest conversation with ${actor.name} — ${flavor}. You now know where ${target.name} actually stands: ${target.trueSupport}, against the ${target.support} they talk like. That read is good for a few weeks before people move again.${foundNames.length ? ` You also learn: ${foundNames.join(", ")}.` : ""}`
-        : `${target.name}: a quick word with ${actor.name} — ${flavor}. They talk warmer, ${before} → ${target.support}, which narrows what they could be without telling you where they are.${foundNames.length ? ` You learn: ${foundNames.join(", ")}.` : ""}`
+        ? `${target.name}: a long, honest conversation with ${actor.name} — ${flavor}. You now know where ${target.name} actually stands: a ${rating(target.trueSupport)}${rating(target.trueSupport) < rating(target.support) ? `, against the ${rating(target.support)} they talk like` : ", and they talk like it"}. That read is good for a few weeks before people move again.${foundNames.length ? ` You also learn: ${foundNames.join(", ")}.` : ""}`
+        : `${target.name}: a quick word with ${actor.name} — ${flavor}. They talk ${rating(target.support) > rating(before) ? `warmer, like a ${rating(target.support)} now` : "warmer"}, which is a ceiling and not a read.${foundNames.length ? ` You learn: ${foundNames.join(", ")}.` : ""}`
     );
-    target.history.push(`Week ${week}: ${ACT1_ACTION[e.type].label.toLowerCase()} with ${actor.name} (+${target.support - before} to what they'll say).`);
+    target.history.push(`Week ${week}: ${ACT1_ACTION[e.type].label.toLowerCase()} with ${actor.name} .`);
   });
   if (convoLines.length) steps.push({ label: "ONE-ON-ONES", sub: "Influence is relationship-specific — the same conversation lands differently depending on who has it.", workers: w.map(x => ({ ...x })), lines: convoLines, edgePulses: convoPulses, notes: convoNotes });
 
@@ -211,8 +211,8 @@ export function resolveWeek(state, planEntries) {
       askNotes[target.id] = target.support < 45 ? "not even close" : "not yet";
       askLines.push(
         target.support < 45
-          ? `${target.name} isn't there. Being asked before they were ready made it worse (${before} → ${target.support}).`
-          : `${target.name} says they're with you — just not ready to put their name on paper yet (${before} → ${target.support}).`
+          ? `${target.name} isn't there. Being asked before they were ready made it worse.`
+          : `${target.name} says they're with you — just not ready to put their name on paper yet.`
       );
       target.history.push(`Week ${week}: ${actor.name} asked for a card. Not yet.`);
     }

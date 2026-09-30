@@ -13,7 +13,7 @@ import { committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { ACT1_ACTION } from "../../engine/act1/actions.js";
 import { resolveWeek as runWeek } from "../../engine/act1/resolveWeek.js";
 import { ACT1_SAVE_KEY } from "../../save.js";
-import { ELECTION_WEEKS, floorClarity, readOf, recognitionChance, voteProjection } from "../../engine/act1/election.js";
+import { ELECTION_WEEKS, readOf, recognitionChance, voteProjection } from "../../engine/act1/election.js";
 import { CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_SETPIECE_GAP, KIRKMAN_SIGHT, OUTSIDERS, act1Winnability } from "../../engine/act1/consultant.js";
 import { AFF_BY_ID } from "../../engine/act1/affinities.js";
 
@@ -34,16 +34,9 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   const [resolutionSteps, setResolutionSteps] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedWorker, setSelectedWorker] = useState(null);
-  // Actor-first selection: pick who acts on the shelf, then pick who they go to.
-  // Target-first still works — both entry points reach the same panel.
-  const [focusActorId, setFocusActorId] = useState(null);
-  // Escape clears the armed organizer, since clicking their card again is now a public
-  // action rather than a way out of the selection.
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") setFocusActorId(null); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // Target-first: click anyone and the panel opens with the best organizer picked. Dragging
+  // a committee card onto somebody opens the same panel with that pair locked.
+  const [pairActorId, setPairActorId] = useState(null);
   const [confirmStartOver, setConfirmStartOver] = useState(false);
   const [wonOnWeek, setWonOnWeek] = useState(null);
   // "drive" = collecting cards toward the 30% petition threshold. "campaign" = petition
@@ -63,7 +56,6 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   // A burn already costs an organizer, their reach, and support across everyone they
   // carried — clawing the signature back on top of that made one bad roll unrecoverable.
   const signedCount = workers.filter(w => w.signed).length;
-  const cardPct = Math.round((signedCount / ACT1_TOTAL_WORKERS) * 100);
   const hoursFor = (w) => committeeHours(w);
   const hoursUsedBy = (id) => planEntries.filter(e => e.actorId === id).reduce((s, e) => s + ACT1_ACTION[e.type].hours, 0);
   const hoursLeftFor = (w) => hoursFor(w) - hoursUsedBy(w.id);
@@ -115,7 +107,6 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     : { banner: [] };
 
   function addPlan(actorId, type, targetId = null) {
-    setFocusActorId(null);
     planKeyRef.current += 1;
     setPlanEntries(prev => [...prev, { key: planKeyRef.current, actorId, type, targetId }]);
   }
@@ -197,7 +188,6 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   const cardShare = signedCount / ACT1_TOTAL_WORKERS;
   const canFile = stage === "drive" && signedCount >= ACT1_CARDS_NEEDED;
   const projection = voteProjection(workers);
-  const clarity = floorClarity(workers, week);
   const readCounts = (() => {
     const live = workers.filter(x => !x.burned);
     return { live: live.length, exact: live.filter(x => readOf(x, week).exact).length };
@@ -260,7 +250,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
             <div className="text-center">
               <div className="text-stone-500 text-xs">CARDS SIGNED</div>
               <div className={`text-lg font-bold ${signedCount >= ACT1_CARDS_NEEDED ? "text-teal-400" : "text-amber-400"}`}>{signedCount} / {ACT1_CARDS_NEEDED}</div>
-              <div className="text-[11px] text-stone-600">{cardPct}% of {ACT1_TOTAL_WORKERS} — need {Math.round(ACT1_CARD_THRESHOLD * 100)}%</div>
+              <div className="text-[11px] text-stone-600">of {ACT1_TOTAL_WORKERS} on the floor</div>
             </div>
             {stage === "campaign" && (
               <div className="text-center">
@@ -272,9 +262,9 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
             {/* How much of this floor you can honestly see. Nothing else on the HUD says
                 whether the numbers you are steering by are worth anything. */}
             <div className="text-center">
-              <div className="text-stone-500 text-xs">YOU CAN SEE</div>
-              <div className={`text-lg font-bold ${clarity >= 65 ? "text-teal-400" : clarity >= 35 ? "text-amber-400" : "text-red-400"}`}>{clarity}%</div>
-              <div className="text-[11px] text-stone-600">{readCounts.exact} of {readCounts.live} read properly</div>
+              <div className="text-stone-500 text-xs">SOLID READS</div>
+              <div className={`text-lg font-bold ${readCounts.exact >= readCounts.live * 0.65 ? "text-teal-400" : readCounts.exact >= readCounts.live * 0.35 ? "text-amber-400" : "text-red-400"}`}>{readCounts.exact} / {readCounts.live}</div>
+              <div className="text-[11px] text-stone-600">sat down with, recently</div>
             </div>
             <div className="text-center">
               <div className="text-stone-500 text-xs">COMMITTEE</div>
@@ -350,7 +340,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
             <div className="mb-4 border-2 border-amber-700 bg-amber-950/20 px-3 py-3">
               <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
                 <div className="font-stencil text-lg tracking-wide text-amber-400">THE BALLOT IS {Math.max(0, weeksToVote)} WEEK{weeksToVote === 1 ? "" : "S"} OUT</div>
-                <div className="text-xs text-stone-400">Petition filed week {filedWeek} with {signedCount} cards ({cardPct}%)</div>
+                <div className="text-xs text-stone-400">Petition filed week {filedWeek} with {signedCount} cards</div>
               </div>
               <div className="grid grid-cols-3 gap-2 mb-2">
                 <div className="border border-teal-800 bg-teal-950/30 p-2 text-center">
@@ -384,7 +374,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
                   {/* A prompt and the live count. What filing costs you is the modal's
                       job — saying it here too just means saying it twice. */}
                   <div className="text-xs text-stone-400 leading-relaxed mt-1">
-                    {signedCount} of {ACT1_TOTAL_WORKERS} cards is <span className="text-stone-200 font-bold">{cardPct}%</span> — past the 30% the NLRB needs to schedule an election.
+                    <span className="text-stone-200 font-bold">{signedCount} of {ACT1_TOTAL_WORKERS}</span> cards clears the line the labor board needs to schedule an election.
                     {projection.yes > projection.no + 2
                       ? " Organizers file on a cushion, and you have one."
                       : " Organizers almost never file at the minimum."}
@@ -408,10 +398,10 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
               <span>
                 <span className="font-bold text-red-400">{CONSULTANT_NAME.toUpperCase()} IS ON SITE.</span>{" "}
                 <span className="text-stone-300">
-                  {stage === "campaign" ? "4" : "2"} one-on-ones a week, each taking up to <span className="font-bold">−5</span> off
-                  where somebody actually stands, aimed at whoever looks strongest and isn't already covered by signed coworkers.
+                  {stage === "campaign" ? "Four" : "Two"} one-on-ones a week, aimed at whoever looks strongest and isn't already
+                  covered by signed friends; each one moves where somebody stands.
                   {stage === "campaign"
-                    ? " Plus a mandatory all-hands every week: −1 to −4 off what every worker on the floor will say — it moves no votes, it just makes the room harder to read."
+                    ? " Plus a mandatory all-hands every week that moves no votes and makes the room harder to read: solid digits go hollow."
                     : ""}
                   {" "}{(() => {
                     const left = [
@@ -427,10 +417,10 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
                 <span className={heat >= KIRKMAN_SIGHT || stage === "campaign" ? "text-red-400 font-bold" : "text-teal-400"}>
                   {heat >= KIRKMAN_SIGHT || stage === "campaign"
                     ? "He can see your map."
-                    : `He can't see your map yet — at ${heat} heat he's picking names off the org chart, at 55% strength. It changes at ${KIRKMAN_SIGHT}.`}
+                    : `He can't see your map yet — at ${heat} heat he's picking names off the org chart, at half strength. It changes at ${KIRKMAN_SIGHT}.`}
                 </span>{" "}
                 <span className="text-stone-400">
-                  Signed coworkers who carry weight with a target take 1 off every blow per 30 points of backing. Density is the defence.
+                  Signed friends standing around a target blunt every blow. Density is the defence.
                 </span>
                 {perks.length > 0 && (
                   <span className="block mt-1 text-red-400">
@@ -453,14 +443,9 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
             planEntries={planEntries}
             hoursLeft={organizerHours}
             tierOf={orgTier}
-            onArm={(w) => {
-              // Nobody armed: this organizer takes the week. Already armed and clicked
-              // again: that's "what should Wendell do on his own" — public actions.
-              if (focusActorId === w.id) setSelectedWorker(w);
-              else setFocusActorId(w.id);
-            }}
-            onSelect={(w) => setSelectedWorker(w)}
-            focusId={focusActorId}
+            social={social}
+            onSelect={(w) => { setPairActorId(null); setSelectedWorker(w); }}
+            onPair={(actor, target) => { setPairActorId(actor.id); setSelectedWorker(target); }}
             staleWeek={week}
           />
 
@@ -468,9 +453,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
               member's own card; what's left is the one instruction and the one button. */}
           <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
             <p className="text-xs text-stone-500 flex-1 min-w-[16rem]">
-              {focusActorId
-                ? "Now click who they should work on. Click their own card again for a public action. Esc clears the selection."
-                : "Click a committee member to pick who acts this week, then click who they should work on."}
+              Click anyone to plan. Drag one of your people onto somebody to send them.
             </p>
             <span className={`text-base font-bold shrink-0 ${overBudget ? "text-red-500" : totalUsed === totalHours ? "text-teal-400" : "text-amber-400"}`}>
               {totalUsed} / {totalHours} HOURS
@@ -619,7 +602,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           tone="win"
           title="RECOGNIZED"
           stars={act1Stars(wonOnWeek)}
-          meta={{ week: wonOnWeek, line: `${signedCount} of ${ACT1_TOTAL_WORKERS} cards — ${cardPct}% — in ${wonOnWeek} week${wonOnWeek === 1 ? "" : "s"}. No election needed.` }}
+          meta={{ week: wonOnWeek, line: `${signedCount} of ${ACT1_TOTAL_WORKERS} cards in ${wonOnWeek} week${wonOnWeek === 1 ? "" : "s"}. No election needed.` }}
           beats={[
             { lines: [
               "The count was lopsided enough that fighting it looked worse than losing it.",
@@ -672,13 +655,13 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           hoursLeftFor={hoursLeftFor}
           hoursFor={hoursFor}
           week={week}
-          preferActorId={focusActorId}
+          preferActorId={pairActorId}
           plannedFor={planEntries.filter(e => e.targetId === selectedWorker.id || (e.actorId === selectedWorker.id && !e.targetId))}
           onCancelPlans={(key) => setPlanEntries(es => es.filter(e => e.key !== key))}
           unlockPublic={unlockPublic}
           consultantActive={consultant.active}
-          onPlan={(actorId, type, targetId) => { addPlan(actorId, type, targetId); setSelectedWorker(null); setFocusActorId(actorId); }}
-          onClose={() => setSelectedWorker(null)}
+          onPlan={(actorId, type, targetId) => { addPlan(actorId, type, targetId); setSelectedWorker(null); setPairActorId(null); }}
+          onClose={() => { setSelectedWorker(null); setPairActorId(null); }}
         />
       )}
 

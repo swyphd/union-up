@@ -1,21 +1,19 @@
 // The floor board: the company's org chart, with the campaign drawn on top of it.
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { HourPieShapes, Pips, truncateNote } from "../shared.jsx";
-import { AFF_ICON, AFF_UNKNOWN_LABEL, AFF_UNKNOWN_SUB, AffIcon, AffTip } from "./marks.jsx";
-import { clamp } from "../../engine/rng.js";
-import { ACT1_WORKERS_SEED, TEAM_HEX, TEAM_LABEL, cardStaleSoon, fulfillmentLabel, supportTier } from "../../engine/act1/constants.js";
-import { LADDER, ladderOf } from "../../engine/act1/ladder.js";
-import { ACT1_ACTION, EDGE_MIN_DRAW, influenceKnown } from "../../engine/act1/actions.js";
-import { incomingTies, infOn, outgoingTies } from "../../engine/act1/influence.js";
-import { AFF_BY_ID, affList, isPoisoned, knownAff, tieFrom } from "../../engine/act1/affinities.js";
-import { readOf } from "../../engine/act1/election.js";
+import { AffIcon } from "./marks.jsx";
+import { ACT1_WORKERS_SEED, TEAM_HEX, TEAM_LABEL, cardStaleSoon } from "../../engine/act1/constants.js";
+import { ACT1_ACTION } from "../../engine/act1/actions.js";
+import { AFF_BY_ID, isPoisoned, knownAff } from "../../engine/act1/affinities.js";
+import { RATING_HEX, deltaMarks, ratingGlyph } from "../../engine/act1/election.js";
+import { allEdges, friendsOf, isKnownFriend, knownEdges, knownFriends } from "../../engine/act1/friends.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
 
 // ---------- THE ORG CHART (Act One board) ----------
-// The chart is the company's own picture of itself: teams, boxes, reporting lines.
-// The influence arrows drawn on top of it are the real structure, and the whole point
-// is that they don't respect the boxes. Organizing runs on the second map, not the first.
+// The chart is the company's own picture of itself: teams, boxes, reporting lines. The
+// friendships marked on the cards are the real structure, and the whole point is that
+// they don't respect the boxes. Organizing runs on the second map, not the first.
 const ORG_CARD_W = 42;
 const ORG_CARD_H = 25;
 const ORG_COL_GAP = 3;
@@ -79,40 +77,44 @@ function cardEdgePoint(card, dx, dy, pad = 0) {
   return { x: card.cx + dx * t, y: card.cy + dy * t };
 }
 
-// labels lets a second act reuse this board with its own vocabulary — the geometry,
-// influence arrows and card layout are identical, only the words change.
-const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD", numberLegend: "SUPPORT" };
+// labels lets a second act reuse this board with its own vocabulary — the geometry and the
+// card layout are identical, only the words change. `ladder`/`rungOf` draw a rung as pips
+// in the corner where an act still has a ladder to show; Act One does not.
+const FLOOR_LABELS = { organizerLegend: "YOURS TO DIRECT", signedLegend: "SIGNED A CARD" };
 
-function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onArm = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, focusId = null, labels = FLOOR_LABELS, ladder = LADDER, rungOf = ladderOf, hoursLeft = null, tierOf = null, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
+// The rating, drawn. Solid is a read; hollow is their words; blank is nobody has asked.
+function RatingGlyph({ glyph, x, y, size = 9 }) {
+  if (!glyph || glyph.state === "blank") return null;
+  if (glyph.state === "out") {
+    return <text x={x} y={y} textAnchor="end" fontSize={size * 0.7} fontWeight="bold" fill="#57534e" fontFamily="'Courier New', monospace">{"—"}</text>;
+  }
+  const hollow = glyph.state === "hollow";
+  return (
+    <text x={x} y={y} textAnchor="end" fontSize={size} fontWeight="bold" fontFamily="'Courier New', monospace"
+      fill={hollow ? glyph.hex : glyph.hex} fillOpacity={hollow ? 0.14 : 1}
+      stroke={hollow ? glyph.hex : "none"} strokeWidth={hollow ? 0.42 : 0} paintOrder="stroke">
+      {glyph.digit}
+    </text>
+  );
+}
+
+const GLYPH_TIP = {
+  solid: "Somebody sat down with them. This is where they stand.",
+  hollow: "Their words. They are this or lower, never higher. Sit down with them to find out.",
+  blank: "Nobody has talked to them yet.",
+};
+
+function Act1FloorMap({ workers, influence, social = null, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onPair = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, labels = FLOOR_LABELS, ladder = null, rungOf = null, hoursLeft = null, tierOf = null, glyphOf = ratingGlyph, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
-  // Which common-ground mark the cursor is on. The tooltip is HTML rather than SVG so
-  // its type is real pixels — the SVG version scaled down to about eight of them.
-  const [hoverAff, setHoverAff] = useState(null);
-  const anyRevealed = workers.some(w => w.revealed && !w.organizer);
-  const active = hoverId != null ? hoverId : focusId;
-  // The organizer the player has picked to act. Once somebody is armed, every card on
-  // the floor lights the marks it has in common with them — which is the whole of the
-  // deep-conversation decision, and the biggest cliff in the game: a sit-down with
-  // somebody you share nothing with misfires and guards them for three weeks.
-  const armed = focusId != null ? workers.find(x => x.id === focusId && x.organizer && !x.burned) : null;
+  const svgRef = useRef(null);
+  // A committee card being dragged onto somebody. `over` is the card under the pointer;
+  // `started` is whether the pointer has moved far enough that this is not a click.
+  const [drag, setDrag] = useState(null);
+  const suppressClick = useRef(false);
+  const holdTimer = useRef(null);
+  const active = hoverId;
 
-  // An influence line is visible once either end is known to you — you can see your own
-  // people's reach from day one, and sitting down with somebody reveals theirs.
-  // Kept as a stat rather than a picture: how much of the floor's real structure you have
-  // found, and how much of it the org chart would never have told you.
-  const mapped = (() => {
-    let total = 0, cross = 0;
-    workers.forEach(a => {
-      outgoingTies(influence, a.id).forEach(t => {
-        const b = workers.find(x => x.id === t.id);
-        if (!b || !influenceKnown(a, b)) return;
-        if (tieFrom(t.weight, a, b) < EDGE_MIN_DRAW) return;
-        total++; if (a.team !== b.team) cross++;
-      });
-    });
-    return { total, cross };
-  })();
-
+  const byId = (id) => workers.find(w => w.id === id);
   const plannedByWorker = {};
   planEntries.forEach(e => {
     const key = e.targetId != null ? e.targetId : e.actorId;
@@ -121,29 +123,72 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
   });
   const planArrows = planEntries.filter(e => e.targetId != null);
 
-  const hovered = workers.find(w => w.id === active);
-  const hoveredOut = hovered ? outgoingTies(influence, hovered.id).filter(t => influenceKnown(hovered, workers.find(w => w.id === t.id))) : [];
-  const hoveredIn = hovered && hovered.revealed ? incomingTies(influence, hovered.id) : [];
-  const nameOf = (id) => workers.find(w => w.id === id)?.name || "?";
-  const teamOf = (id) => workers.find(w => w.id === id)?.team;
+  // How much of the floor's real structure you have found. A friendship counts once.
+  const mappedEdges = knownEdges(workers);
+  const totalEdges = social ? allEdges(social).length : null;
+  const crossMapped = mappedEdges.filter(([a, b]) => byId(a)?.team !== byId(b)?.team).length;
 
-  // Who the active person actually reaches, read straight off the influence map now that
-  // nothing is drawn between the cards.
-  const reaches = (aId, bId) => {
-    const a = workers.find(x => x.id === aId), b = workers.find(x => x.id === bId);
-    return !!a && !!b && influenceKnown(a, b) && tieFrom(infOn(influence, aId, bId), a, b) >= EDGE_MIN_DRAW;
+  const hovered = byId(active);
+  // Hovering anyone lights the friendships you know about; everyone else steps back.
+  const connectedToActive = (id) => active != null && (id === active || isKnownFriend(byId(active), id));
+
+  // ---- drag: a committee card onto a person ----
+  const toBoard = (evt) => {
+    const svg = svgRef.current;
+    if (!svg) return { x: 0, y: 0 };
+    const pt = svg.createSVGPoint(); pt.x = evt.clientX; pt.y = evt.clientY;
+    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    return { x: p.x, y: p.y };
   };
-  const connectedToActive = (id) =>
-    active != null && (id === active || reaches(active, id) || reaches(id, active));
+  const cardAt = (p) => {
+    const hit = Object.entries(layout.cards).find(([, c]) => p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h);
+    return hit ? Number(hit[0]) : null;
+  };
+  const beginDrag = (w, evt) => {
+    const p = toBoard(evt);
+    try { svgRef.current.setPointerCapture(evt.pointerId); } catch (e) { /* not every pointer can be captured */ }
+    setDrag({ actorId: w.id, x: p.x, y: p.y, x0: p.x, y0: p.y, over: null, started: false });
+  };
+  const onCardPointerDown = (w, evt) => {
+    if (!onPair || !w.organizer || w.burned || evt.button > 0) return;
+    if (evt.pointerType === "touch") {
+      // On touch a drag starts after a hold, so a plain scroll over the board still scrolls.
+      clearTimeout(holdTimer.current);
+      const e2 = { clientX: evt.clientX, clientY: evt.clientY, pointerId: evt.pointerId };
+      holdTimer.current = setTimeout(() => beginDrag(w, e2), 350);
+      return;
+    }
+    beginDrag(w, evt);
+  };
+  const onSvgPointerMove = (evt) => {
+    if (holdTimer.current && !drag) { clearTimeout(holdTimer.current); holdTimer.current = null; }
+    if (!drag) return;
+    const p = toBoard(evt);
+    const started = drag.started || Math.hypot(p.x - drag.x0, p.y - drag.y0) > 2.5;
+    const over = started ? cardAt(p) : null;
+    setDrag({ ...drag, x: p.x, y: p.y, started, over: over === drag.actorId ? null : over });
+  };
+  const endDrag = () => {
+    clearTimeout(holdTimer.current); holdTimer.current = null;
+    if (!drag) return;
+    if (drag.started) {
+      suppressClick.current = true;
+      setTimeout(() => { suppressClick.current = false; }, 0);
+      const target = drag.over != null ? byId(drag.over) : null;
+      const actor = byId(drag.actorId);
+      // After the click that trails this pointer-up, or the panel it opens would take
+      // that click on its own backdrop and close again.
+      if (target && !target.burned && onPair) setTimeout(() => onPair(actor, target), 0);
+    }
+    setDrag(null);
+  };
 
   return (
     <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
-      <div className="flex items-center justify-between px-3 pt-2 flex-wrap gap-y-1">
+      <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-wrap gap-y-1">
         <div className="font-stencil text-lg tracking-wide text-stone-200">THE FLOOR</div>
-        {/* What the two card borders mean. The words come from `labels` so a second act
-            can reuse this board without describing its own board in Act One's vocabulary. */}
         <div className="flex items-center gap-3 flex-wrap text-[10px]">
-          <span className="flex items-center gap-1.5" title="You can spend this person's hours.">
+          <span className="flex items-center gap-1.5" title="You can spend this person's hours. Drag their card onto somebody to send them.">
             <span className="w-2.5 h-2 shrink-0 border" style={{ borderColor: "#f59e0b" }} />
             <span className="text-stone-400">{labels.organizerLegend}</span>
           </span>
@@ -151,34 +196,28 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
             <span className="w-2.5 h-2 shrink-0 border" style={{ borderColor: "#2dd4bf" }} />
             <span className="text-stone-400">{labels.signedLegend}</span>
           </span>
-          <span className="flex items-center gap-1.5" title="Not yet — or no longer.">
-            <span className="w-2.5 h-2 shrink-0 border" style={{ borderColor: "#44403c" }} />
-            <span className="text-stone-600">NEITHER</span>
+          {/* The three states of the digit, as the digit itself. Hover for the sentence. */}
+          <span className="flex items-center gap-2 border-l border-stone-800 pl-3 font-mono font-bold text-sm leading-none">
+            <span title={GLYPH_TIP.solid} style={{ color: RATING_HEX[4] }}>4</span>
+            <span title={GLYPH_TIP.hollow} style={{ color: RATING_HEX[4], WebkitTextStroke: `0.6px ${RATING_HEX[4]}`, WebkitTextFillColor: "transparent" }}>4</span>
+            <span title={GLYPH_TIP.blank} className="inline-block w-2.5 h-3 border border-dashed border-stone-700" />
           </span>
-          {labels.numberLegend && (
-            <span className="flex items-center gap-1.5 border-l border-stone-800 pl-3" title="What the big number on each card is measuring.">
-              <span className="font-mono text-stone-400 font-bold">42</span>
-              <span className="text-stone-500">=</span>
-              <span className="text-stone-300 font-bold">{labels.numberLegend}</span>
+          {ladder && (
+            <span className="flex items-center gap-2 border-l border-stone-800 pl-3">
+              {[...ladder].reverse().map(r => (
+                <span key={r.id} className="flex items-center gap-1" title={`${r.label} — ${r.blurb}`}>
+                  <Pips filled={r.pips} total={4} hex={r.hex} size={4} gap={1.2} />
+                </span>
+              ))}
             </span>
           )}
         </div>
       </div>
 
-
-      {/* THE LADDER. Left to right is the whole campaign. */}
-      <div className="flex items-center gap-3 flex-wrap text-[10px] mb-2 px-0.5">
-        {[...ladder].reverse().map((r, i) => (
-          <span key={r.id} className="flex items-center gap-1.5" title={r.blurb}>
-            {i > 0 && <span className="text-stone-700 mr-1">{"\u203a"}</span>}
-            <Pips filled={r.pips} total={4} hex={r.hex} size={5} gap={1.5} />
-            <span style={{ color: r.hex }}>{r.label}</span>
-          </span>
-        ))}
-      </div>
-
       <div className="relative">
-      <svg viewBox={`0 0 ${layout.width} ${layout.height}`} className="w-full block select-none">
+      <svg ref={svgRef} viewBox={`0 0 ${layout.width} ${layout.height}`} className="w-full block select-none"
+        style={{ touchAction: drag ? "none" : "auto" }}
+        onPointerMove={onSvgPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag} onPointerLeave={() => { if (drag && !drag.started) endDrag(); }}>
         <defs>
           <marker id="org-arrow-hot" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
             <path d="M 0 0 L 6 3 L 0 6 z" fill="#fbbf24" />
@@ -202,7 +241,7 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
           ))}
           {workers.map(w => {
             const c = layout.cards[w.id];
-            const tb = layout.teamBoxes[c.team];
+            const tb = c && layout.teamBoxes[c.team];
             if (!c || !tb) return null;
             const innerX = c.col === 0 ? c.x + c.w : c.x;
             return <line key={`stub-${w.id}`} x1={tb.spineX} y1={c.cy} x2={innerX} y2={c.cy} />;
@@ -229,12 +268,8 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
           const p1 = cardEdgePoint(a, dx, dy, 0.8);
           const p2 = cardEdgePoint(b, -dx, -dy, 2.2);
           return (
-            <line
-              key={`plan-${i}`}
-              x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-              stroke="#f59e0b" strokeWidth="0.5" strokeDasharray="1.6 1.2" strokeOpacity="0.95"
-              markerEnd="url(#org-arrow-hot)"
-            />
+            <line key={`plan-${i}`} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+              stroke="#f59e0b" strokeWidth="0.5" strokeDasharray="1.6 1.2" strokeOpacity="0.95" markerEnd="url(#org-arrow-hot)" />
           );
         })}
 
@@ -246,14 +281,8 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
           const p1 = cardEdgePoint(a, dx, dy, 0.4);
           const p2 = cardEdgePoint(b, -dx, -dy, 1.5);
           return (
-            <line
-              key={`pulse-${stepKey}-${i}`}
-              className="edge-pulse"
-              x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-              pathLength="20"
-              stroke={ev.tone === "down" ? "#f87171" : "#2dd4bf"}
-              strokeWidth="0.9"
-            />
+            <line key={`pulse-${stepKey}-${i}`} className="edge-pulse" x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+              pathLength="20" stroke={ev.tone === "down" ? "#f87171" : "#2dd4bf"} strokeWidth="0.9" />
           );
         })}
 
@@ -261,23 +290,27 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
         {workers.map(w => {
           const c = layout.cards[w.id];
           if (!c) return null;
-          const tier = supportTier(w.support);
           const hl = highlights ? highlights[w.id] : null;
           const planLabels = plannedByWorker[w.id];
-          const dim = active != null && !connectedToActive(w.id);
+          const dim = (active != null && !connectedToActive(w.id)) || (drag?.started && drag.over != null && drag.over !== w.id && drag.actorId !== w.id);
           const border = w.burned ? "#44403c" : w.organizer ? "#f59e0b" : w.signed ? "#2dd4bf" : "#44403c";
           // Only while the player is still spending the week: during a resolution the
-          // right-hand slot belongs to the support delta.
+          // right-hand slot belongs to the change marks.
           const budget = hoursLeft && !w.burned && !hl && hoursLeft[w.id] != null ? hoursLeft[w.id] : null;
+          const glyph = glyphOf(w, weekNow);
+          const friendIds = social ? friendsOf(social, w.id) : knownFriends(w);
+          const isOver = drag?.started && drag.over === w.id;
+          const isDragging = drag?.actorId === w.id && drag.started;
           return (
             <g
               key={w.id}
               opacity={w.burned ? 0.4 : dim ? 0.35 : 1}
-              className={w.burned ? "" : "cursor-pointer"}
+              className={w.burned ? "" : onPair && w.organizer ? "cursor-grab" : "cursor-pointer"}
               onClick={() => {
-                if (w.burned) return;
-                if (onArm && w.organizer) onArm(w); else onSelect(w);
+                if (w.burned || suppressClick.current) return;
+                onSelect(w);
               }}
+              onPointerDown={(evt) => onCardPointerDown(w, evt)}
               onMouseEnter={() => setHoverId(w.id)}
               onMouseLeave={() => setHoverId(null)}
             >
@@ -286,209 +319,102 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
               {planLabels && !w.burned && (
                 <rect x={c.x - 1.3} y={c.y - 1.3} width={c.w + 2.6} height={c.h + 2.6} rx="1.6" fill="none" stroke="#f59e0b" strokeWidth="0.45" strokeDasharray="1.6 1.2" />
               )}
-              {focusId === w.id && !w.burned && (
-                // The armed organizer, as a ring rather than a label.
+              {(isOver || isDragging) && (
                 <rect x={c.x - 2.2} y={c.y - 2.2} width={c.w + 4.4} height={c.h + 4.4} rx="2.2" fill="none" stroke="#fcd34d" strokeWidth="0.7" />
               )}
               {hl && (hl.signed || hl.burned) && (
-                <rect
-                  key={`flash-${stepKey}-${w.id}`}
-                  className="ring-flash"
-                  x={c.x - 2} y={c.y - 2} width={c.w + 4} height={c.h + 4} rx="2"
-                  fill="none"
-                  stroke={hl.burned ? "#f87171" : "#2dd4bf"}
-                />
+                <rect key={`flash-${stepKey}-${w.id}`} className="ring-flash"
+                  x={c.x - 2} y={c.y - 2} width={c.w + 4} height={c.h + 4} rx="2" fill="none" stroke={hl.burned ? "#f87171" : "#2dd4bf"} />
               )}
 
-              <text x={c.x + 3.6} y={c.y + 8.2} fontSize="4.3" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{w.name.toUpperCase()}</text>
-              {/* A number here would be a lie on anybody you haven't sat down with, so
-                  only a read narrow enough to be worth a number gets one. Everyone else
-                  gets the band below and nothing else — not knowing is the information. */}
-              {(() => {
-                if (w.burned) return <text x={c.x + c.w - 2.6} y={c.y + 9.2} textAnchor="end" fontSize="6" fontWeight="bold" fill="#57534e" fontFamily="'Courier New', monospace">{"\u2014"}</text>;
-                const r = readOf(w, weekNow);
-                if (!r.exact) return null;
-                return (
-                  <text x={c.x + c.w - 2.6} y={c.y + 9.2} textAnchor="end" fontSize="6" fontWeight="bold"
-                    fill={supportTier(r.mid).hex} fontFamily="'Courier New', monospace">{r.mid}</text>
-                );
-              })()}
-
-              {/* Commitment ladder in the top-right corner, where the trait tick used to
-                  sit. Small, because it is a state you glance at rather than read. */}
-              {(() => {
+              {/* ---- row one: name, and the digit ---- */}
+              <text x={c.x + 3.6} y={c.y + 7.6} fontSize="4.1" fill={w.burned ? "#57534e" : "#e7e5e4"} fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{w.name.toUpperCase()}</text>
+              <g opacity={w.burned ? 0.5 : 1}>
+                <RatingGlyph glyph={glyph} x={c.x + c.w - 2.4} y={c.y + 9.6} />
+              </g>
+              {ladder && rungOf && (() => {
                 const rung = rungOf(w);
                 return (
                   <g opacity={w.burned ? 0.3 : 1}>
                     {[0, 1, 2, 3].map(i => (
-                      <circle
-                        key={i}
-                        cx={c.x + c.w - 11.1 + i * 2.9}
-                        cy={c.y + 2.5}
-                        r="1.05"
-                        fill={i < rung.pips ? rung.hex : "none"}
-                        stroke={i < rung.pips ? rung.hex : "#57534e"}
-                        strokeWidth="0.3"
-                      />
+                      <circle key={i} cx={c.x + 4.6 + i * 2.4} cy={c.y + 10.1} r="0.85"
+                        fill={i < rung.pips ? rung.hex : "none"} stroke={i < rung.pips ? rung.hex : "#57534e"} strokeWidth="0.3" />
                     ))}
                   </g>
                 );
               })()}
 
-              {/* Common ground, with the whole of its own row now that the pips have moved
-                  off it. One you have surfaced is drawn; one you haven't is an empty
-                  ring, so the card shows how much of this person you still don't know. */}
+              {/* ---- row two: what they do here, and any trouble ---- */}
+              <text x={c.x + 3.6} y={c.y + (ladder ? 14.2 : 11.8)} fontSize="2.5" fill="#78716c" fontFamily="'Courier New', monospace">{truncateNote(w.title || TEAM_LABEL[w.team], 22)}</text>
+              {w.guarded > 0 && <text x={c.x + c.w - 2.6} y={c.y + 13.6} fontSize="3.2" fill="#f87171" textAnchor="end" fontFamily="'Courier New', monospace">!</text>}
+              {staleWeek != null && cardStaleSoon(w, staleWeek) && (
+                <text x={c.x + c.w - (w.guarded > 0 ? 6.2 : 2.6)} y={c.y + 13.6} fontSize="3.6" fill="#fbbf24" textAnchor="end" fontFamily="'Courier New', monospace">{"⧖"}</text>
+              )}
+
+              {/* ---- row three: friends. A ring is a friend you have not met yet. ---- */}
               <g opacity={w.burned ? 0.3 : 1}>
-                {affList(w).slice(0, 5).map((t, i) => {
-                  const seen = knownAff(w).includes(t);
-                  const bought = isPoisoned(w, t);
-                  const withArmed = !!armed && armed.id !== w.id && seen && !bought
-                    && affList(armed).includes(t) && knownAff(armed).includes(t);
-                  const hex = withArmed ? EDGE_COMMON_GROUND
-                    : seen ? (bought ? "#f87171" : "#a8a29e") : "#57534e";
-                  const S = 5.2;                       // icon box, in board units
-                  const x = c.x + 3.4 + i * 5.9;
-                  const y = c.y + 10.6;
+                {friendIds.map((fid, i) => {
+                  const f = byId(fid);
+                  const known = isKnownFriend(w, fid);
+                  const cx = c.x + 5.6 + i * 5.2, cy = c.y + 16.6;
                   return (
-                    <g
-                      key={t}
-                      onMouseEnter={() => setHoverAff({
-                        leftPct: ((x + S / 2) / layout.width) * 100,
-                        topPct: (y / layout.height) * 100,
-                        // Anchor to whichever side keeps the box on the board.
-                        align: ((x + S / 2) / layout.width) < 0.2 ? "left"
-                          : ((x + S / 2) / layout.width) > 0.8 ? "right" : "center",
-                        tone: withArmed ? "known" : seen ? (bought ? "bought" : "known") : "unknown",
-                        label: seen ? (AFF_BY_ID[t]?.label ?? t) : AFF_UNKNOWN_LABEL,
-                        sub: withArmed
-                          ? `${armed.name} shares this \u2014 a sit-down with them has something to open on.`
-                          : seen
-                            ? (bought
-                                ? "The company sponsors this now \u2014 it counts for nothing."
-                                : "Shared common ground makes a conversation land harder.")
-                            : AFF_UNKNOWN_SUB,
-                      })}
-                      onMouseLeave={() => setHoverAff(null)}
-                    >
-                      {/* A drawn icon is a few pixels of ink; the slot is the hover target. */}
-                      <rect x={x - 0.4} y={y - 0.5} width={S + 0.8} height={S + 1} fill="transparent" />
-                      {withArmed && (
-                        <rect x={x - 0.5} y={y - 0.6} width={S + 1} height={S + 1.2} rx="0.6"
-                          fill={EDGE_COMMON_GROUND} fillOpacity="0.16"
-                          stroke={EDGE_COMMON_GROUND} strokeWidth="0.25" strokeOpacity="0.7" />
-                      )}
-                      {seen ? (
-                        <g transform={`translate(${x} ${y}) scale(${S / 10})`} style={{ color: hex }} opacity={bought ? 0.85 : 1}>
-                          {AFF_ICON[t]}
-                        </g>
+                    <g key={fid}>
+                      {known && f ? (
+                        <>
+                          <circle cx={cx} cy={cy} r="1.9" fill={TEAM_HEX[f.team]} fillOpacity="0.9" />
+                          <text x={cx} y={cy + 0.95} textAnchor="middle" fontSize="2.4" fontWeight="bold" fill="#0c0a09" fontFamily="'Courier New', monospace">{f.name[0]}</text>
+                        </>
                       ) : (
-                        // The same dashed slot the panel draws, in board units: an empty
-                        // frame with nothing in it yet.
-                        <g>
-                          <rect x={x} y={y} width={S} height={S} fill="none"
-                            stroke="#57534e" strokeWidth="0.35" strokeDasharray="1.1 0.9" />
-                          <circle cx={x + S / 2} cy={y + S / 2} r={S * 0.135}
-                            fill="none" stroke="#57534e" strokeWidth="0.3" />
-                        </g>
+                        <circle cx={cx} cy={cy} r="1.8" fill="none" stroke="#57534e" strokeWidth="0.35" strokeDasharray="1 0.8" />
                       )}
                     </g>
                   );
                 })}
-                {w.guarded > 0 && <text x={c.x + c.w - 3} y={c.y + 15.2} fontSize="3.2" fill="#f87171" textAnchor="end" fontFamily="'Courier New', monospace">!</text>}
-                {staleWeek != null && cardStaleSoon(w, staleWeek) && (
-                  <text x={c.x + c.w - (w.guarded > 0 ? 6.5 : 3)} y={c.y + 15.2} fontSize="3.6" fill="#fbbf24" textAnchor="end" fontFamily="'Courier New', monospace">
-                    {"\u29D6"}
-                  </text>
-                )}
               </g>
 
-              {/* ---- THE READ ---- One bar per person: how sure you are, drawn to scale.
-                   A wide bar hanging off the right-hand end is somebody who has said warm
-                   things to nobody in particular. A short bar with a tick is somebody a
-                   member of your committee has actually sat down with. The board reads at
-                   a glance as how much of this floor you can honestly see. */}
-              {!w.burned && (() => {
-                const r = readOf(w, weekNow);
-                const X0 = c.x + 3.6, W = c.w - 7.2, Y = c.y + 18.9;
-                const at = (v) => X0 + (W * clamp(v)) / 100;
-                const hex = supportTier(r.mid).hex;
-                const bandW = Math.max(0.8, at(r.hi) - at(r.lo));
-                return (
-                  <g opacity={w.signed ? 1 : 0.95}>
-                    <rect x={X0} y={Y} width={W} height="1.5" rx="0.75" fill="#292524" />
-                    <rect x={at(r.lo)} y={Y} width={bandW} height="1.5" rx="0.75"
-                      fill={hex} fillOpacity={r.exact ? 0.95 : r.kind === "cold" ? 0.22 : 0.4} />
-                    {/* The tick is the claim. Only a read worth trusting makes one. */}
-                    {r.exact && <rect x={at(r.mid) - 0.3} y={Y - 0.7} width="0.6" height="2.9" fill={hex} />}
-                    {/* Cold reads get a nick at the top of the band: that edge is their
-                        words, and their words are the only thing you have. */}
-                    {!r.exact && <rect x={at(r.hi) - 0.35} y={Y - 0.4} width="0.7" height="2.3" fill={hex} fillOpacity="0.75" />}
-                  </g>
-                );
-              })()}
-
               {planLabels ? (
-                <text x={c.x + 3.6} y={c.y + 17.5} fontSize="2.9" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), budget != null ? 13 : 17)}</text>
+                <text x={c.x + 3.6} y={c.y + 22.8} fontSize="2.8" fill="#fbbf24" fontFamily="'Courier New', monospace">{truncateNote(planLabels.join(" + "), budget != null ? 14 : 18)}</text>
               ) : null}
               {w.burned && (
-                <text x={c.x + c.w - 3.4} y={c.y + 18.6} textAnchor="end" fontSize="3.6" fill="#78716c" fontFamily="'Courier New', monospace">{"\u2715"}</text>
+                <text x={c.x + c.w - 3.4} y={c.y + 18.6} textAnchor="end" fontSize="3.6" fill="#78716c" fontFamily="'Courier New', monospace">{"✕"}</text>
               )}
-              {/* The hours budget lives on the card so the player can see it without
-                  leaving the board. On someone the company is working on it goes red,
-                  which is also the week their budget is cut — one token, both facts. */}
-              {/* ---- ROW FOUR ---- Tier is the colour of the experience bar; trouble is
-                   one mark. The hover line underneath says which, in words. */}
+
+              {/* ---- committee only: experience as a hairline, trouble as one mark ---- */}
               {w.organizer && !w.burned && tierOf && (() => {
                 const t = tierOf(w);
                 const xp = Math.max(0, Math.min(100, w.experience || 0));
                 const idle = w.weeksIdle || 0;
-                const flag = w.shaken > 0 ? { mark: "\u25C9", hex: "#f87171" }
-                  : idle >= IDLE_QUIT - 1 ? { mark: "\u25B2", hex: "#f87171" }
-                  : idle > IDLE_GRACE ? { mark: "\u25B2", hex: "#fbbf24" }
-                  : idle > 0 ? { mark: "\u25B3", hex: "#78716c" }
+                const flag = w.shaken > 0 ? { mark: "◉", hex: "#f87171" }
+                  : idle >= IDLE_QUIT - 1 ? { mark: "▲", hex: "#f87171" }
+                  : idle > IDLE_GRACE ? { mark: "▲", hex: "#fbbf24" }
+                  : idle > 0 ? { mark: "△", hex: "#78716c" }
                   : null;
                 return (
                   <g>
                     {flag && (
-                      <text x={c.x + c.w - 3.4} y={c.y + 21.8} textAnchor="end" fontSize="3.4" fill={flag.hex} fontFamily="'Courier New', monospace">{flag.mark}</text>
+                      <text x={c.x + c.w - 9.2} y={c.y + 18.4} textAnchor="end" fontSize="3.2" fill={flag.hex} fontFamily="'Courier New', monospace">{flag.mark}</text>
                     )}
-                    <rect x={c.x + 3.6} y={c.y + 21.2} width={c.w - 7.2} height="0.8" rx="0.4" fill="#292524" />
-                    <rect x={c.x + 3.6} y={c.y + 21.2} width={(c.w - 7.2) * (xp / 100)} height="0.8" rx="0.4" fill={t.hex} fillOpacity="0.9" />
+                    <rect x={c.x + 3.6} y={c.y + 20.2} width={c.w - 7.2} height="0.8" rx="0.4" fill="#292524" />
+                    <rect x={c.x + 3.6} y={c.y + 20.2} width={(c.w - 7.2) * (xp / 100)} height="0.8" rx="0.4" fill={t.hex} fillOpacity="0.9" />
                   </g>
                 );
               })()}
-
 
               {budget != null && (() => {
                 const total = Math.max(budget, committeeHours(w));
                 const hex = budget < 0 || w.underPressure > 0 ? "#f87171" : budget === 0 ? "#2dd4bf" : "#f59e0b";
-                return (
-                  <g>
-                    <HourPieShapes
-                      cx={c.x + c.w - 4.4} cy={c.y + 16.6} r="2.7"
-                      left={budget} total={total} hex={hex} sw="0.3" bg="#1c1917"
-                    />
-                  </g>
-                );
+                return <HourPieShapes cx={c.x + c.w - 4.4} cy={c.y + 16.6} r="2.7" left={budget} total={total} hex={hex} sw="0.3" bg="#1c1917" />;
               })()}
               {budget == null && !w.burned && !hl && w.underPressure > 0 && (
-                <text x={c.x + c.w - 3.4} y={c.y + 18.6} textAnchor="end" fontSize="3.4" fill="#f87171" fontFamily="'Courier New', monospace">{"\u25C9"}</text>
+                <text x={c.x + c.w - 3.4} y={c.y + 18.6} textAnchor="end" fontSize="3.4" fill="#f87171" fontFamily="'Courier New', monospace">{"◉"}</text>
               )}
 
               {hl && hl.delta !== 0 && !w.burned && (
                 // Inside the card, not floating above it: the note box for the same person
-                // is drawn later in this group and would paint straight over a floating delta.
-                <text
-                  key={`delta-${stepKey}-${w.id}`}
-                  className="delta-float"
-                  x={c.x + c.w - 2.6}
-                  y={c.y + 18}
-                  textAnchor="end"
-                  fontSize="3.7"
-                  fontWeight="bold"
-                  fill={hl.delta > 0 ? "#2dd4bf" : "#f87171"}
-                  fontFamily="'Courier New', monospace"
-                >{hl.delta > 0 ? "+" : ""}{hl.delta} support</text>
+                // is drawn later in this group and would paint straight over a floating mark.
+                <text key={`delta-${stepKey}-${w.id}`} className="delta-float"
+                  x={c.x + c.w - 2.6} y={c.y + 18.4} textAnchor="end" fontSize="3.4" fontWeight="bold"
+                  fill={hl.delta > 0 ? "#2dd4bf" : "#f87171"} fontFamily="'Courier New', monospace">{deltaMarks(hl.delta)}</text>
               )}
               {notes && notes[w.id] && (
                 <g key={`note-${stepKey}-${w.id}`} className="note-float">
@@ -500,75 +426,56 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
           );
         })}
 
-        
-
+        {/* The card in hand, following the pointer. */}
+        {drag?.started && (() => {
+          const a = byId(drag.actorId);
+          if (!a) return null;
+          return (
+            <g pointerEvents="none" opacity="0.92">
+              <rect x={drag.x - 13} y={drag.y - 9.5} width="26" height="8" rx="1.2" fill="#1c1917" stroke="#fcd34d" strokeWidth="0.6" />
+              <text x={drag.x} y={drag.y - 4} textAnchor="middle" fontSize="3.8" fill="#fcd34d" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.12">{a.name.toUpperCase()}</text>
+            </g>
+          );
+        })()}
       </svg>
-      {hoverAff && (
-        <div
-          className={`absolute z-20 pointer-events-none -translate-y-full ${
-            hoverAff.align === "left" ? "translate-x-0" : hoverAff.align === "right" ? "-translate-x-full" : "-translate-x-1/2"}`}
-          style={{ left: `${hoverAff.leftPct}%`, top: `${hoverAff.topPct}%` }}
-        >
-          <div className="mb-1.5"><AffTip tone={hoverAff.tone} label={hoverAff.label} sub={hoverAff.sub} /></div>
-        </div>
-      )}
       </div>
 
-      <div className="border-t border-stone-800 px-3 py-2 min-h-[3.6rem]">
+      <div className="border-t border-stone-800 px-3 py-2 min-h-[3.2rem]">
         {hovered ? (
           <div className="text-xs text-stone-400 leading-snug">
-            <span className={`font-bold ${supportTier(hovered.support).text}`}>{hovered.name}{hovered.burned ? " (OUT OF PLAY)" : ""}</span>
-            <span className="text-stone-500"> ({TEAM_LABEL[hovered.team]}) — {(() => {
-              const r = readOf(hovered, weekNow);
-              return r.exact
-                ? <>stands at <span className="text-stone-300 font-bold">{r.mid}</span></>
-                : <>somewhere in <span className="text-stone-300 font-bold">{r.lo}{"\u2013"}{r.hi}</span>{r.kind === "cold" ? " — never spoken to" : r.kind === "fading" ? ` — last read ${r.age} weeks ago` : " — talked to, never sat down with"}</>;
-            })()} · {fulfillmentLabel(hovered.fulfillment).toLowerCase()} ({hovered.fulfillment}){hovered.signed ? " · SIGNED" : ""}</span>
+            <span className="font-bold" style={{ color: glyphOf(hovered, weekNow).hex }}>{hovered.name}{hovered.burned ? " (OUT OF PLAY)" : ""}</span>
+            <span className="text-stone-500"> · {hovered.title || TEAM_LABEL[hovered.team]}{hovered.signed ? " · SIGNED" : ""}</span>
             <span style={{ color: infTrait(hovered).hex }} className="font-bold"> · {infTrait(hovered).label}</span>
             <span className="text-stone-500"> — {hovered.hook}</span>
             <div className="mt-0.5">
-              <span className="text-stone-500">Common ground: </span>
-              {knownAff(hovered).length ? (
-                <span>
-                  {knownAff(hovered).map((t, i) => (
-                    <span key={t} className={isPoisoned(hovered, t) ? "text-red-400" : "text-stone-300"}>
-                      {i > 0 ? "  ·  " : ""}<AffIcon id={t} size={12} /> {AFF_BY_ID[t]?.label ?? t}
-                      {isPoisoned(hovered, t) ? " (bought)" : ""}
-                    </span>
-                  ))}
+              <span className="text-stone-500">Friends: </span>
+              {(() => {
+                const ids = social ? friendsOf(social, hovered.id) : knownFriends(hovered);
+                const known = ids.filter(id => isKnownFriend(hovered, id));
+                if (!ids.length) return <span className="text-stone-600 italic">keeps to themselves</span>;
+                return (
+                  <>
+                    <span className="text-stone-300">{known.map(id => byId(id)?.name).join(", ")}</span>
+                    {ids.length > known.length && <span className="text-stone-600 italic">{known.length ? " · " : ""}{ids.length - known.length} not yet met</span>}
+                  </>
+                );
+              })()}
+              {knownAff(hovered).length > 0 && (
+                <span className="text-stone-500"> · </span>
+              )}
+              {knownAff(hovered).map((t, i) => (
+                <span key={t} className={isPoisoned(hovered, t) ? "text-red-400" : "text-stone-300"} title={isPoisoned(hovered, t) ? "The company sponsors this now." : ""}>
+                  {i > 0 ? "  " : ""}<AffIcon id={t} size={12} /> {AFF_BY_ID[t]?.label ?? t}
                 </span>
-              ) : (
-                <span className="text-stone-600 italic">nothing surfaced yet</span>
-              )}
-              {affList(hovered).length > knownAff(hovered).length && (
-                <span className="text-stone-600 italic">
-                  {knownAff(hovered).length ? " · " : " · "}{affList(hovered).length - knownAff(hovered).length} still unknown
-                </span>
-              )}
-            </div>
-            <div className="mt-0.5">
-              {hoveredOut.length > 0 ? (
-                <span className="text-stone-500">Moves: <span className="text-amber-400">{hoveredOut.map(t => `${nameOf(t.id)}${teamOf(t.id) !== hovered.team ? " ↗" : ""} (${t.weight})`).join(", ")}</span>. </span>
-              ) : (
-                <span className="text-stone-600 italic">No mapped influence on anyone yet. </span>
-              )}
-              {hovered.revealed ? (
-                <span className="text-stone-500">Moved by: <span className="text-stone-300">{hoveredIn.length ? hoveredIn.map(t => `${nameOf(t.id)}${teamOf(t.id) !== hovered.team ? " ↗" : ""} (${t.weight})`).join(", ") : "nobody in particular"}</span>.</span>
-              ) : (
-                <span className="text-stone-600 italic">Who moves them: unmapped.</span>
-              )}
+              ))}
             </div>
           </div>
         ) : (
           <div className="text-xs text-stone-500 leading-snug">
-            <div>
-              {anyRevealed
-                ? "The boxes are the company's chart, and it is not the map you organize on. Pick one of your people: the marks they share light up across the floor, and hovering anyone says who moves them and how hard."
-                : "The boxes are the company's chart, and it is not the map you organize on. Pick one of your people: the marks they share light up across the floor. Who moves whom you learn by sitting down with people."}
-            </div>
-            {mapped.total > 0 && (
-              <div className="text-stone-500 not-italic mt-0.5">
-                Of the {mapped.total} {mapped.total === 1 ? "relationship" : "relationships"} you've mapped, <span className="text-stone-200 font-bold">{mapped.cross}</span> cross team boundaries.
+            <div>Click anyone to plan. Drag one of your people onto somebody to send them.</div>
+            {mappedEdges.length > 0 && (
+              <div className="text-stone-500 mt-0.5">
+                {mappedEdges.length}{totalEdges != null ? ` of ${totalEdges}` : ""} friendships mapped, <span className="text-stone-200 font-bold">{crossMapped}</span> across team lines.
               </div>
             )}
           </div>
@@ -578,4 +485,4 @@ function Act1FloorMap({ workers, influence, staleWeek = null, weekNow = 1, layou
   );
 }
 
-export { ORG_CARD_W, ORG_CARD_H, ORG_COL_GAP, ORG_ROW_GAP, ORG_TEAM_GAP, ORG_MARGIN, ORG_TEAM_COLS, ORG_ROOT_H, ORG_HEADER_H, EDGE_COMMON_GROUND, computeOrgLayout, ORG_LAYOUT, cardEdgePoint, FLOOR_LABELS, Act1FloorMap };
+export { EDGE_COMMON_GROUND, computeOrgLayout, ORG_LAYOUT, cardEdgePoint, FLOOR_LABELS, RatingGlyph, Act1FloorMap };

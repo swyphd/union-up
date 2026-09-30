@@ -111,6 +111,12 @@ That is the whole stated/true lesson in one mark: a hollow 4 might be a 3. Signi
 digit solid with a card corner. The rule of thumb the intro teaches: **ask a solid 5, maybe a
 solid 4, never a hollow anything.**
 
+*As built in M1:* the ask stays clickable on a hollow digit, with the panel warning in amber
+rather than greying the button. Disabling it would remove the gamble the sim's `careless`
+profile exists to measure, and the lesson is taught better by a "no" than by a locked button.
+Signed shows as the teal border rather than a corner mark. Management's own set-piece log
+lines still quote their arithmetic; they are rewritten with Phase 2 in M5.
+
 Direction: 5 = strongest. Real charting uses the inverse (1 = leader, 5 = hard no). Five is
 more intuitive on a card; a single constant flips it if you want the field convention.
 
@@ -138,7 +144,8 @@ tie   = (base + vouch) * senderMult(a) * recvMult(b) * (1 + 0.35 * surfacedCommo
 ```
 
 The `vouch` term is what pays for mapping: a committee member reaches their friend's friend
-once the friend has signed. Every downstream formula (`convoGain`, `signChance`, passive
+once the friend has signed. *(Deferred to M2 with the conversation payloads, which is
+where the mapping it pays for is built. M1 ships `FRIEND_TIE` 65 and `CIRCLE_TIE` 35 only.)* Every downstream formula (`convoGain`, `signChance`, passive
 drift, `signedBacking`, `orgChartResistance`, Kirkman's targeting) keeps its shape and reads
 this tie. Generation constraints: 4–5 circles of 3–6 people; 3–4 bridge friendships; 1–2
 isolates (the KEEPS THEIR HEAD DOWN people); cross-team share of friendships around 40%; the
@@ -433,7 +440,7 @@ Each one is playable in the browser and measurable in the sim before the next st
 | # | milestone | size | done when |
 |---|---|---|---|
 | M0 | engine split, seeded RNG, sim imports engine | M | **done**, branch `plan/social-floor`: seeded output identical at every step; the real `resolveWeek` runs in the sim |
-| M1 | titles; friends + circles replace influence; rating glyph; new card; percentages gone; target-first + drag; armed mode removed | L | careful/sloppy/careless still separate in `verify-ballot.mjs` after re-tuning `tieOn` |
+| M1 | titles; friends + circles replace influence; rating glyph; new card; percentages gone; target-first + drag; armed mode removed | L | **done**: careful 60.6 / sloppy 42.6 / careless 14.5 at SEED=7, n=1500, with no retune needed (the gap widened; careful held). Three deferrals noted under §2.2 and §7 |
 | M2 | social view + toggle; sticky layout; conversation map payloads; coverage dots | M | a `mapper` sim policy that recruits for coverage exists and beats the current `careful` |
 | M3 | committee redesign: recruit as judgment, leaks, size heat, coverage in the filing prompt and the unwinnable detector | M | a policy that recruits everyone loses to one that recruits for coverage |
 | M4 | falling out + rumor set-piece; cracked slots; social-view snap | S | about one per Phase 1 campaign; the map is measurably wrong for players who stop mapping |

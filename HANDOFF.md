@@ -21,8 +21,8 @@ human in a browser:
 2. **Card staleness pacing (Act 1).** `CARD_LIFESPAN = 14` was balanced against an
    assumed first signature around week 6. If the real first card lands week 9+, the
    window is looser than intended — tighten toward 12.
-3. **Actor-first selection (Act 1).** Click a committee member on the shelf, then click
-   a target on the floor. Never exercised by a human.
+3. **Drag-to-pair (Act 1).** Drag a committee card onto a person; on touch, hold first.
+   Driven headlessly, never by a hand.
 4. **Committee neglect curve.** Members lose an hour per idle week past 2 and walk at 5.
    May be too punishing in a long campaign.
 
@@ -128,6 +128,13 @@ not a decider.
   `company/`, `contract/`, and `rng.js`, the one source of randomness. `src/ui/` is the
   components, one act per folder, `shared.jsx` for what they have in common. `src/App.jsx`
   is routing and saves. `src/save.js` holds the save key and version.
+- **Since M1 of the plan:** the influence map is derived from `src/engine/act1/friends.js`
+  (authored circles, 0-3 friends each, `FRIEND_TIE`/`CIRCLE_TIE`); the card carries a 1-5
+  rating glyph (`ratingGlyph` in `election.js`: blank / hollow / solid), a job title and
+  friend slots; the ladder pips and read bar are gone from Act One's board (the contract act
+  still passes `ladder`/`rungOf`); selection is target-first, with drag-a-committee-card as
+  the shortcut and no armed mode. Verify with `SEED=7 node sim/verify-ballot.mjs`: careful
+  should sit near 60 and clear sloppy and careless.
 - The sim imports the engine directly; there is nothing to regenerate. `SEED=7 node
   sim/verify-ballot.mjs` is replayable byte for byte, which is the acceptance test for any
   engine refactor. See `sim/README.md`.

@@ -60,6 +60,39 @@ function readOf(w, week = 1) {
     exact: false, kind: w.spokenTo ? "warm" : "cold",
   };
 }
+// ---------- THE RATING ----------
+// What the player sees of any of this is a digit from 1 to 5, the way a charting sheet
+// carries one. The hidden number stays hidden; the digit is a band of it, and the band
+// edges are the same tiers the ballot and the card ask already turn on.
+//
+//   5  would sign today, could organize        4  votes yes, signs for the right asker
+//   3  undecided                               2  leans no          1  no
+//
+// The digit comes in three states, which is the whole stated-vs-true lesson in one mark:
+//   blank   nobody has talked to them
+//   hollow  their words, which are a ceiling: they are this or lower, never higher
+//   solid   somebody sat down with them and knows, until that read fades again
+const RATING_BANDS = [78, 55, 30, 15];
+function rating(v) {
+  return v >= RATING_BANDS[0] ? 5 : v >= RATING_BANDS[1] ? 4 : v >= RATING_BANDS[2] ? 3 : v >= RATING_BANDS[3] ? 2 : 1;
+}
+const RATING_HEX = { 5: "#2dd4bf", 4: "#a3e635", 3: "#fbbf24", 2: "#fb923c", 1: "#f87171" };
+const RATING_WORD = { 5: "ready", 4: "with you", 3: "undecided", 2: "leaning no", 1: "no" };
+function ratingGlyph(w, week = 1) {
+  if (w.burned) return { digit: null, state: "out", hex: "#57534e" };
+  const r = readOf(w, week);
+  if (r.kind === "cold") return { digit: null, state: "blank", hex: "#57534e" };
+  if (r.exact) { const d = rating(r.mid); return { digit: d, state: "solid", hex: RATING_HEX[d], signed: !!w.signed }; }
+  // Warm: the top of the band is what they say. Fading: the last number you had.
+  const d = rating(r.kind === "fading" ? r.mid : r.hi);
+  return { digit: d, state: "hollow", hex: RATING_HEX[d], age: r.age };
+}
+// A change in the hidden number, as marks rather than a figure: one per four points.
+function deltaMarks(delta) {
+  const n = Math.max(1, Math.min(3, Math.round(Math.abs(delta) / 4)));
+  return (delta > 0 ? "\u25B2" : "\u25BC").repeat(n);
+}
+
 // How much of the floor you can actually see. The one number worth putting on the HUD.
 function floorClarity(workers, week) {
   const live = workers.filter(x => !x.burned);
@@ -128,4 +161,4 @@ function recognitionChance(cardShare, consultantActive, heat) {
   return c;
 }
 
-export { ELECTION_WEEKS, VOLUNTARY_RECOGNITION_FLOOR, ballotStanding, READ_COLD_DROP, READ_WARM_DROP, READ_FRESH_HALF, READ_BLUR_RATE, READ_BLUR_CAP, READ_NUMBER_MAX, readOf, floorClarity, BALLOT_PIVOT, BALLOT_SPAN, turnoutChance, yesChance, voteProjection, voteProjectionBand, recognitionChance };
+export { RATING_BANDS, rating, RATING_HEX, RATING_WORD, ratingGlyph, deltaMarks, ELECTION_WEEKS, VOLUNTARY_RECOGNITION_FLOOR, ballotStanding, READ_COLD_DROP, READ_WARM_DROP, READ_FRESH_HALF, READ_BLUR_RATE, READ_BLUR_CAP, READ_NUMBER_MAX, readOf, floorClarity, BALLOT_PIVOT, BALLOT_SPAN, turnoutChance, yesChance, voteProjection, voteProjectionBand, recognitionChance };
