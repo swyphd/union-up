@@ -1,7 +1,8 @@
 // The board draws every tie it knows about. But the player's weekly decision is only
 // ever "which of my committee talks to whom" -- so how many of those lines are actually
 // about a choice they can make?
-import * as C from './core.mjs';
+import './seed.mjs';
+import * as C from '../src/engine/act1/index.js';
 let actionable = 0, total = 0, games = 0;
 let passiveOnly = 0, unreachable = 0;
 for (let g = 0; g < 200; g++) {

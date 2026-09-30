@@ -1,7 +1,7 @@
 // The first-contract act, by policy, on the floor a real Act One actually hands it.
 import { playContract } from './contract-engine.mjs';
 import { playGame } from './run.mjs';
-import * as K from './core3.mjs';
+import * as K from '../src/engine/contract/index.js';
 
 const N = Number(process.argv[2] || 800);
 const pad = (s, n) => String(s).padEnd(n);

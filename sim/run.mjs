@@ -1,5 +1,6 @@
+import './seed.mjs';
 import * as E from './engine.mjs';
-import * as C from './core.mjs';
+import * as C from '../src/engine/act1/index.js';
 import { planWeek } from './policy.mjs';
 
 const MAX_WEEKS = 40;

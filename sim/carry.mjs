@@ -3,7 +3,7 @@
 // against the rolled floor the prototype used to invent.
 import { playGame } from './run.mjs';
 import { playContract } from './contract-engine.mjs';
-import * as C from './core.mjs';
+import * as C from '../src/engine/act1/index.js';
 
 const N = Number(process.argv[2] || 400);
 const pad = (s, n) => String(s).padEnd(n);

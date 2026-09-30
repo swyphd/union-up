@@ -1,7 +1,8 @@
 // Two ways a floor can be connected across team lines. Influence is generated
 // team-clustered on purpose; affinities are drawn from one shared pool with no regard
 // for team at all. So which system actually carries the cross-team story?
-import * as C from './core.mjs';
+import './seed.mjs';
+import * as C from '../src/engine/act1/index.js';
 const N = 300;
 let infTot = 0, infCross = 0;
 let pairsSame = 0, pairsCross = 0, shareSame = 0, shareCross = 0;

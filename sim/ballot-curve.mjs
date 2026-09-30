@@ -1,8 +1,9 @@
 // Sweep the ballot curve once it runs on commitment rather than on the read.
 // Win rate alone is not difficulty: a game that is won 60% of the time by 14 points is
 // a cutscene. We want the margin to be narrow often enough that the last weeks matter.
+import './seed.mjs';
 import * as E from './engine.mjs';
-import * as C from './core.mjs';
+import * as C from '../src/engine/act1/index.js';
 import { planWeek } from './policy.mjs';
 
 // `useTrue` false reproduces what ships today, as the control row.
@@ -11,9 +12,9 @@ function runBallot(w, { useTrue, pivot, span }) {
   w.forEach(x => {
     const v = useTrue ? (x.trueSupport ?? x.support) : x.support;
     const turnout = Math.min(0.96, 0.62 + 0.28 * Math.abs(v - 50) / 50 + (x.signed ? 0.06 : 0));
-    if (Math.random() >= turnout) { out++; return; }
+    if (C.random() >= turnout) { out++; return; }
     const y = Math.min(0.93, Math.max(0.02, (v - pivot) / span + (x.signed ? 0.05 : 0)));
-    if (Math.random() < y) yes++; else no++;
+    if (C.random() < y) yes++; else no++;
   });
   return { yes, no, out, cast: yes + no, won: yes > no };
 }

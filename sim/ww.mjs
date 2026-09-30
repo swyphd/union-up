@@ -1,7 +1,8 @@
 // Does worker-to-worker influence -- neither end an organizer -- do any work?
 // Zero it out and see what the game does. Everything organizer-outgoing is left alone.
+import './seed.mjs';
 import * as E from './engine.mjs';
-import * as C from './core.mjs';
+import * as C from '../src/engine/act1/index.js';
 import { planWeek } from './policy.mjs';
 
 function play(opts, strip) {

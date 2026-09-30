@@ -1,0 +1,356 @@
+// One worker, one organizer, and what the pair can do this week.
+import React, { useState } from "react";
+import { X } from "lucide-react";
+import { AffinityMarks, InfluenceTraitChip } from "./marks.jsx";
+import { CostPips, HourPie } from "../shared.jsx";
+import { infOn, outgoingTies } from "../../engine/act1/influence.js";
+import { ACT1_ACTION, EDGE_MIN_DRAW, PUBLIC_TIERS, convoGain, influenceKnown, misfireChance, publicGain, shownInfluence, signChance } from "../../engine/act1/actions.js";
+import { affList, knownAff, tieBonus, tieFrom } from "../../engine/act1/affinities.js";
+import { ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, TEAM_HEX, TEAM_LABEL } from "../../engine/act1/constants.js";
+import { RATING_WORD, deltaMarks, ratingGlyph } from "../../engine/act1/election.js";
+import { IDLE_GRACE, IDLE_QUIT, committeeHours, orgTier } from "../../engine/act1/committee.js";
+import { infTrait } from "../../engine/act1/traits.js";
+
+function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, unlockPublic, consultantActive = false, onPlan, onClose }) {
+  const others = organizers.filter(o => o.id !== worker.id);
+  const [actorId, setActorId] = useState(() => {
+    if (preferActorId && preferActorId !== worker.id && others.some(o => o.id === preferActorId)) return preferActorId;
+    if (worker.organizer) return worker.id;
+    // If the player picked the actor off the shelf first, honour that choice.
+    if (preferActorId && preferActorId !== worker.id && others.some(o => o.id === preferActorId)) return preferActorId;
+    // Default to whoever carries the most weight with this person — but skip anyone
+    // whose week is already spent, so the panel doesn't open fully greyed out.
+    const ranked = [...others].sort((a, b) => infOn(influence, b.id, worker.id) - infOn(influence, a.id, worker.id));
+    return (ranked.find(o => hoursLeftFor(o) >= 1) || ranked[0])?.id ?? null;
+  });
+  const actor = allWorkers.find(w => w.id === actorId);
+  const isSelfPanel = worker.organizer && (!preferActorId || preferActorId === worker.id);
+  // A pair that arrived by drag is already decided, so the panel is an action card for
+  // that pair rather than a place to shop for a different organizer. A plain click on
+  // somebody shows the whole committee, closest relationship first.
+  const locked = !isSelfPanel && preferActorId != null && preferActorId !== worker.id;
+  const rankedOthers = [...others].sort((a, b) =>
+    tieFrom(influenceKnown(b, worker) ? infOn(influence, b.id, worker.id) : 0, b, worker)
+    - tieFrom(influenceKnown(a, worker) ? infOn(influence, a.id, worker.id) : 0, a, worker));
+
+
+  const weight = actor && !isSelfPanel ? shownInfluence(influence, actor, worker) : 0;
+  // What the relationship is actually worth, once the common ground you have surfaced
+  // is counted. This is the number every formula below runs on.
+  const tie = actor && !isSelfPanel ? tieFrom(weight, actor, worker) : 0;
+  const weightKnown = influenceKnown(actor, worker);
+  const gains = actor && !isSelfPanel ? convoGain(actor, worker, tie) : null;
+  const chance = actor && !isSelfPanel ? signChance(actor, worker, tie) : 0;
+
+  const canAfford = (type) => actor && hoursLeftFor(actor) >= ACT1_ACTION[type].hours;
+
+  const publicPreview = (tier) => {
+    const uses = worker.publicUses?.[tier] || 0;
+    const reached = outgoingTies(influence, worker.id).map(t => {
+      const target = allWorkers.find(x => x.id === t.id);
+      return target && !target.burned ? { ...t, target, tie: tieFrom(t.weight, worker, target) } : null;
+    }).filter(t => t && t.tie >= EDGE_MIN_DRAW);
+    const known = reached.filter(t => influenceKnown(worker, t.target));
+    const total = known.reduce((s, t) => s + publicGain(worker, t.target, t.tie, tier, uses), 0);
+    return { count: reached.length, knownCount: known.length, total, uses };
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto" onClick={onClose}>
+      <div className="bg-stone-900 border-2 border-stone-700 max-w-lg w-full p-5 my-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <div className="font-stencil text-2xl text-amber-400">
+            {locked && actor ? <>{actor.name} <span className="text-stone-500">{"\u2192"}</span> {worker.name}</> : worker.name}
+          </div>
+          <button onClick={onClose}><X size={18} className="text-stone-500 hover:text-stone-200" /></button>
+        </div>
+        <div className="flex items-center gap-3 mb-2 flex-wrap">
+          <InfluenceTraitChip worker={worker} />
+          <span className="text-xs text-stone-500">{worker.title}</span>
+          <span className="flex items-center gap-1 text-xs text-stone-500">
+            <span className="inline-block w-2 h-2" style={{ backgroundColor: TEAM_HEX[worker.team] }} />
+            {TEAM_LABEL[worker.team]}
+          </span>
+          {worker.guarded > 0 && <span className="text-[11px] font-bold text-red-400 border border-red-900 px-1.5">GUARDED · {worker.guarded}w</span>}
+        </div>
+
+        {/* The digit, the same one that is on their card, and the sentence behind its state.
+            This is the panel where the player decides whether to ask, so how sure they are
+            has to be in front of them at that moment. */}
+        {!worker.burned && (() => {
+          const g = ratingGlyph(worker, week);
+          const word = g.digit ? RATING_WORD[g.digit] : "";
+          return (
+            <div className="flex items-center gap-3 mb-3">
+              <span className="font-mono font-bold text-3xl leading-none" style={g.state === "hollow"
+                ? { color: g.hex, WebkitTextStroke: `1px ${g.hex}`, WebkitTextFillColor: "transparent" }
+                : { color: g.hex }}>{g.digit ?? "\u2014"}</span>
+              <span className="text-xs text-stone-400 leading-snug">
+                {worker.signed ? <>Signed. <span className="text-stone-500">A signature is an act, not an estimate.</span></>
+                  : g.state === "solid" ? <>{word[0].toUpperCase() + word.slice(1)}. <span className="text-stone-500">Somebody sat down with them recently.</span></>
+                  : g.state === "hollow" ? <>Says {word}. <span className="text-stone-500">{g.age > 1 ? "That read is old, and people move." : "Their words are a ceiling: this or lower, never higher."}</span></>
+                  : <span className="text-stone-500">Nobody has talked to them.</span>}
+              </span>
+            </div>
+          );
+        })()}
+
+        {plannedFor.length > 0 && onCancelPlans && (
+          // Cancelling lives here, next to what it cancels, rather than as a mark on the
+          // board that has to be found before it can be clicked.
+          <div className="border border-amber-700 bg-amber-950/25 px-3 py-2 mb-3">
+            <div className="text-[11px] text-amber-400 font-bold tracking-wide mb-1">ALREADY PLANNED THIS WEEK</div>
+            {plannedFor.map(e => (
+              <div key={e.key} className="flex items-center justify-between gap-3 text-sm text-stone-200">
+                <span>
+                  {allWorkers.find(x => x.id === e.actorId)?.name} {"\u2192"} {ACT1_ACTION[e.type].label.toLowerCase()}
+                  <span className="text-stone-500"> ({ACT1_ACTION[e.type].hours}h)</span>
+                </span>
+                <button
+                  onClick={() => onCancelPlans(e.key)}
+                  className="text-xs font-bold border border-stone-600 hover:border-red-500 hover:text-red-400 text-stone-300 px-2 py-1 transition-colors"
+                >CANCEL</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Who they are, and what they have in common with whoever is doing the asking.
+            Everything else about this person — where they stand, how many hours they have
+            left, what the company has bought — is already on their card on the board, and
+            saying it twice made this panel longer than the decision it exists to serve. */}
+        <p className="text-sm text-stone-400 leading-relaxed mb-3">{worker.hook}</p>
+
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          <AffinityMarks worker={worker} actor={isSelfPanel ? null : actor} />
+        </div>
+
+        {worker.history.length > 0 && (
+          <div className="mb-4">
+            <div className="text-xs text-stone-500 font-bold mb-1 tracking-wide">HISTORY</div>
+            <div className="bg-stone-950 border border-stone-800 p-2 max-h-28 overflow-y-auto space-y-1">
+              {worker.history.map((h, i) => (<div key={i} className="text-xs text-stone-400">▸ {h}</div>))}
+            </div>
+          </div>
+        )}
+
+        {worker.burned ? (
+          <div className="text-sm text-red-400">This person is out of play for the rest of the campaign.</div>
+        ) : isSelfPanel ? (
+          <div className="space-y-2">
+            <div className="text-xs text-stone-500 tracking-wide flex items-center gap-2 flex-wrap">
+              <span>{worker.name}</span>
+              <HourPie left={Math.max(0, hoursLeftFor(worker))} total={hoursFor(worker)} hex="#fbbf24" size={19}
+                label={`${hoursLeftFor(worker)} of ${hoursFor(worker)} hours left this week`} />
+              {worker.shaken > 0 && <span className="text-red-400"> — under a manager's eye this week</span>}
+            </div>
+            <div className="border border-stone-800 bg-stone-950/50 px-3 py-2 text-xs">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-bold" style={{ color: orgTier(worker).hex }}>{orgTier(worker).label}</span>
+              </div>
+              <div className="h-1 w-full bg-stone-800 mb-1.5">
+                <div className="h-1" style={{ width: `${worker.experience || 0}%`, backgroundColor: orgTier(worker).hex }} />
+              </div>
+              <div className="text-stone-400 leading-snug">{orgTier(worker).blurb}</div>
+              {(worker.weeksIdle || 0) > IDLE_GRACE && (
+                <div className="text-amber-400 mt-1 font-bold">
+                  Idle {worker.weeksIdle} weeks — down to {committeeHours(worker)} hour{committeeHours(worker) === 1 ? "" : "s"}. They leave at {IDLE_QUIT}.
+                </div>
+              )}
+            </div>
+            {!unlockPublic && (
+              <div className="text-xs text-stone-600 italic border border-stone-800 px-3 py-2">
+                Right now {worker.name} can only have conversations. Click someone else on the floor to plan one.
+              </div>
+            )}
+            {unlockPublic && ["small", "medium", "large"].map(tier => {
+              const p = publicPreview(tier);
+              const t = PUBLIC_TIERS[tier];
+              const affordable = hoursLeftFor(worker) >= ACT1_ACTION[tier].hours;
+              return (
+                <button
+                  key={tier}
+                  disabled={!affordable}
+                  onClick={() => onPlan(worker.id, tier)}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${affordable ? "border-stone-700 hover:bg-stone-800/60" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                >
+                  <div className="text-sm text-stone-100 flex justify-between">
+                    <span>{ACT1_ACTION[tier].label}</span>
+                    <CostPips hours={ACT1_ACTION[tier].hours} affordable={affordable} />
+                  </div>
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">{t.blurb}</div>
+                  <div className="text-xs text-teal-400 leading-snug mt-0.5">
+                    Reaches {p.count} coworker{p.count === 1 ? "" : "s"} they carry weight with{p.knownCount < p.count ? `, ${p.count - p.knownCount} of them you have not met` : ""}.
+                  </div>
+                  {p.uses > 0 && (
+                    <div className="text-xs text-amber-500 leading-snug mt-0.5">
+                      {worker.name} has already done this {p.uses === 1 ? "once" : `${p.uses} times`} — it isn't news anymore. Escalating lands harder than repeating.
+                    </div>
+                  )}
+                  {t.burn > 0 && (
+                    <div className="text-xs text-red-400 leading-snug mt-0.5">
+                      Exposure risk: {tier === "large" ? "high" : "some"}. If management moves on them, they're out of the campaign and everyone they carry loses ground.
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ) : others.length === 0 ? (
+          <div className="text-sm text-stone-500">Nobody on the committee is free to work on {worker.name} right now.</div>
+        ) : (
+          <div>
+            <div className={locked ? "hidden" : "text-xs text-stone-500 font-bold mb-1 tracking-wide"}>WHO DOES IT</div>
+            <div className={locked ? "hidden" : "flex flex-wrap gap-1.5 mb-2"}>
+              {rankedOthers.map(o => {
+                const wgtKnown = influenceKnown(o, worker);
+                const oTie = wgtKnown ? tieFrom(infOn(influence, o.id, worker.id), o, worker) : null;
+                const tieHex = oTie == null ? "#57534e" : oTie >= 55 ? "#2dd4bf" : oTie >= 25 ? "#fbbf24" : "#78716c";
+                const tieWord = oTie == null ? "you don't know how these two get on" : oTie >= 55 ? "close: this is who should be doing it" : oTie >= 25 ? "they know each other" : "barely know each other";
+                const selected = o.id === actorId;
+                return (
+                  <button
+                    key={o.id}
+                    onClick={() => setActorId(o.id)}
+                    className={`border px-2 py-1 text-left transition-colors ${selected ? "border-amber-500 bg-amber-950/30" : "border-stone-700 hover:bg-stone-800/60"}`}
+                  >
+                    <div className="text-[13px] text-stone-100 flex items-center gap-1.5">
+                      {o.name}
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: infTrait(o).hex }} title={infTrait(o).label} />
+                    </div>
+                    <div className="text-[11px] flex items-center gap-1.5">
+                      <HourPie left={Math.max(0, hoursLeftFor(o))} total={hoursFor(o)} hex={hoursLeftFor(o) <= 0 ? "#f87171" : "#fbbf24"} size={13}
+                        label={`${hoursLeftFor(o)} of ${hoursFor(o)} hours left`} />
+                      <span className="inline-block w-2.5 h-2.5 rounded-full border-2" title={tieWord} style={{ borderColor: tieHex, backgroundColor: oTie != null && oTie >= 55 ? tieHex : "transparent" }} />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {actor && (
+              <div className="text-xs text-stone-400 border border-stone-800 bg-stone-950/50 px-2.5 py-2 mb-3 leading-relaxed">
+                {/* One line: the tie, and how much of it is common ground you surfaced.
+                    The symbols above already say WHICH things they share, so this does
+                    not repeat them. */}
+                {weightKnown ? (
+                  <>
+                    <span className="text-stone-300 font-bold">{actor.name} {"\u2192"} {worker.name}:</span>
+                    <span className="text-stone-400">
+                      {" "}
+                      {tie >= 55 ? "this is who should be doing it"
+                        : tie >= 25 ? "it'll land, but not hard"
+                        : "whatever they say bounces off"}
+                    </span>
+                    {tieBonus(actor, worker) > 0 && (
+                      <span className="text-teal-300"> · what they share does some of the work</span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-stone-500">
+                    <span className="text-stone-300 font-bold">You don't know how these two get on.</span> Everything below assumes an average relationship.
+                  </span>
+                )}
+                                {hoursLeftFor(actor) <= 0 && (
+                  <><br /><span className="text-red-400">{actor.name} has no hours left this week — pick someone else, or free up an hour in the plan below.</span></>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {worker.organizer && (
+                <button
+                  disabled={!canAfford("checkin")}
+                  onClick={() => onPlan(actor.id, "checkin", worker.id)}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("checkin") ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                >
+                  <div className="text-sm text-amber-300 flex justify-between items-center">
+                    <span>{ACT1_ACTION.checkin.label}</span>
+                    <CostPips hours={ACT1_ACTION.checkin.hours} affordable={canAfford("checkin")} />
+                  </div>
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">
+                    An hour of {actor.name}'s week spent on {worker.name} instead of a target. +10 experience, resets their idle clock
+                    {worker.shaken > 0 ? ", and gets them out from under the manager's eye this week" : ""}.
+                  </div>
+                  {(worker.weeksIdle || 0) >= IDLE_QUIT - 1 && (
+                    <div className="text-xs text-amber-400 leading-snug mt-0.5 font-bold">
+                      {worker.name} walks off the committee next week without this.
+                    </div>
+                  )}
+                </button>
+              )}
+              {["quick", "deep"].map(type => (
+                <button
+                  key={type}
+                  disabled={!canAfford(type)}
+                  onClick={() => onPlan(actor.id, type, worker.id)}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford(type) ? "border-stone-700 hover:bg-stone-800/60" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                >
+                  <div className="text-sm text-stone-100 flex justify-between">
+                    <span>{ACT1_ACTION[type].label}</span>
+                    <CostPips hours={ACT1_ACTION[type].hours} affordable={canAfford(type)} />
+                  </div>
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">
+                    {type === "deep"
+                      ? <><span className="text-teal-400 font-bold">{deltaMarks(gains.deepTrue)}</span> where they stand, and the digit turns solid. Surfaces most of what they care about, and who their friends are.</>
+                      : <><span className="text-teal-400">{gains.quickTrue > 0 ? deltaMarks(gains.quickTrue) : "\u25B3"}</span> where they stand, and you hear what they say. Surfaces a thing or two, and who their friends are.</>}
+                  </div>
+                  {type === "deep" && misfireChance(actor, worker) > 0 && (
+                    <div className="text-xs text-red-400 leading-snug mt-0.5">
+                      <span className="font-bold">!</span> {affList(worker).some(t => !knownAff(worker).includes(t))
+                        ? "Nothing found in common yet, so this can land as a pitch and put them on guard. Quick chat first."
+                        : "These two have nothing to build on, so this can land as a pitch and put them on guard."}
+                    </div>
+                  )}
+                </button>
+              ))}
+
+              {!worker.signed && (
+                <button
+                  disabled={!canAfford("ask")}
+                  onClick={() => onPlan(actor.id, "ask", worker.id)}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("ask") ? "border-teal-800 hover:bg-teal-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                >
+                  <div className="text-sm text-teal-300 flex justify-between">
+                    <span>{ACT1_ACTION.ask.label}</span>
+                    <CostPips hours={ACT1_ACTION.ask.hours} affordable={canAfford("ask")} />
+                  </div>
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">
+                    {(() => {
+                      const g = ratingGlyph(worker, week);
+                      if (g.state === "solid") return g.digit >= 5 ? "Ready. Ask." : g.digit === 4 ? "With you, and it could go either way on paper." : "Not ready underneath. Asking now is worse than not asking.";
+                      if (g.state === "hollow") return <span className="text-amber-400">You have their word, not a read. A hollow {g.digit} can be anything below it. Sit down first.</span>;
+                      return <span className="text-amber-400">Nobody has even talked to them.</span>;
+                    })()}
+                    {worker.askedRecently > 0 && " Asked recently — harder right now."}
+                    <span className="text-red-400"> A no sets them back and makes the next ask harder.</span>
+                  </div>
+                </button>
+              )}
+
+              {worker.signed && !worker.organizer && (
+                <button
+                  disabled={!canAfford("recruit") || !worker.trueKnown || (worker.trueSupport ?? 0) < ACT1_RECRUIT_REQ}
+                  onClick={() => onPlan(actor.id, "recruit", worker.id)}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("recruit") && worker.trueKnown && (worker.trueSupport ?? 0) >= ACT1_RECRUIT_REQ ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                >
+                  <div className="text-sm text-amber-300 flex justify-between">
+                    <span>{ACT1_ACTION.recruit.label}</span>
+                    <CostPips hours={ACT1_ACTION.recruit.hours} affordable={canAfford("recruit")} />
+                  </div>
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">
+                    {!worker.trueKnown
+                      ? `You don't actually know where ${worker.name} stands — only what they say. Sit down with them properly before handing them other people's campaigns.`
+                      : (worker.trueSupport ?? 0) < ACT1_RECRUIT_REQ
+                      ? `Takes a solid 5, and a strong one. Your read says ${worker.name} is not there yet, however they talk.`
+                      : `${worker.name} starts organizing too: +${ACT1_HOURS_PER_ORGANIZER} hours every week, their relationships become yours to direct, and they get better at it the more you use them. Leave them idle ${IDLE_QUIT} weeks and they walk.`}
+                  </div>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export { Act1WorkerModal };

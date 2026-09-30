@@ -1,11 +1,12 @@
 // Following the lines is good for WHO. The question is whether it is safe for WHAT:
 // a deep conversation into somebody you share nothing with misfires and guards them.
-import * as C from './core.mjs';
+import './seed.mjs';
+import * as C from '../src/engine/act1/index.js';
 const N = 400;
 let n = 0, misfireRisk = 0, safe = 0, sumRisk = 0;
 for (let g = 0; g < N; g++) {
   const ws = C.makeAct1Workers(); const inf = C.generateInfluence(ws);
-  ws.forEach(x => { x.revealed = true; if (Math.random() < 0.6) x.knownAffinities = [...C.affList(x)]; });
+  ws.forEach(x => { x.revealed = true; if (C.random() < 0.6) x.knownAffinities = [...C.affList(x)]; });
   for (const a of ws.filter(x => x.organizer)) {
     for (const t of C.outgoingTies(inf, a.id)) {
       const b = ws.find(x => x.id === t.id);

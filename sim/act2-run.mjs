@@ -1,5 +1,6 @@
+import './seed.mjs';
 import * as E from './act2-engine.mjs';
-import * as C from './core2.mjs';
+import * as C from '../src/engine/company/index.js';
 import { planTurn, decideFiling, choosePlatform } from './act2-policy.mjs';
 
 export function playAct2(opts = {}) {

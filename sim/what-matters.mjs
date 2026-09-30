@@ -1,6 +1,7 @@
 // What actually decides how a one-on-one lands: the line, or what the two of them share?
 // Expected value of a deep conversation, including the misfire, across the real ranges.
-import * as C from './core.mjs';
+import './seed.mjs';
+import * as C from '../src/engine/act1/index.js';
 
 const mk = (affs, known) => ({ affinities: affs, knownAffinities: known, poisoned: [], influenceTrait: 'quiet', organizer: false, support: 40, trueSupport: 35, fulfillment: 50 });
 const A = (n) => mk(['a','b','c','d'], ['a','b','c','d']);

@@ -1,7 +1,7 @@
 // A competent-but-not-omniscient player. It decides on what the UI actually shows —
 // stated support, revealed affinities, true support only where trueKnown is set — so
 // the sim measures the rules, not a cheat.
-import * as C from './core.mjs';
+import * as C from '../src/engine/act1/index.js';
 const { ACT1_ACTION, ACT1_RECRUIT_REQ, ACT1_PUBLIC_UNLOCK_WEEK, committeeHours, infOn,
   visibleShared, affList, knownAff, EDGE_MIN_DRAW, outgoingTies, ASSUMED } = C;
 

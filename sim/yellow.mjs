@@ -1,7 +1,8 @@
 // The yellow lines an armed organizer shows are their drawn ties. But every worker on
 // the floor is a legal conversation target. So: how often is the BEST person for this
 // organizer to sit down with someone the yellow lines never pointed at?
-import * as C from './core.mjs';
+import './seed.mjs';
+import * as C from '../src/engine/act1/index.js';
 
 const MISFIRE_COST = 4;
 function evDeep(inf, a, t) {
@@ -16,7 +17,7 @@ let linesShown = 0;
 for (let g = 0; g < N; g++) {
   const ws = C.makeAct1Workers(); const inf = C.generateInfluence(ws);
   // mid-game: floor mapped, a couple of rounds of scouting done
-  ws.forEach(x => { x.revealed = true; if (Math.random() < 0.6) x.knownAffinities = [...C.affList(x)]; });
+  ws.forEach(x => { x.revealed = true; if (C.random() < 0.6) x.knownAffinities = [...C.affList(x)]; });
   for (const a of ws.filter(x => x.organizer)) {
     const targets = ws.filter(x => x.id !== a.id && !x.burned && !x.signed);
     if (!targets.length) continue;
