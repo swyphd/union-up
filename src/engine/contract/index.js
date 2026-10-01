@@ -255,13 +255,14 @@ function projectedTurnout(workers, influence, tier) {
 }
 // What the player can actually work out, which is a range. Wide wherever nobody has
 // spoken to anybody in a while.
-function projectedTurnoutBand(workers, influence, tier, month) {
+// With `leadId`, the lead's own pull counts the way it does on the day (half again).
+function projectedTurnoutBand(workers, influence, tier, month, leadId = null) {
   if (!tier) return { lo: 0, hi: 0, exact: true };
   let lo = 0, hi = 0, exact = true;
   workers.forEach(w => {
     const r = contractRead(w, month);
     if (!r.exact) exact = false;
-    const backing = catBacking(influence, workers, w.id);
+    const backing = catBacking(influence, workers, w.id) + (leadId != null && leadId !== w.id ? infOn(influence, leadId, w.id) * 0.5 : 0);
     lo += participationChance({ ...w, commitment: r.lo }, tier, backing);
     hi += participationChance({ ...w, commitment: r.hi }, tier, backing);
   });

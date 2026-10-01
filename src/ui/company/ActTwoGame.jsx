@@ -116,13 +116,16 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
 
   function responseCostFor(loc, r) {
     if (!r) return 0;
+    // A shop at the vote shows only the sit-downs, the committee and the paper trail; anything
+    // ticked before it filed is gone with the rows that offered it, and costs nothing.
+    const atVote = loc.status === "campaign";
     let cost = 0;
-    if (r.grievance && loc.grievance) cost += GRIEVANCE_META[loc.grievance.type].cost;
+    if (!atVote && r.grievance && loc.grievance) cost += GRIEVANCE_META[loc.grievance.type].cost;
     if (r.document) cost += 1;
-    if (r.counter) cost += 1;
-    if (r.reframe && loc.buyOff?.active) cost += 1;
-    if (r.formCommittee) cost += (loc.status === "campaign" ? COMMITTEE_COST_CAMPAIGN : COMMITTEE_COST);
-    if (r.bargain) cost += 2;
+    if (!atVote && r.counter) cost += 1;
+    if (!atVote && r.reframe && loc.buyOff?.active) cost += 1;
+    if (r.formCommittee) cost += (atVote ? COMMITTEE_COST_CAMPAIGN : COMMITTEE_COST);
+    if (!atVote && r.bargain) cost += 2;
     cost += (r.sitDown?.length || 0) * ACT2_SITDOWN_COST;
     return cost;
   }
@@ -134,12 +137,16 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
   const surveyCost = surveyPlanned ? ACT2_SURVEY_COST : 0;
   const totalAllocated = Object.values(allocations).reduce((a, b) => a + b, 0) + totalResponseCost + campaignUpkeep + surveyCost;
 
+  // On a break the organizer plans nothing; the controls stay put rather than pretend.
+  const onBreakNow = organizer.onBreak > 0;
   function updateAlloc(id, val) {
+    if (onBreakNow) return;
     val = Math.max(0, Math.min(weeklyBudget, val));
     setAllocations(prev => ({ ...prev, [id]: val }));
   }
 
   function toggleResponse(id, key) {
+    if (onBreakNow) return;
     setResponses(prev => ({ ...prev, [id]: { ...prev[id], [key]: !prev[id]?.[key] } }));
   }
 
@@ -147,6 +154,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
   // purpose: the scarce thing in this act is the organizer's calendar, not any one site.
   const sitDownsBooked = locations.reduce((n, l) => n + (responses[l.id]?.sitDown?.length || 0), 0);
   function toggleSitDown(locId, workerId) {
+    if (onBreakNow) return;
     setResponses(prev => {
       const cur = prev[locId]?.sitDown || [];
       const has = cur.includes(workerId);
@@ -163,8 +171,11 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     let breaksTaken = organizer.breaksTaken;
     let onBreak = organizer.onBreak;
 
-    // If organizer is on break, this turn is auto-skipped for allocation
+    // If organizer is on break, this turn is auto-skipped: no allocation, no sit-downs, no
+    // responses, no survey. The committees and everything already in motion keep going.
     const isBreakTurn = onBreak > 0;
+    const plannedResponses = isBreakTurn ? {} : responses;
+    const surveyThisTurn = surveyPlanned && !isBreakTurn;
 
     let workingLocs = locations.map(l => ({ ...l }));
 
@@ -208,7 +219,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       let newRoster = l.roster;
       const sitDownLines = [];
       {
-        const ids = (responses[l.id] || {}).sitDown || [];
+        const ids = (plannedResponses[l.id] || {}).sitDown || [];
         const satWith = ids.filter(id => (l.roster || []).some(w => w.id === id && !w.met));
         if (satWith.length) {
           newRoster = l.roster.map(w => (satWith.includes(w.id) ? { ...w, met: true, jitter: w.jitter + ACT2_SITDOWN_LIFT } : w));
@@ -228,7 +239,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       if (l.status === "campaign") {
         // A committee can still be built after the petition — it is the only response
         // that means anything once the clock is running, and it costs more up here.
-        const rc = responses[l.id] || {};
+        const rc = plannedResponses[l.id] || {};
         let campCommittee = l.committee || { active: false, strikes: 0 };
         let campCommitteeNote = "";
         if (rc.formCommittee && !campCommittee.active && metLeaders(workingLoc).length > 0
@@ -264,7 +275,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       }
 
       // Normal organizing location
-      const r = responses[l.id] || {};
+      const r = plannedResponses[l.id] || {};
       const feedbackLines = [...sitDownLines];
 
       let gain = baseGain(units) + (locHasTrait(l.id, "morale") && units > 0 ? 2 : 0);
@@ -297,7 +308,8 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       }
 
       let momentumPenalty = 0;
-      const newAbandonedTurns = units === 0 ? l.abandonedTurns + 1 : 0;
+      // A month on a break is not a month you chose to leave a site alone.
+      const newAbandonedTurns = isBreakTurn ? l.abandonedTurns : units === 0 ? l.abandonedTurns + 1 : 0;
       if (newAbandonedTurns >= 3) momentumPenalty = 10;
 
       // --- Shop committee: forming one, and its ongoing effects ---
@@ -496,23 +508,25 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       };
     });
 
-    const allocLines = workingLocs.filter(l => l.status === "organizing").map(l => `${l.name}: allocated ${allocations[l.id] || 0} action(s) → morale ${l._lastGain >= 0 ? "+" : ""}${l._lastGain ?? 0}`);
+    const allocLines = isBreakTurn ? [] : workingLocs.filter(l => l.status === "organizing").map(l => `${l.name}: allocated ${allocations[l.id] || 0} action(s) → morale ${l._lastGain >= 0 ? "+" : ""}${l._lastGain ?? 0}`);
     const feedbackLines = workingLocs.filter(l => l.status === "organizing" || l.status === "campaign").flatMap(l => l._feedbackLines || []);
     steps.push({ label: "MORALE & VISIBILITY", sub: "Resolving organizing activity across sites...", locs: workingLocs.map(l => ({ ...l })), org: { stamina: orgStamina }, lines: [...allocLines, ...feedbackLines] });
 
     // Retaliation checks — an employer that's learned from past failures reaches for subtler tools
     let retaliationLines = [];
+    let noticeLines = 0; // "corporate notices": a warning, not a crackdown
     let sophisticationGain = 0;
     workingLocs = workingLocs.map(l => {
       if (l.status !== "organizing" && l.status !== "campaign") return l;
       const atVote = l.status === "campaign";
-      const documented = !!l.documented || !!responses[l.id]?.document;
+      const documented = !!l.documented || !!plannedResponses[l.id]?.document;
 
       // Did a past firing here fail to actually stop organizing? If so, the employer takes note.
       let updated = { ...l };
       if (l._watchRecovery && l.morale >= l._watchFloor) {
         sophisticationGain = 1;
         retaliationLines.push(`Corporate notices firing didn't shut ${l.name} down. Expect subtler tactics company-wide from here.`);
+        noticeLines += 1;
         updated._watchRecovery = false;
       }
 
@@ -659,7 +673,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       if (!l.antiUnion?.active) return false;
       if (l.status === "abandoned") return true; // always uncontested
       if (l.status !== "organizing") return false;
-      return !responses[l.id]?.counter; // unaddressed this turn
+      return !plannedResponses[l.id]?.counter; // unaddressed this turn
     });
     if (contagionSources.length) {
       workingLocs = workingLocs.map(l => {
@@ -688,7 +702,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       let decay = totalAllocated >= 6 ? 5 : (totalAllocated <= 2 ? 1 : 2);
       if (activeLocationCount >= 3) decay += 2;
       if (totalAllocated <= 1) decay = -2; // rest recovers
-      if (retaliationLines.length > 0) decay += 3; // retaliation still costs fatigue on a rest week
+      if (retaliationLines.length - noticeLines > 0) decay += 3; // a crackdown still costs fatigue on a rest week
       orgStamina = clamp(orgStamina - decay, 0, 100);
     }
 
@@ -716,7 +730,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     // and how hard they hold it, and lowers their odds of taking a side deal.
     const bargainLines = [];
     workingLocs.forEach(l => {
-      if (!responses[l.id]?.bargain) return;
+      if (!plannedResponses[l.id]?.bargain) return;
       const comp = LOC_COMPOSITION[l.id] || {};
       const target = BLOCS.find(b => (comp[b.id] || 0) >= 0.5 && !prioritiesNext[b.id]?.known);
       if (!target) return;
@@ -732,7 +746,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     // wants and buys you the right to change your mind once; a thin one tells the company
     // that nobody is listening to you, which is worse than not having asked.
     const surveyLines = [];
-    if (surveyPlanned && !surveyDone) {
+    if (surveyThisTurn && !surveyDone) {
       const sr = surveyResponse(workingLocs);
       setSurveyDone(true);
       const pctBack = Math.round(sr.rate * 100);
@@ -821,7 +835,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
           blocLines.push(
             `${b.label} TURN DOWN A SIDE DEAL \u2014 the company offers them ${DEMAND_BY_ID[pr.top]?.label || "a side deal"} outside the union and they bring it to the committee instead. ` +
             (represented ? "Having somebody in the room who speaks for them is what made the difference. " : "") +
-            `Satisfaction ${sat} \u2192 ${clamp(sat + 8)}.`
+            `Satisfaction ${sat} \u2192 ${blocSatisfaction(b.id, platform, { ...prioritiesNext, [b.id]: { ...pr, heard: (pr.heard || 0) + 1 } }, proven)}.`
           );
           prioritiesNext = { ...prioritiesNext, [b.id]: { ...pr, heard: (pr.heard || 0) + 1 } };
         }
@@ -925,13 +939,14 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     setResponses({ downtown: {}, suburban: {}, airport: {}, university: {} });
     setSurveyPlanned(false);
 
-    if (breaksTaken >= 2) {
-      setPhase("gameover-loss");
-      return;
-    }
+    // The month that certifies the second shop is a win, even if it also burns the organizer out.
     const wonCount = workingLocs.filter(l => l.status === "won").length;
     if (wonCount >= 2) {
       setPhase("gameover-win");
+      return;
+    }
+    if (breaksTaken >= 2) {
+      setPhase("gameover-loss");
       return;
     }
     if (turn >= TOTAL_TURNS) {
@@ -978,14 +993,21 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
       return { ...l, status: "campaign", electionTurn: turn + ACT2_FILING_LEAD, fear: 35 + rand(15),
         visibility: Math.max(l.visibility, ACT2_FILING_VISIBILITY) };
     }));
+    // Whatever was ticked for this shop as an organizing site no longer has a row to untick.
+    setResponses(prev => {
+      const r = prev[locId] || {};
+      return { ...prev, [locId]: { ...(r.sitDown ? { sitDown: r.sitDown } : {}), ...(r.formCommittee ? { formCommittee: r.formCommittee } : {}), ...(r.document ? { document: r.document } : {}) } };
+    });
     setEscalationTarget(null);
     setPendingFileLoc(null);
     setSelectedLoc(null);
     setPhase("allocate");
   }
   function adoptPlatform(chosen) {
+    // The first platform is not the "one change" a survey promised: that stays open.
+    const first = platform.length === 0;
     setPlatform(chosen);
-    setPlatformOpen(false);
+    if (!first) setPlatformOpen(false);
     if (pendingFileLoc) commitFiling(pendingFileLoc);
     else { setPendingFileLoc(null); setPhase("allocate"); }
   }
@@ -1034,7 +1056,8 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
   // it. The meter only ever moved for somebody carrying three or four shops at once, and
   // a number that changes for reasons you cannot see is not a meter, it is decoration.
   const staminaForecast = (() => {
-    const active = locations.filter(l => l.status === "organizing" && (allocations[l.id] || 0) > 0).length;
+    if (organizer.onBreak > 0) return { decay: 0, why: ["on a break"] };
+    const active = locations.filter(l => (l.status === "organizing" || l.status === "campaign") && (allocations[l.id] || 0) > 0).length;
     if (totalAllocated <= 1) return { decay: -2, why: ["a month off"] };
     let decay = totalAllocated >= 6 ? 5 : (totalAllocated <= 2 ? 1 : 2);
     const why = [totalAllocated >= 6 ? "a heavy month" : totalAllocated <= 2 ? "a light month" : "a normal month"];
@@ -1295,8 +1318,13 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
           />
 
           <div className="border-2 border-stone-800 bg-stone-900 p-4">
+            {onBreakNow && (
+              <div className="mb-3 border border-amber-700 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+                {organizer.onBreak} more month{organizer.onBreak === 1 ? "" : "s"} of mandatory rest. Nothing you plan happens until it is over; the committees you built keep working without you.
+              </div>
+            )}
             <div className="flex items-center justify-between mb-1">
-              <div className="font-stencil text-lg tracking-wide text-stone-200">ALLOCATE ORGANIZER TIME</div>
+              <div className="font-stencil text-lg tracking-wide text-stone-200">{onBreakNow ? "THE ORGANIZER IS ON A BREAK" : "ALLOCATE ORGANIZER TIME"}</div>
               <div className="flex items-center gap-2 flex-wrap">
                 <HourPie
                   left={Math.max(0, remaining)}
@@ -1314,7 +1342,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
               <div className="mb-2 space-y-1.5">
                 {!surveyDone && (
                   <label className={`flex items-start gap-2 text-xs border px-2 py-1.5 cursor-pointer ${surveyPlanned ? "border-sky-600 bg-sky-950/30 text-sky-200" : "border-sky-900 text-sky-300"}`}>
-                    <input type="checkbox" checked={surveyPlanned} onChange={() => setSurveyPlanned(v => !v)} className="accent-amber-500 mt-0.5" />
+                    <input type="checkbox" checked={surveyPlanned} disabled={onBreakNow} onChange={() => setSurveyPlanned(v => !v)} className="accent-amber-500 mt-0.5" />
                     <UsersRound size={12} className="shrink-0 mt-0.5" />
                     <span className="flex-1">
                       <span className="font-bold">Run a bargaining survey.</span> One a campaign, company-wide. Ask every worker what the union should be
@@ -1496,7 +1524,7 @@ function act2IntroBeats(leaders, contract = null) {
       lines: [
         contract
           ? (contract.ratified
-              ? `You won one shop, then won it a contract — ${contract.tiers} of ${contract.max} tiers, signed. The other studios under the same parent read it the week it was posted.`
+              ? `You won one shop, then won it a contract${contract.tiers != null && contract.max ? ` — ${contract.tiers} of ${contract.max} tiers` : ""}, signed. The other studios under the same parent read it the week it was posted.`
               : "You won one shop and held it through a year of bargaining with nothing signed. The other studios heard about that too.")
           : "You won one shop. The other studios under the same parent heard about it inside a week.",
         contract && contract.ratified

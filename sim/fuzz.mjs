@@ -6,6 +6,7 @@ import './seed.mjs';
 import * as E from './engine.mjs';
 import * as C from '../src/engine/act1/index.js';
 import { planWeekMapper, planWeekPhase2 } from './policy.mjs';
+import { socialLayoutFor } from '../src/ui/act1/socialLayout.js';
 const N = Number(process.argv[2] || 300);
 const problems = {};
 const bad = (k, detail) => { if (!problems[k]) problems[k] = { n: 0, detail }; problems[k].n++; };
@@ -60,6 +61,33 @@ function check(G, before, label) {
     if ((m.kind === 'threat' || m.kind === 'raise') && !w.find(x => x.id === m.targetId)) bad('move target missing', m);
     if (m.kind === 'threat' && !w.find(x => x.id === m.targetId)?.organizer) bad('threat booked on non-organizer', `${m.targetId}`);
   }
+  // What the board computes from this state must not throw or produce nonsense.
+  try {
+    w.forEach(x => {
+      const g = C.ratingGlyph(x, G.week);
+      if (g.digit != null && (g.digit < 1 || g.digit > 5)) bad('glyph digit out of range', `${x.name} ${g.digit}`);
+      C.believedSlots(x, G.social); C.readOf(x, G.week);
+    });
+    C.coverageGaps(w, G.social); C.mapProgress(w, G.social); C.voteProjectionBand(w, G.week); C.act1Winnability(w, G.stage, G.week);
+    if (c?.next) {
+      C.visibleHit(c.next, w, G.social);
+      w.filter(x => x.organizer && !x.burned).forEach(o => C.visibleReach(o, c.next, w, G.social));
+    }
+    C.visiblePool(w.filter(x => x.organizer && !x.burned), w, G.social);
+    {
+      // The board's own width and card size, and its sticky layout carried week to week.
+      const L = socialLayoutFor(w, G.social, 299, 42, 25);
+      Object.entries(L.pos).forEach(([id, r]) => { for (const k of ['x', 'y', 'w', 'h', 'cx', 'cy', 'scale']) if (!Number.isFinite(r[k])) bad('social layout non-finite', `${id}.${k}=${r[k]}`); });
+      if (!Number.isFinite(L.height) || L.height <= 0) bad('social layout height', L.height);
+      // Cards on the map should not sit on top of each other.
+      const placed = Object.entries(L.pos).filter(([, r]) => !r.tray);
+      for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) {
+        const a = placed[i][1], b = placed[j][1];
+        const ox = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), oy = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+        if (ox > 2 && oy > 2) bad('social layout cards overlap', `${placed[i][0]} & ${placed[j][0]} by ${ox.toFixed(1)}x${oy.toFixed(1)}`);
+      }
+    }
+  } catch (e) { bad('UI helper THROW ' + e.message.slice(0, 80), e.stack.split('\n').slice(0, 3).join(' | ')); }
   for (const k of ['perks', 'threats', 'raises', 'rumors']) if ((G.consultant[k] || 0) > C.CONSULTANT_MAX_EACH) bad(`consultant ${k} over max`, G.consultant[k]);
   // perks list and bought crowds
   Object.entries(G.social.bought || {}).forEach(([cid, until]) => { if (until < G.week - 1) bad('bought crowd past its expiry', `${cid} until ${until} at week ${G.week}`); });
@@ -70,9 +98,11 @@ for (let g = 0; g < N; g++) {
   const mode = g % 3; // 0 random plans, 1 mapper+counter, 2 mixed
   for (let i = 0; i < 40; i++) {
     const signed = G.workers.filter(x => x.signed).length;
-    if (G.stage === 'drive' && signed >= C.ACT1_CARDS_NEEDED + 1) G = E.file(G);
+    // File at different cushions, onto campaigns of different lengths.
+    if (G.stage === 'drive' && signed >= C.ACT1_CARDS_NEEDED + (g % 3)) G = E.file(G, [6, 2, 4, 9][g % 4]);
     let plan;
     if (mode === 0) plan = randomPlan(G);
+    else if (C.random() < 0.08) plan = [];   // a week with nothing planned
     else if (mode === 1) plan = G.stage === 'campaign' ? planWeekPhase2(G, { askBar: 74, mapper: true, phase2: 'counter' }) : planWeekMapper(G, { askBar: 74 });
     else plan = [...(G.stage === 'campaign' ? planWeekPhase2(G, { phase2: 'counter' }) : planWeekMapper(G, {})), ...randomPlan(G).slice(0, 3)];
     const frozen = snapshotDeep({ w: G.workers, s: G.social, c: G.campaign, k: G.consultant, p: G.perks });

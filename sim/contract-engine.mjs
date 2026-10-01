@@ -113,10 +113,11 @@ export function playContract(opts = {}) {
       showed.forEach(x => { x.spokenMonth = month; });
       if (strong) {
         const bump = 4;
-        showed.forEach(x => { x.commitment = clamp(x.commitment + bump); x.thinRuns = 0; });
+        showed.forEach(x => { x.commitment = clamp(x.commitment + bump); });
+        w.forEach(x => { if (x.cat) x.thinRuns = 0; });
         stall = Math.max(0, stall - 1); log.landed++;
       } else {
-        w.forEach(x => { x.commitment = clamp(x.commitment - 3); if (x.cat) x.thinRuns = (x.thinRuns || 0) + 1; });
+        w.forEach(x => { x.commitment = clamp(x.commitment - 3); if (x.cat && x.participated) x.thinRuns = (x.thinRuns || 0) + 1; });
         stall = Math.min(STALL_MAX, stall + 1); log.thin++;
       }
       log.rungs.push(tier.rank);
@@ -133,7 +134,7 @@ export function playContract(opts = {}) {
     if (buyable.length && C.random() < 0.3) {
       const mark = buyable[0];
       const take = Math.min(0.75, Math.max(0.1, (100 - mark.commitment) / 90));
-      if (C.random() < take) { mark.commitment = clamp(mark.commitment - 26); mark.bought = 3; log.bought++; }
+      if (C.random() < take) { mark.commitment = clamp(mark.commitment - 26); mark.bought = 4; log.bought++; }
       else { mark.commitment = clamp(mark.commitment + 6); mark.spokenMonth = month; }
     }
     if (acted && acted.rank >= 3 && acted.showed > 0 && C.random() < 0.35) {
@@ -148,12 +149,13 @@ export function playContract(opts = {}) {
     }
 
     // --- a team is a set of people who are asked to do things ---
+    const fedUp = w.filter(x => x.cat && (x.thinRuns || 0) >= 2).sort((a, b) => a.commitment - b.commitment)[0]?.id;
     w.forEach(x => {
       if (!x.cat) { x.monthsIdle = 0; return; }
       const usedThis = used[x.id] > 0 || x.participated;
       x.monthsIdle = usedThis ? 0 : (x.monthsIdle || 0) + 1;
       if (x.monthsIdle >= CAT_IDLE_QUIT) { x.cat = false; x.monthsIdle = 0; x.commitment = clamp(x.commitment - 8); log.quit++; }
-      else if ((x.thinRuns || 0) >= 2) { x.cat = false; x.thinRuns = 0; x.commitment = clamp(x.commitment - 6); log.quit++; }
+      else if (x.id === fedUp) { x.cat = false; x.thinRuns = 0; x.commitment = clamp(x.commitment - 6); log.quit++; }
     });
     w.forEach(x => { if ((x.bought || 0) > 0) x.bought -= 1; });
 

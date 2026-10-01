@@ -492,7 +492,8 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
                 const gone = priorities?.[w.status]?.defected || priorities?.[w.tenure]?.defected;
                 const hex = r.mid >= 62 ? "#2dd4bf" : r.mid >= 45 ? "#fbbf24" : "#f87171";
                 const booked = booking.includes(w.id);
-                const canBook = canSitDown && !w.met && !gone;
+                // A booked sit-down can always be cancelled, hours or no hours.
+                const canBook = booked || (canSitDown && !w.met && !gone);
                 // Who has already named this person. The only view of the network there is.
                 const namedBy = loc.roster.filter(o => o.met && (o.points || []).includes(w.id)).map(o => o.name);
                 const leader = w.met && w.pull >= ACT2_LEADER_PULL;
@@ -581,7 +582,7 @@ function LocationActionModal({ loc, turn, allocation, response, priorities = nul
                   <div className="text-xs text-stone-400">
                     {blocked.length
                       ? `Blocked: ${blocked.map(g => `${g.label.toLowerCase()} ${g.val} (needs ${g.req})`).join(", ")}.`
-                      : `Vote lands in ${ACT2_FILING_LEAD} weeks. The employer campaigns against you every week of it.`}
+                      : `Vote lands in ${ACT2_FILING_LEAD} months. The employer campaigns against you every month of it.`}
                   </div>
                 </button>
               );
@@ -812,7 +813,7 @@ function EscalationModal({ loc, turn, factor = 1, ballotCtx = null, onFile, onCo
           </button>
           <button onClick={onPivot} className="w-full text-left border-2 border-stone-700 hover:bg-stone-800/60 p-3 transition-colors">
             <div className="font-stencil text-base text-stone-300">PIVOT AWAY</div>
-            <div className="text-xs text-stone-400">Deprioritize this site for now and refocus the organizer elsewhere.</div>
+            <div className="text-xs text-stone-400">Set this site aside for good and refocus the organizer elsewhere. There is no coming back to it.</div>
           </button>
         </div>
       </div>
