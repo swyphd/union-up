@@ -11,8 +11,8 @@ const pct = (rs, f) => (100 * rs.filter(f).length / rs.length).toFixed(0);
 // Collect real Act One wins to hand forward.
 const wins = [];
 for (let i = 0; i < N * 12 && wins.length < 120; i++) {
-  const r = playGame({ askBar: 74 });
-  if (r.won) wins.push({ workers: r.workers, influence: r.influence });
+  const r = playGame({ askBar: 74, mapper: true, phase2: 'counter' });
+  if (r.won) wins.push({ workers: r.workers, social: r.social });
 }
 console.log(`n=${N} per row, on ${wins.length} real Act One wins.\n`);
 console.log(pad('policy', 30) + pad('tiers/6', 9) + pad('4+ tiers', 10) + pad('6/6', 6) + pad('ratify%', 9)

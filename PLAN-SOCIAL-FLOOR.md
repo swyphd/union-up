@@ -489,6 +489,31 @@ The company campaign (`ActTwoGame`) is not in your three phases. Recommend leavi
 epilogue reached from the contract outcome, running on the `influence` adapter (§9.4), and
 deciding later whether it stays. Nothing in this plan touches it.
 
+*As built in M6:*
+- **The contract act runs on friends.** `contractFloor` (in `src/engine/contract`) rebuilds
+  the weight map from the carried friendships with every company perk lapsed, so a crowd
+  bought in Phase 2 is a crowd again. Turnout backing is still `catBacking`, which on that
+  map is a friend on the action team (65) or somebody from their crowd (35).
+- **Bringing somebody onto the action team takes a way in**: a mapped friend on the team, a
+  signed friend in common, or somebody from their crowd you have found. A floor you never
+  mapped is a floor you cannot grow a team on.
+- **Phase 2's fear carries**: each mark left at the ballot is -5 commitment.
+- **The member panel speaks the board's language**: the digit (solid or hollow) instead of a
+  commitment number, the names of their friends and crowd-mates on the team instead of
+  "points of influence", and turnout odds in words (likely / maybe / unlikely) instead of
+  percentages. Organizer buttons say "friend" or "crowd" and list friends first.
+- **The company campaign needed no adapter.** It reads only the leaders' names and traits,
+  never the weight map, so nothing there changed. `generateInfluence` in
+  `src/engine/act1/influence.js` remains the adapter for anything that wants a map.
+- **Save v3** stores the floor with its friendships and drops the derived weight map. A v2
+  save that already has friendships (anything written since M1) loads as v3; one without
+  them, and any v1 save, keeps its leaders and resumes at the company campaign.
+- **Carry** (`node sim/carry.mjs`, SEED=7, n=300): how Act One was won now decides the
+  contract. The countering mapper hands forward commitment 52 and a team of 4.6; the
+  careful player, who never mapped and never countered, commitment 35 and 3.4, and its
+  contract mostly dies. The rolled floor (nothing carried, which the shipped game only
+  reaches with no Act One floor at all) can barely grow a team under the new rule.
+
 ---
 
 ## 9. Engineering plan
@@ -531,7 +556,7 @@ Each one is playable in the browser and measurable in the sim before the next st
 | M3 | committee redesign: recruit as judgment, leaks, size heat, coverage in the filing prompt and the unwinnable detector | M | **done**: coverage 77.9 / recruit-everyone 70.6 / only-5s 72.9 (SEED=11, n=1000). See §6.2 note for what changed from the text |
 | M4 | falling out + rumor set-piece; cracked slots; social-view snap | S | **done**: 1.01 falling outs and 1.03 rumors per game; the map is wrong at the end in 1% of games for a mapper that keeps talking, 27% for one that stops at week 8 (SEED=7, n=600) |
 | M5 | Phase 2 as its own screen: calendar, inoculate/debrief/stand-with, coordinated actions, six weeks, drive-phase public actions cut to the open letter | L | **done**: the player who counters wins 84.0%, the one who keeps having sit-downs 72.1% (SEED=7, n=1500). Coverage at filing predicts the margin: 3 teams + crowds covered wins 49% (margin +0.8), 4 wins 76%, 5 wins 86%, 6 wins 89%. Six weeks kept. See §7.5 |
-| M6 | contract act on friends; `influence` adapter for the company campaign; save v3 | S | carry sim (`carry.mjs`) runs end to end |
+| M6 | contract act on friends; `influence` adapter for the company campaign; save v3 | S | **done**: `carry.mjs` runs end to end. A floor won by the countering player bargains 2.99 of 6 tiers and ratifies 51% of the time (climbing the ladder, SEED=7, n=300); a careful player's floor 0.31 and 6%. See §8 note |
 
 M1 is the risky one and should be sliced: friends + adapter first (everything else still
 renders), then card + glyph, then interaction.
@@ -556,7 +581,8 @@ unchanged on that. It is a stopgap and should say so in a comment.
 ### 9.5 Saves
 
 `SAVE_VERSION` 2 → 3. A v2 save has no friends or circles; it can rejoin only at the company
-campaign, the same rule v1 saves follow today.
+campaign, the same rule v1 saves follow today. (As built: a v2 save written after M1 does
+carry friendships, and loads as v3. See §8.)
 
 ### 9.6 Risks
 

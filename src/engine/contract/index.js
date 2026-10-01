@@ -3,6 +3,8 @@
 import { clamp, rand } from "../rng.js";
 import { ACT1_WORKERS_SEED } from "../act1/constants.js";
 import { infOn } from "../act1/influence.js";
+import { friendsOf, generateSocial, influenceFrom, isKnownFriend, vouchFor } from "../act1/friends.js";
+import { cloneSocial } from "../act1/fallout.js";
 
 const CONTRACT_MONTHS = 12;
 // Leverage is perishable. A sticker day three months ago doesn't frighten anybody today,
@@ -131,11 +133,35 @@ const CONTRACT_MAX_TIERS = CONTRACT_ISSUES.length * 2;
 // have done at the ballot is a ceiling on what they will do now, not a promise.
 const CONTRACT_VOTE_TO_ACTION = 0.85;
 
-function makeContractWorkers(act1Workers = null) {
+// ---------- THE FLOOR, ON FRIENDS ----------
+// The contract act runs on the friendships Act One carried, not on a weight map. Who turns
+// somebody out is their friends on the action team (FRIEND_TIE each) and anyone on it from
+// their crowd (CIRCLE_TIE). The company's perks lapse in the contract fight, so a crowd it
+// bought during the campaign is a crowd again. The playtest entrance, with nothing
+// carried, rolls a floor; a save from before friendships existed brings only its map.
+function contractFloor(carry = null) {
+  if (carry?.social) {
+    const social = { ...cloneSocial(carry.social), bought: {} };
+    social.influence = influenceFrom(social.friends, social.circleOf, carry.workers || ACT1_WORKERS_SEED, {});
+    return { social, influence: social.influence };
+  }
+  if (carry?.influence) return { social: null, influence: carry.influence };
+  const social = generateSocial(ACT1_WORKERS_SEED);
+  return { social, influence: social.influence };
+}
+
+// What fear Phase 2 left in somebody comes off what they will do now: the meeting is over,
+// the worry about what happens to people who stick their necks out is not.
+const CONTRACT_FEAR_COST = 5;
+
+function makeContractWorkers(act1Workers = null, social = null) {
   if (!act1Workers) {
-    // The playtest entrance, with no campaign behind it: a plausible floor, rolled.
+    // The playtest entrance, with no campaign behind it: a plausible floor, rolled. With
+    // no campaign there was nobody to map it, so everyone's friendships are simply known.
     return ACT1_WORKERS_SEED.map(w => ({
       ...w,
+      knownFriends: social ? [...friendsOf(social, w.id)] : [],
+      circleKnown: !!social,
       commitment: clamp(38 + rand(38) + (w.organizer ? 22 : 0)),
       fulfillment: clamp(w.fulfillment + rand(9) - 4),
       cat: !!w.organizer,
@@ -157,7 +183,9 @@ function makeContractWorkers(act1Workers = null) {
       ...w,
       commitment: clamp(Math.round(stood * CONTRACT_VOTE_TO_ACTION)
         + (w.organizer && !wasBurned ? 10 : 0)   // they have already been doing this
-        - (wasBurned ? 18 : 0)),                 // and they have already been punished for it
+        - (wasBurned ? 18 : 0)                   // and they have already been punished for it
+        - CONTRACT_FEAR_COST * (w.fear || 0)),   // and the campaign got to them
+      fear: 0,
       // The committee that won the election is the team that bargains the contract.
       cat: !!w.organizer && !wasBurned,
       // Winning is what brings back the people management pulled out of the campaign.
@@ -178,7 +206,28 @@ function makeContractWorkers(act1Workers = null) {
   });
 }
 
+// Who on the action team can reach this person: friends, and people from their crowd.
+// Read off the friendships you have mapped, because that is what the panel can show.
+function teamTies(social, workers, w) {
+  if (!social) return { friends: [], crowd: [] };
+  const team = workers.filter(x => x.cat && x.id !== w.id);
+  const friends = team.filter(x => isKnownFriend(w, x.id));
+  const crowd = team.filter(x => !friends.includes(x) && social.circleOf?.[x.id] && social.circleOf[x.id] === social.circleOf[w.id] && x.circleKnown && w.circleKnown);
+  return { friends, crowd };
+}
+// Bringing somebody onto the action team takes a way in, as Act One's committee did: a
+// friend on the team, a signed friend in common to vouch, or (a won election later)
+// somebody from their own crowd, as far as you have found it. A save from before
+// friendships has no map to check, so anybody may ask.
+function teamPath(actor, target, workers, social) {
+  if (!social) return true;
+  const sameCrowd = actor.circleKnown && target.circleKnown && social.circleOf?.[actor.id] && social.circleOf[actor.id] === social.circleOf[target.id];
+  return isKnownFriend(actor, target.id) || !!vouchFor(actor, target, workers) || !!sameCrowd;
+}
+
 // Who turns people out: the people on the contract action team who carry weight with them.
+// On a carried floor that weight is friendship: a friend is worth FRIEND_TIE, somebody
+// from their crowd CIRCLE_TIE (see contractFloor).
 function catBacking(influence, workers, id) {
   return workers
     .filter(x => x.cat && x.id !== id)
@@ -235,4 +284,4 @@ function keepUnionChance(w, issues) {
   return Math.max(0.03, Math.min(0.97, 0.14 + won * 0.55 + (w.commitment - 45) / 220));
 }
 
-export { CONTRACT_MONTHS, LEVERAGE_COOLING, CAT_HOURS, CAT_JOIN_REQ, CONTRACT_FATIGUE, rungFatigue, STALL_STEP, STALL_MAX, stalledCost, CONTRACT_MILESTONES, MILESTONE_MULT, OFFPEAK_MULT, timingMult, CAT_IDLE_QUIT, CONTRACT_READ_FRESH, CONTRACT_READ_STEP, CONTRACT_READ_MAX, contractRead, CONTRACT_LADDER, CONTRACT_LADDER_BY_ID, contractLadderOf, ACTION_LADDER, CONTRACT_ISSUES, CONTRACT_MAX_TIERS, CONTRACT_VOTE_TO_ACTION, makeContractWorkers, catBacking, participationChance, projectedTurnout, projectedTurnoutBand, contractTierSum, ratifyYesChance, keepUnionChance };
+export { contractFloor, CONTRACT_FEAR_COST, teamTies, teamPath, CONTRACT_MONTHS, LEVERAGE_COOLING, CAT_HOURS, CAT_JOIN_REQ, CONTRACT_FATIGUE, rungFatigue, STALL_STEP, STALL_MAX, stalledCost, CONTRACT_MILESTONES, MILESTONE_MULT, OFFPEAK_MULT, timingMult, CAT_IDLE_QUIT, CONTRACT_READ_FRESH, CONTRACT_READ_STEP, CONTRACT_READ_MAX, contractRead, CONTRACT_LADDER, CONTRACT_LADDER_BY_ID, contractLadderOf, ACTION_LADDER, CONTRACT_ISSUES, CONTRACT_MAX_TIERS, CONTRACT_VOTE_TO_ACTION, makeContractWorkers, catBacking, participationChance, projectedTurnout, projectedTurnoutBand, contractTierSum, ratifyYesChance, keepUnionChance };

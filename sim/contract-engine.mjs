@@ -7,17 +7,17 @@
 import './seed.mjs';
 import * as C from '../src/engine/act1/index.js';
 import * as K from '../src/engine/contract/index.js';
-const { clamp, rand, infOn, tieOn, generateInfluence, outgoingTies, orgTier, ACT1_WORKERS_SEED } = C;
+const { clamp, rand, infOn, tieOn, outgoingTies, orgTier } = C;
 const { CONTRACT_MONTHS, LEVERAGE_COOLING, CAT_HOURS, CAT_JOIN_REQ, ACTION_LADDER, CONTRACT_ISSUES,
   CONTRACT_MAX_TIERS, makeContractWorkers, catBacking, participationChance, contractTierSum,
   ratifyYesChance, keepUnionChance, rungFatigue, stalledCost, timingMult, STALL_MAX,
-  CAT_IDLE_QUIT, contractRead, projectedTurnoutBand } = K;
+  CAT_IDLE_QUIT, contractRead, projectedTurnoutBand, contractFloor, teamPath } = K;
 const mean = (a) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0;
 
 export function playContract(opts = {}) {
   const carry = opts.carry || null;
-  const influence = carry?.influence ?? generateInfluence(ACT1_WORKERS_SEED);
-  let w = makeContractWorkers(carry?.workers ?? null);
+  const { social, influence } = contractFloor(carry);
+  let w = makeContractWorkers(carry?.workers ?? null, social);
   let leverage = 0, stall = 0, dead = false;
   const rungUses = {};
   const issues = CONTRACT_ISSUES.map(i => ({ id: i.id, tier: 0 }));
@@ -66,9 +66,9 @@ export function playContract(opts = {}) {
     let left = pool - (tier ? tier.hours : 0);
     const used = {}; const u = (id) => used[id] || 0;
 
-    // --- recruit anyone the team can vouch for ---
+    // --- recruit anyone the team can reach: a friend on it, or a vouch ---
     w.filter(x => !x.cat && x.commitment >= CAT_JOIN_REQ).forEach(t => {
-      const a = cat.find(o => catHours(o) - u(o.id) >= 3);
+      const a = cat.find(o => catHours(o) - u(o.id) >= 3 && (opts.anyRecruiter || teamPath(o, t, w, social)));
       if (!a || left < 3) return;
       used[a.id] = u(a.id) + 3; left -= 3; t.cat = true; t.monthsIdle = 0;
     });

@@ -161,6 +161,10 @@ not a decider.
   The three per-person public tiers are gone; before filing the only public action is the
   open letter, once. `ELECTION_WEEKS` is 6. Tune with `CAMPAIGN_TUNING`, `COORDINATED` and
   `FEAR`; measure with `node sim/phase2.mjs` and sweep with `sim/phase2-sweep.mjs`.
+- **Since M6:** the contract act builds its map with `contractFloor(carry)` and makes its
+  workers with `makeContractWorkers(workers, social)`; recruiting to the action team needs
+  `teamPath` (friend, vouch, or a found crowd-mate). Saves are v3 (`src/save.js`): the floor
+  and its friendships, no weight map. The company campaign reads only leaders.
 - The sim imports the engine directly; there is nothing to regenerate. `SEED=7 node
   sim/verify-ballot.mjs` is replayable byte for byte, which is the acceptance test for any
   engine refactor. See `sim/README.md`.
