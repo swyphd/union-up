@@ -8,6 +8,7 @@ import { ACT1_WORKERS_SEED, TEAM_HEX, TEAM_LABEL, cardStaleSoon } from "../../en
 import { ACT1_ACTION } from "../../engine/act1/actions.js";
 import { AFF_BY_ID, isPoisoned, knownAff } from "../../engine/act1/affinities.js";
 import { RATING_HEX, deltaMarks, ratingGlyph } from "../../engine/act1/election.js";
+import { believedSlots, recentBreaks } from "../../engine/act1/fallout.js";
 import { CIRCLE_BY_ID, allEdges, friendsOf, isKnownFriend, knownEdges, knownFriends } from "../../engine/act1/friends.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
@@ -324,6 +325,21 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
                 stroke={lit ? "#fcd34d" : both ? "#2dd4bf" : "#57534e"} strokeOpacity={lit ? 0.95 : faded ? 0.12 : 0.7} strokeWidth={lit ? 0.7 : 0.45} />;
             })}
           </g>
+          {/* ---- friendships you saw end lately: the line snaps ---- */}
+          <g>
+            {workers.flatMap(w => recentBreaks(w, weekNow).filter(e => w.id < e.id).map(e => {
+              const a = rects[w.id], b = rects[e.id];
+              if (!a || !b || a.tray || b.tray) return null;
+              const mx = (a.cx + b.cx) / 2, my = (a.cy + b.cy) / 2;
+              const gx = (b.cx - a.cx) * 0.08, gy = (b.cy - a.cy) * 0.08;
+              return (
+                <g key={`snap-${w.id}-${e.id}`} stroke="#f87171" strokeOpacity="0.75" strokeWidth="0.5" strokeDasharray="1.2 0.9">
+                  <line x1={a.cx} y1={a.cy} x2={mx - gx} y2={my - gy} />
+                  <line x1={mx + gx} y1={my + gy} x2={b.cx} y2={b.cy} />
+                </g>
+              );
+            }))}
+          </g>
           {sl.trayY != null && (
             <g>
               <line x1="4" x2={layout.width - 4} y1={sl.trayY - 6.5} y2={sl.trayY - 6.5} stroke="#292524" strokeWidth="0.4" />
@@ -373,8 +389,12 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
           // right-hand slot belongs to the change marks.
           const budget = hoursLeft && !w.burned && !hl && hoursLeft[w.id] != null ? hoursLeft[w.id] : null;
           const glyph = glyphOf(w, weekNow);
-          // Without the floor's social structure (an old save) all we have is what was learned.
-          const friendIds = social ? friendsOf(social, w.id) : knownFriends(w);
+          // What you believe: the friends you have met, rings for the ones you believe are
+          // there but have not met, and a cracked slot for a friendship you saw end lately.
+          const metIds = knownFriends(w);
+          const unmet = Math.max(0, believedSlots(w, social) - metIds.length);
+          const cracked = recentBreaks(w, weekNow);
+          const slotRow = [...metIds.map(id => ({ kind: "met", id })), ...Array.from({ length: unmet }, (_, i) => ({ kind: "unmet", id: `u${i}` })), ...cracked.map(e => ({ kind: "cracked", id: `x${e.id}`, who: e.id }))];
           const isOver = drag?.started && drag.over === w.id;
           const isDragging = drag?.actorId === w.id && drag.started;
           return (
@@ -433,16 +453,22 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
 
               {/* ---- row three: friends. A ring is a friend you have not met yet. ---- */}
               <g opacity={w.burned ? 0.3 : 1}>
-                {friendIds.map((fid, i) => {
-                  const f = byId(fid);
-                  const known = isKnownFriend(w, fid);
+                {slotRow.map((slot, i) => {
                   const cx = c.x + 5.6 + i * 5.2, cy = c.y + 16.6;
+                  const f = slot.kind === "met" ? byId(slot.id) : slot.kind === "cracked" ? byId(slot.who) : null;
                   return (
-                    <g key={fid}>
-                      {known && f ? (
+                    <g key={slot.id}>
+                      {slot.kind === "met" && f ? (
                         <>
                           <circle cx={cx} cy={cy} r="1.9" fill={TEAM_HEX[f.team]} fillOpacity="0.9" />
                           <text x={cx} y={cy + 0.95} textAnchor="middle" fontSize="2.4" fontWeight="bold" fill="#0c0a09" fontFamily="'Courier New', monospace">{f.name[0]}</text>
+                        </>
+                      ) : slot.kind === "cracked" ? (
+                        // A friendship you saw end: the slot breaks, and goes in a couple of weeks.
+                        <>
+                          <circle cx={cx} cy={cy} r="1.8" fill="none" stroke="#f87171" strokeWidth="0.4" strokeDasharray="0.9 0.7" />
+                          <line x1={cx - 1.6} y1={cy + 1.6} x2={cx + 1.6} y2={cy - 1.6} stroke="#f87171" strokeWidth="0.45" />
+                          {f && <text x={cx} y={cy + 0.95} textAnchor="middle" fontSize="2.2" fontWeight="bold" fill="#f87171" fillOpacity="0.8" fontFamily="'Courier New', monospace">{f.name[0]}</text>}
                         </>
                       ) : (
                         <circle cx={cx} cy={cy} r="1.8" fill="none" stroke="#57534e" strokeWidth="0.35" strokeDasharray="1 0.8" />
@@ -532,13 +558,15 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
             <div className="mt-0.5">
               <span className="text-stone-500">Friends: </span>
               {(() => {
-                const ids = social ? friendsOf(social, hovered.id) : knownFriends(hovered);
-                const known = ids.filter(id => isKnownFriend(hovered, id));
-                if (!ids.length) return <span className="text-stone-600 italic">{social ? "keeps to themselves" : "none you know of"}</span>;
+                const known = knownFriends(hovered);
+                const believed = believedSlots(hovered, social);
+                const fellOut = recentBreaks(hovered, weekNow).map(e => byId(e.id)?.name).filter(Boolean);
                 return (
                   <>
+                    {believed === 0 && <span className="text-stone-600 italic">{social ? "keeps to themselves" : "none you know of"}</span>}
                     <span className="text-stone-300">{known.map(id => byId(id)?.name).join(", ")}</span>
-                    {ids.length > known.length && <span className="text-stone-600 italic">{known.length ? " · " : ""}{ids.length - known.length} not yet met</span>}
+                    {believed > known.length && <span className="text-stone-600 italic">{known.length ? " · " : ""}{believed - known.length} not yet met</span>}
+                    {fellOut.length > 0 && <span className="text-red-400"> · fell out with {fellOut.join(" and ")}</span>}
                   </>
                 );
               })()}

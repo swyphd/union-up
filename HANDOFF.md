@@ -148,6 +148,10 @@ not a decider.
   digit, the size leak, the tip-off, vetting experience, size heat, `coverageGaps`.
   `COMMITTEE_TUNING` is the one object to sweep (`sim/committee-sweep.mjs`). Recruiting
   needs a friend or a vouch (`pathTo` kind `friend`/`vouch`) and a signed card.
+- **Since M4:** `src/engine/act1/fallout.js` breaks and repairs friendships. The social
+  structure is now per-week state: `resolveWeek` clones it, may change it, and returns it as
+  `pending.social` (the game and the sim both commit it). Display code reads the believed
+  map through `believedSlots` and `seenCircle`, never `friendsOf`/`circleOf` directly.
 - The sim imports the engine directly; there is nothing to regenerate. `SEED=7 node
   sim/verify-ballot.mjs` is replayable byte for byte, which is the acceptance test for any
   engine refactor. See `sim/README.md`.

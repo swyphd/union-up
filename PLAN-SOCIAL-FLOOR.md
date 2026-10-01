@@ -417,6 +417,13 @@ anymore"). The social view animates a known snap. Both directions matter: the pe
 walked away from an anti-union friend group becomes reachable (+1 rating drift toward their
 remaining friends' average), so a falling out can open a door as well as close one.
 
+*As built in M4:* the board shows what you believe, not the live truth: the friend count
+you last saw (`slotsSeen`) and the crowd you last saw somebody in (`circleSeen`). A break
+you did not see leaves both stale until somebody on the committee talks to either party,
+and that conversation says "they don't talk anymore". The rumor's counter in M4 is any
+conversation (quick chat or sit-down) with either party within a week; Phase 2's debrief
+(M5) can take that over. Two committee members never fall out with each other.
+
 ---
 
 ## 8. Phase 3 and the company campaign
@@ -470,7 +477,7 @@ Each one is playable in the browser and measurable in the sim before the next st
 | M1 | titles; friends + circles replace influence; rating glyph; new card; percentages gone; target-first + drag; armed mode removed | L | **done**: careful 60.6 / sloppy 42.6 / careless 14.5 at SEED=7, n=1500, with no retune needed (the gap widened; careful held). Three deferrals noted under §2.2 and §7 |
 | M2 | social view + toggle; sticky layout; conversation map payloads; coverage dots | M | **done**: mapper 73.2 / careful 59.7 / sloppy 41.7 / careless 15.9 at SEED=7, n=1500. Vouch shipped here. Layout as built: each crowd is a rigid block in its bubble, blocks laid out by d3-force (see §4 note) |
 | M3 | committee redesign: recruit as judgment, leaks, size heat, coverage in the filing prompt and the unwinnable detector | M | **done**: coverage 77.9 / recruit-everyone 70.6 / only-5s 72.9 (SEED=11, n=1000). See §6.2 note for what changed from the text |
-| M4 | falling out + rumor set-piece; cracked slots; social-view snap | S | about one per Phase 1 campaign; the map is measurably wrong for players who stop mapping |
+| M4 | falling out + rumor set-piece; cracked slots; social-view snap | S | **done**: 1.01 falling outs and 1.03 rumors per game; the map is wrong at the end in 1% of games for a mapper that keeps talking, 27% for one that stops at week 8 (SEED=7, n=600) |
 | M5 | Phase 2 as its own screen: calendar, inoculate/debrief/stand-with, coordinated actions, six weeks, drive-phase public actions cut to the open letter | L | a policy that counters beats one that keeps having conversations; coverage predicts the ballot margin |
 | M6 | contract act on friends; `influence` adapter for the company campaign; save v3 | S | carry sim (`carry.mjs`) runs end to end |
 
