@@ -34,7 +34,11 @@ export function planWeek(G, opts = {}) {
   w.filter(x => x.signed && !x.organizer && !x.burned && x.trueKnown
       && (x.trueSupport ?? 0) >= ACT1_RECRUIT_REQ && !busy.has(x.id))
     .sort((a, b) => (b.trueSupport ?? 0) - (a.trueSupport ?? 0))
-    .forEach(t => { const a = bestActor(t, 3); if (a) { take(a, 'recruit', t.id); busy.add(t.id); } });
+    .forEach(t => {
+      const a = orgs.filter(o => o.id !== t.id && spent(o.id) >= 3 && (C.isKnownFriend(o, t.id) || C.vouchFor(o, t, w)))
+        .sort((p, q) => infOn(G.influence, q.id, t.id) - infOn(G.influence, p.id, t.id))[0];
+      if (a) { take(a, 'recruit', t.id); busy.add(t.id); }
+    });
 
   // 3. Ask the people who look ready. Uses true support when a deep talk has revealed it,
   //    stated support otherwise — which is exactly how a real campaign over-asks.
@@ -110,13 +114,31 @@ export function planWeekMapper(G, opts = {}) {
     const a = best(t, 1); if (a) { take(a, 'checkin', t.id); busy.add(t.id); }
   });
 
-  // 2. Recruit, uncovered circles and teams first.
-  const coveredCircle = new Set(orgs.map(o => C.circleOfId(soc, o.id)).filter(Boolean));
-  const coveredTeam = new Set(orgs.map(o => o.team));
-  w.filter(x => x.signed && !x.organizer && !x.burned && x.trueKnown && (x.trueSupport ?? 0) >= ACT1_RECRUIT_REQ && !busy.has(x.id))
-    .map(x => ({ x, gap: (x.circleKnown && !coveredCircle.has(C.circleOfId(soc, x.id)) ? 2 : 0) + (!coveredTeam.has(x.team) ? 1 : 0) }))
-    .sort((p, q) => q.gap - p.gap || slots(q.x) - slots(p.x))
-    .forEach(({ x }) => { const a = best(x, 3); if (a) { take(a, 'recruit', x.id); busy.add(x.id); } });
+  // 2. The committee. Drop known leaks; vet when he plainly knows more than he should;
+  //    recruit for coverage (or everybody, for the comparison).
+  const recruiter = (t) => orgs.filter(o => o.id !== t.id && left(o.id) >= 3 && (C.isKnownFriend(o, t.id) || C.vouchFor(o, t, w)))
+    .sort((a, b) => tie(b, t) - tie(a, t))[0];
+  orgs.filter(x => x.leakKnown && !busy.has(x.id)).forEach(t => { const a = best(t, 1); if (a) { take(a, 'drop', t.id); busy.add(t.id); } });
+  // What the player sees: somebody got to a target first in the last couple of weeks.
+  const suspected = C.recentlyTipped(w, G.week).length > 0;
+  if (suspected || opts.alwaysVet) {
+    const vetter = (t) => orgs.filter(o => o.id !== t.id && left(o.id) >= 1 && (o.experience || 0) >= C.VET_MIN_XP).sort((a, b) => tie(b, t) - tie(a, t))[0];
+    orgs.filter(x => x.vettedWeek == null && !x.leakKnown && !busy.has(x.id))
+      .forEach(t => { const a = vetter(t); if (a) { take(a, 'checkin', t.id); busy.add(t.id); } });
+  }
+  const covered = { circle: new Set(orgs.map(o => C.circleOfId(soc, o.id)).filter(Boolean)), team: new Set(orgs.map(o => o.team)) };
+  const fills = (x) => (x.circleKnown && C.circleOfId(soc, x.id) && !covered.circle.has(C.circleOfId(soc, x.id)) ? 2 : 0) + (!covered.team.has(x.team) ? 1 : 0);
+  let size = orgs.length;
+  w.filter(x => x.signed && !x.organizer && !x.burned && !busy.has(x.id))
+    .map(x => ({ x, r: C.rating(x.trueSupport ?? 0), gap: fills(x) }))
+    .filter(({ r, gap }) => opts.recruit === 'all' ? true
+      : opts.recruit === 'fives' ? r >= 5
+      : (r >= 5 && (gap > 0 || size < C.COMMITTEE_COMFORT)) || (r === 4 && gap >= 2 && size < C.COMMITTEE_COMFORT))
+    .sort((p, q) => q.gap - p.gap || q.r - p.r || slots(q.x) - slots(p.x))
+    .forEach(({ x }) => {
+      const a = recruiter(x);
+      if (a && take(a, 'recruit', x.id)) { busy.add(x.id); size++; if (x.circleKnown) covered.circle.add(C.circleOfId(soc, x.id)); covered.team.add(x.team); }
+    });
 
   // 3. Ask the people whose read says ready.
   w.filter(x => !x.signed && !x.burned && !busy.has(x.id) && !x.askedRecently)

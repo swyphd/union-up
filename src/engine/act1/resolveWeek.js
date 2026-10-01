@@ -11,8 +11,9 @@ import { ACT1_ACTION, EDGE_MIN_DRAW, PUBLIC_TIERS, convoGain, misfireChance, pub
 import { AFFINITY_POOL, AFF_BY_ID, PERK_WEEKS, affList, poisonedAff, tieBonus, tieFrom, tieOn, visibleShared } from "./affinities.js";
 import { infTrait, recvMult } from "./traits.js";
 import { outgoingTies } from "./influence.js";
-import { friendsOf, learnFriends, learnOneFriend } from "./friends.js";
-import { ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, ACT1_TOTAL_WORKERS, BURN_NARRATIVES, CARD_LIFESPAN, TEAM_LABEL } from "./constants.js";
+import { friendsOf, isKnownFriend, learnFriends, learnOneFriend, vouchFor } from "./friends.js";
+import { COMMITTEE_TUNING, DROP_LEAK_TRUE, LEAK_TIP_TRUE, VET_MIN_XP, activeLeaks, committeeOf, leakChance, leakHeat, sizeHeat, sizeLeakChance } from "./coverage.js";
+import { ACT1_WORKERS_SEED, ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, ACT1_TOTAL_WORKERS, BURN_NARRATIVES, CARD_LIFESPAN, TEAM_LABEL } from "./constants.js";
 import { CONSULTANT_FIRM, CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_NAME_UC, CONSULTANT_ONE_ON_ONES, CONSULTANT_SETPIECE_GAP, CONSULTANT_TRIGGER_COMMITTEE, KIRKMAN_SIGHT, OUTSIDERS, holdsFast, orgChartResistance, signedBacking } from "./consultant.js";
 import { rating, turnoutChance, voteProjection, yesChance } from "./election.js";
 
@@ -42,6 +43,27 @@ export function resolveWeek(state, planEntries) {
   };
 
   steps.push({ label: "WEEK START", sub: `${organizers.length} organizer${organizers.length === 1 ? "" : "s"} on the floor, ${totalUsed} of ${totalHours} hours committed.`, workers: w.map(x => ({ ...x })), lines: [] });
+
+  // --- THE LEAK ---
+  // Every undetected leak on the committee tells a manager about one thing the committee
+  // has planned this week, a card ask if there is one, else a sit-down. Somebody gets to
+  // that person first. It is the only sign a leak gives, and the player sees it land.
+  const tipped = new Set();
+  const tipLines = [];
+  activeLeaks(w).forEach(leak => {
+    const pool = planEntries.filter(e => e.targetId != null && e.targetId !== leak.id && !tipped.has(e.targetId));
+    const asks = pool.filter(e => e.type === "ask"), sits = pool.filter(e => e.type === "deep");
+    const pick = asks.length ? asks[rand(asks.length)] : sits.length ? sits[rand(sits.length)] : null;
+    if (!pick) return;
+    const t = byId(pick.targetId);
+    if (!t || t.burned) return;
+    tipped.add(t.id);
+    t.tippedWeek = week;
+    t.trueSupport = clamp((t.trueSupport ?? t.support) - LEAK_TIP_TRUE);
+    stats.tipped = (stats.tipped || 0) + 1;
+    tipLines.push(`${t.name} had a quiet word from a manager the day before anybody from the committee got to them. Somebody knew it was coming.`);
+  });
+  if (tipLines.length) steps.push({ label: "SOMEBODY KNEW", sub: "Management got there first.", workers: w.map(x => ({ ...x })), lines: tipLines });
 
   // --- CONVERSATIONS ---
   const convoLines = [];
@@ -82,8 +104,10 @@ export function resolveWeek(state, planEntries) {
     // The sit-down is also the only thing that tells you the truth about them.
     if (e.type === "deep") { target.trueKnown = true; target.trueKnownWeek = week; }
     gainXp(actor, e.type === "deep" ? XP_PER_ACTION : Math.round(XP_PER_ACTION * 0.6));
-    const trueGain = e.type === "deep" ? g.deepTrue : g.quickTrue;
-    bump(target, e.type === "deep" ? g.deep : g.quick, trueGain);
+    // Somebody got to them first: the long version lands at half strength.
+    const primed = tipped.has(target.id) ? 0.5 : 1;
+    const trueGain = Math.round((e.type === "deep" ? g.deepTrue : g.quickTrue) * primed);
+    bump(target, Math.round((e.type === "deep" ? g.deep : g.quick) * primed), trueGain);
     stats.convoGain += target.support - before;
     let deepMap = "";
     if (e.type === "deep") {
@@ -204,7 +228,7 @@ export function resolveWeek(state, planEntries) {
     const target = byId(e.targetId);
     if (!actor || !target || actor.burned || target.burned || target.signed) return;
     const tie = tieOn(influence, actor, target, w);
-    const chance = signChance(actor, target, tie);
+    const chance = signChance(actor, target, tie) * (tipped.has(target.id) ? COMMITTEE_TUNING.tipAsk : 1);
     target.revealed = true;
     touched.add(target.id);
     stats.asks++;
@@ -258,10 +282,15 @@ export function resolveWeek(state, planEntries) {
   planEntries.filter(e => e.type === "recruit").forEach(e => {
     const actor = byId(e.actorId);
     const target = byId(e.targetId);
-    if (!actor || !target || target.burned || target.organizer || !target.signed) return;
-    // Gates on what they would actually do, not what they say. You cannot put someone
-    // on the committee off the back of a number that button-wearing inflated.
-    if (!target.trueKnown || (target.trueSupport ?? 0) < ACT1_RECRUIT_REQ) return;
+    if (!actor || !target || actor.burned || target.burned || target.organizer || !target.signed) return;
+    // The ask has to come from somebody they will hear it from: a friend, or somebody
+    // a signed friend in common can vouch for.
+    if (!isKnownFriend(actor, target.id) && !vouchFor(actor, target, w)) return;
+    // The judgment. Whether they will repeat things is settled the week they join, by
+    // where they really stand, and nobody is told.
+    target.leak = random() < leakChance(target.trueSupport);
+    if (target.leak) stats.leaksJoined = (stats.leaksJoined || 0) + 1;
+    target.vettedWeek = null;
     target.organizer = true;
     target.revealed = true;
     target.weeksIdle = 0;
@@ -297,13 +326,46 @@ export function resolveWeek(state, planEntries) {
     target.trueSupport = clamp((target.trueSupport ?? target.support) + 3);
     touched.add(target.id);
     checkinPulses.push({ from: actor.id, to: target.id, tone: "up" });
-    checkinNotes[target.id] = `${actor.name} checks in`;
+    // Somebody who has done this a while can tell when a colleague has been talking.
+    const canVet = (actor.experience || 0) >= VET_MIN_XP;
+    let vetLine = "";
+    if (canVet) {
+      target.vettedWeek = week;
+      if (target.leak) {
+        target.leakKnown = true;
+        vetLine = `${actor.name} comes away sure of it: ${target.name} has been repeating committee business to a manager. `;
+      } else vetLine = `${actor.name} comes away sure of ${target.name}. `;
+    }
+    checkinNotes[target.id] = target.leakKnown && canVet ? `${target.name} has been talking` : `${actor.name} checks in`;
     checkinLines.push(
       `${actor.name} spends an hour on ${target.name} instead of a target — coffee, no agenda. ` +
       (wasShaken ? `It gets ${target.name} out from under the manager's eye. ` : "") +
       (wasIdle >= IDLE_GRACE ? `${target.name} had been drifting for ${wasIdle} weeks; they're back in it. ` : "") +
-      `+10 experience.`
+      vetLine
     );
+  });
+  // Taking somebody off the committee. A leak shown the door is soured for good; anyone
+  // else steps back the way a neglected member does.
+  planEntries.filter(e => e.type === "drop").forEach(e => {
+    const actor = byId(e.actorId);
+    const target = byId(e.targetId);
+    if (!actor || !target || actor.burned || target.burned || !target.organizer || actor.id === target.id) return;
+    target.organizer = false;
+    target.weeksIdle = 0;
+    if (target.leak) {
+      stats.leaksDropped = (stats.leaksDropped || 0) + 1;
+      target.trueSupport = Math.min(target.trueSupport ?? 0, DROP_LEAK_TRUE);
+      target.support = Math.min(target.support, DROP_LEAK_TRUE + 10);
+      checkinLines.push(`${actor.name} tells ${target.name} they are off the committee. ${target.name} knows why. Whatever reached the manager's office from here, nothing more will.`);
+    } else {
+      target.trueSupport = clamp((target.trueSupport ?? target.support) - 12);
+      target.experience = Math.round((target.experience || 0) * 0.6);
+      checkinLines.push(`${actor.name} asks ${target.name} to step back from the committee. ${target.name} takes it the way anybody would.`);
+    }
+    target.leak = false;
+    target.leakKnown = false;
+    checkinNotes[target.id] = "off the committee";
+    target.history.push(`Week ${week}: taken off the committee.`);
   });
   if (checkinLines.length) steps.push({ label: "LOOKING AFTER EACH OTHER", sub: "An hour spent on your own people is not an hour wasted.", workers: w.map(x => ({ ...x })), lines: checkinLines, notes: checkinNotes, edgePulses: checkinPulses });
 
@@ -332,6 +394,8 @@ export function resolveWeek(state, planEntries) {
     x.weeksIdle = usedThisWeek ? 0 : (x.weeksIdle || 0) + 1;
     if (x.weeksIdle >= IDLE_QUIT) {
       x.organizer = false;
+      x.leak = false;
+      x.leakKnown = false;
       x.weeksIdle = 0;
       x.experience = Math.round((x.experience || 0) * 0.6);
       x.trueSupport = clamp((x.trueSupport ?? x.support) - 12);
@@ -482,6 +546,25 @@ export function resolveWeek(state, planEntries) {
   // aggressive stretch pins heat at 100 and the shop never gets back off the radar.
   heatNext = clamp(heatNext - (5 + Math.floor(heatNext / 12)), 0, 100);
   const mgmtLines = [];
+  // A big committee is hard to keep quiet. Every member past four is one more person
+  // who might mention a meeting in the wrong room.
+  const bigCommittee = sizeHeat(w);
+  if (bigCommittee > 0) {
+    heatNext = clamp(heatNext + bigCommittee);
+    mgmtLines.push(`A committee of ${committeeOf(w).length} is a lot of people who know about the meetings. +${bigCommittee} heat this week.`);
+  }
+  // The more people in the room, the likelier somebody repeats it. Never one of the two
+  // who started this, and nobody is told.
+  if (random() < sizeLeakChance(w)) {
+    const pool = committeeOf(w).filter(x => !x.leak && !ACT1_WORKERS_SEED.find(s => s.id === x.id)?.organizer);
+    if (pool.length) { const x = pool[rand(pool.length)]; x.leak = true; stats.leaksJoined = (stats.leaksJoined || 0) + 1; }
+  }
+  // A leak does not announce itself. Management simply knows more than it should.
+  const leakWarmth = leakHeat(w);
+  if (leakWarmth > 0) {
+    heatNext = clamp(heatNext + leakWarmth);
+    mgmtLines.push(`Somebody upstairs knows when the committee met, and where. +${leakWarmth} heat.`);
+  }
   if (heatNext >= 45 && random() < 0.55) {
     const roll = rand(100);
     if (roll < 45) {
@@ -570,12 +653,16 @@ export function resolveWeek(state, planEntries) {
     // Below the sight threshold he is picking names off an org chart: whoever looks
     // wobbly on paper, by department. Above it, the campaign has been loud enough
     // that he can see who is actually isolated — and that is when he gets dangerous.
-    const seesNetwork = heat >= KIRKMAN_SIGHT || inCampaign;
+    // A leak on the committee hands him the map whatever the heat.
+    const leaking = activeLeaks(w);
+    const seesNetwork = heat >= KIRKMAN_SIGHT || inCampaign || leaking.length > 0;
+    const leakFriends = new Set(leaking.flatMap(l => friendsOf(social, l.id)));
     const marks = w
       .filter(x => !x.burned && x.support >= 30 && (inCampaign || !x.signed))
       .map(x => {
         const backing = seesNetwork ? signedBacking(influence, w, x.id) : 0;
-        return { t: x, backing, score: x.support - backing * 0.35 - (x.signed ? 25 : 0) };
+        // He starts with whoever the leak is closest to.
+        return { t: x, backing, score: x.support - backing * 0.35 - (x.signed ? 25 : 0) + (leakFriends.has(x.id) ? 40 : 0) };
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, inCampaign ? 4 : 2);

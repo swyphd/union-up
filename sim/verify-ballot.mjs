@@ -2,7 +2,7 @@
 import { playGame } from './run.mjs';
 const N = Number(process.argv[2] || 3000);
 const pad = (s, n) => String(s).padEnd(n);
-const PLAYERS = { mapper: { mapper: true }, careful: {}, sloppy: { blindDeep: true }, careless: { blindDeep: true, askBar: 58 } };
+const PLAYERS = { mapper: { mapper: true }, 'mapper, all': { mapper: true, recruit: 'all' }, careful: {}, sloppy: { blindDeep: true }, careless: { blindDeep: true, askBar: 58 } };
 console.log(`n=${N} per cell, live App.jsx ballot\n`);
 console.log(pad('player', 12) + pad('won%', 9) + pad('filed%', 9) + pad('margin', 9)
   + pad('close', 8) + pad('blowout', 10) + 'proj error');

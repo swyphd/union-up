@@ -32,7 +32,7 @@ export function playGame(opts = {}) {
     thresholdOn, filedOn,
     signed: w.filter(x => x.signed).length,
     committee: w.filter(x => x.organizer && !x.burned).length,
-    heat: G.heat, burns: G.tally.burns, misfires: G.tally.misfires,
+    heat: G.heat, burns: G.tally.burns, tipped: G.tally.tipped, leaksJoined: G.tally.leaksJoined, leaksDropped: G.tally.leaksDropped, misfires: G.tally.misfires,
     asks: G.tally.asks, signs: G.tally.signs,
     convoGain: G.tally.convoGain, publicGain: G.tally.publicGain, passiveGain: G.tally.passiveGain,
     trueMean: Math.round(w.reduce((s, x) => s + (x.trueSupport ?? x.support), 0) / w.length),

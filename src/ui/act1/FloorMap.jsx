@@ -367,7 +367,8 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
           const hl = highlights ? highlights[w.id] : null;
           const planLabels = plannedByWorker[w.id];
           const dim = (active != null && !connectedToActive(w.id)) || (drag?.started && drag.over != null && drag.over !== w.id && drag.actorId !== w.id);
-          const border = w.burned ? "#44403c" : w.organizer ? "#f59e0b" : w.signed ? "#2dd4bf" : "#44403c";
+          // A committee member you have caught talking keeps an amber card with a red edge.
+          const border = w.burned ? "#44403c" : w.organizer && w.leakKnown ? "#f87171" : w.organizer ? "#f59e0b" : w.signed ? "#2dd4bf" : "#44403c";
           // Only while the player is still spending the week: during a resolution the
           // right-hand slot belongs to the change marks.
           const budget = hoursLeft && !w.burned && !hl && hoursLeft[w.id] != null ? hoursLeft[w.id] : null;
@@ -526,6 +527,7 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
             <span className="font-bold" style={{ color: glyphOf(hovered, weekNow).hex }}>{hovered.name}{hovered.burned ? " (OUT OF PLAY)" : ""}</span>
             <span className="text-stone-500"> · {hovered.title || TEAM_LABEL[hovered.team]}{hovered.signed ? " · SIGNED" : ""}</span>
             <span style={{ color: infTrait(hovered).hex }} className="font-bold"> · {infTrait(hovered).label}</span>
+            {hovered.organizer && hovered.leakKnown && <span className="text-red-400 font-bold"> · HAS BEEN TALKING TO A MANAGER</span>}
             <span className="text-stone-500"> — {hovered.hook}</span>
             <div className="mt-0.5">
               <span className="text-stone-500">Friends: </span>

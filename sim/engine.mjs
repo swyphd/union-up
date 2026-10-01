@@ -11,7 +11,7 @@ export function newGame() {
     workers, influence: social.influence, social, week: 1, heat: 0, stage: 'drive',
     consultant: { active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0, perks: 0 },
     perks: [], outsiders: [], filedWeek: null, electionWeek: null, ballot: null,
-    tally: { convoGain: 0, publicGain: 0, passiveGain: 0, misfires: 0, asks: 0, signs: 0, burns: 0 },
+    tally: { convoGain: 0, publicGain: 0, passiveGain: 0, misfires: 0, asks: 0, signs: 0, burns: 0, tipped: 0, leaksJoined: 0, leaksDropped: 0 },
   };
 }
 

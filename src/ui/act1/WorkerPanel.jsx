@@ -6,8 +6,9 @@ import { CostPips, HourPie } from "../shared.jsx";
 import { infOn, outgoingTies } from "../../engine/act1/influence.js";
 import { ACT1_ACTION, EDGE_MIN_DRAW, PUBLIC_TIERS, pathTo, convoGain, influenceKnown, misfireChance, publicGain, shownInfluence } from "../../engine/act1/actions.js";
 import { affList, knownAff, tieBonus, tieFrom, tieOn } from "../../engine/act1/affinities.js";
-import { ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, TEAM_HEX, TEAM_LABEL } from "../../engine/act1/constants.js";
-import { RATING_WORD, deltaMarks, ratingGlyph } from "../../engine/act1/election.js";
+import { ACT1_HOURS_PER_ORGANIZER, ACT1_WORKERS_SEED, TEAM_HEX, TEAM_LABEL } from "../../engine/act1/constants.js";
+import { RATING_WORD, deltaMarks, rating, ratingGlyph } from "../../engine/act1/election.js";
+import { COMMITTEE_COMFORT, VET_MIN_XP } from "../../engine/act1/coverage.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
 import { FRIEND_TIE, VOUCH_TIE, vouchFor } from "../../engine/act1/friends.js";
@@ -20,12 +21,23 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
     if (dragged && hoursLeftFor(dragged) >= 1) return dragged.id;
     if (worker.organizer && !dragged) return worker.id;
     // Default to whoever carries the most weight with this person — but skip anyone
-    // whose week is already spent, so the panel doesn't open fully greyed out.
-    const ranked = [...others].sort((a, b) => infOn(influence, b.id, worker.id) - infOn(influence, a.id, worker.id));
+    // whose week is already spent, so the panel doesn't open fully greyed out. For one of
+    // your own people the job is usually a check-in, and only experience can tell whether
+    // they have been talking, so the most experienced organizer comes first.
+    const ranked = [...others].sort((a, b) => worker.organizer
+      ? (b.experience || 0) - (a.experience || 0)
+      : infOn(influence, b.id, worker.id) - infOn(influence, a.id, worker.id));
     return (ranked.find(o => hoursLeftFor(o) >= 1) || ranked[0])?.id ?? null;
   });
   const actor = allWorkers.find(w => w.id === actorId);
-  const isSelfPanel = worker.organizer && (!preferActorId || preferActorId === worker.id);
+  // A committee member's own panel is what they can do. "Somebody checks in on them" turns
+  // it round: another organizer becomes the actor and this member the one being seen to.
+  const [asTarget, setAsTarget] = useState(false);
+  const isSelfPanel = worker.organizer && !asTarget && (!preferActorId || preferActorId === worker.id);
+  const turnRound = () => {
+    const best = [...others].filter(o => hoursLeftFor(o) >= 1).sort((a, b) => (b.experience || 0) - (a.experience || 0))[0] || others[0];
+    if (best) { setActorId(best.id); setAsTarget(true); }
+  };
   // A pair that arrived by drag is already decided, so the panel is an action card for
   // that pair rather than a place to shop for a different organizer. A plain click on
   // somebody shows the whole committee, closest relationship first.
@@ -44,6 +56,8 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
   const via = actor && !isSelfPanel ? vouchFor(actor, worker, allWorkers) : null;
   const tie = actor && !isSelfPanel ? tieFrom(via && weight < FRIEND_TIE ? weight + VOUCH_TIE : weight, actor, worker) : 0;
   const path = actor && !isSelfPanel ? pathTo(actor, worker, allWorkers) : null;
+  // Recruiting needs a real way in: a friend, or a vouch. Common ground alone is not one.
+  const recruitPath = path && (path.kind === "friend" || path.kind === "vouch");
   const weightKnown = influenceKnown(actor, worker);
   const gains = actor && !isSelfPanel ? convoGain(actor, worker, tie) : null;
 
@@ -158,12 +172,28 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                 <div className="h-1" style={{ width: `${worker.experience || 0}%`, backgroundColor: orgTier(worker).hex }} />
               </div>
               <div className="text-stone-400 leading-snug">{orgTier(worker).blurb}</div>
+              {!isFounder(worker) && (
+                <div className={`mt-1 ${worker.leakKnown ? "text-red-400 font-bold" : "text-stone-500"}`}>
+                  {worker.leakKnown ? "Has been talking to a manager. Take them off the committee."
+                    : worker.vettedWeek != null ? `Vetted in week ${worker.vettedWeek}.`
+                    : "Not vetted. A check-in from a seasoned organizer would tell you whether they talk."}
+                </div>
+              )}
               {(worker.weeksIdle || 0) > IDLE_GRACE && (
                 <div className="text-amber-400 mt-1 font-bold">
                   Idle {worker.weeksIdle} weeks — down to {committeeHours(worker)} hour{committeeHours(worker) === 1 ? "" : "s"}. They leave at {IDLE_QUIT}.
                 </div>
               )}
             </div>
+            {others.length > 0 && (
+              <button onClick={turnRound}
+                className={`w-full text-left border-2 px-3 py-2 transition-colors ${worker.leakKnown ? "border-red-700 hover:bg-red-950/30" : "border-amber-800 hover:bg-amber-950/30"}`}>
+                <div className={`text-sm ${worker.leakKnown ? "text-red-300" : "text-amber-300"}`}>Somebody checks in on {worker.name} {"\u2192"}</div>
+                <div className="text-xs text-stone-400 leading-snug mt-0.5">
+                  Another organizer spends an hour on them: keeps them from drifting, and a seasoned one can tell whether they have been talking. Or take them off the committee.
+                </div>
+              </button>
+            )}
             {!unlockPublic && (
               <div className="text-xs text-stone-600 italic border border-stone-800 px-3 py-2">
                 Right now {worker.name} can only have conversations. Click someone else on the floor to plan one.
@@ -278,12 +308,32 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">
                     An hour of {actor.name}'s week spent on {worker.name} instead of a target. +10 experience, resets their idle clock
                     {worker.shaken > 0 ? ", and gets them out from under the manager's eye this week" : ""}.
+                    {!isFounder(worker) && ((actor.experience || 0) >= VET_MIN_XP
+                      ? <span className="text-teal-300"> {actor.name} has done this long enough to tell whether {worker.name} has been talking.</span>
+                      : <span className="text-stone-500"> {actor.name} is too new at this to tell whether {worker.name} has been talking.</span>)}
                   </div>
                   {(worker.weeksIdle || 0) >= IDLE_QUIT - 1 && (
                     <div className="text-xs text-amber-400 leading-snug mt-0.5 font-bold">
                       {worker.name} walks off the committee next week without this.
                     </div>
                   )}
+                </button>
+              )}
+              {worker.organizer && !isFounder(worker) && (
+                <button
+                  disabled={!canAfford("drop")}
+                  onClick={() => onPlan(actor.id, "drop", worker.id)}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("drop") ? (worker.leakKnown ? "border-red-700 hover:bg-red-950/30" : "border-stone-700 hover:bg-stone-800/60") : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                >
+                  <div className={`text-sm flex justify-between items-center ${worker.leakKnown ? "text-red-300" : "text-stone-300"}`}>
+                    <span>{ACT1_ACTION.drop.label}</span>
+                    <CostPips hours={ACT1_ACTION.drop.hours} affordable={canAfford("drop")} />
+                  </div>
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">
+                    {worker.leakKnown
+                      ? `${worker.name} has been talking. Off the committee, they hear nothing more.`
+                      : `They step back the way a neglected member does: they lose ground, and most of what they have learned.`}
+                  </div>
                 </button>
               )}
               {["quick", "deep"].map(type => (
@@ -337,20 +387,26 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
 
               {worker.signed && !worker.organizer && (
                 <button
-                  disabled={!canAfford("recruit") || !worker.trueKnown || (worker.trueSupport ?? 0) < ACT1_RECRUIT_REQ}
+                  disabled={!canAfford("recruit") || !recruitPath}
                   onClick={() => onPlan(actor.id, "recruit", worker.id)}
-                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("recruit") && worker.trueKnown && (worker.trueSupport ?? 0) >= ACT1_RECRUIT_REQ ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("recruit") && recruitPath ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
                 >
                   <div className="text-sm text-amber-300 flex justify-between">
                     <span>{ACT1_ACTION.recruit.label}</span>
                     <CostPips hours={ACT1_ACTION.recruit.hours} affordable={canAfford("recruit")} />
                   </div>
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">
-                    {!worker.trueKnown
-                      ? `You don't actually know where ${worker.name} stands — only what they say. Sit down with them properly before handing them other people's campaigns.`
-                      : (worker.trueSupport ?? 0) < ACT1_RECRUIT_REQ
-                      ? `Takes a solid 5, and a strong one. Your read says ${worker.name} is not there yet, however they talk.`
-                      : `${worker.name} starts organizing too: +${ACT1_HOURS_PER_ORGANIZER} hours every week, their relationships become yours to direct, and they get better at it the more you use them. Leave them idle ${IDLE_QUIT} weeks and they walk.`}
+                    {!recruitPath
+                      ? <span className="text-amber-400">{actor.name} has no way to ask this. It takes a friend on the committee, or a signed friend in common to vouch.</span>
+                      : (() => {
+                          const d = rating(worker.trueSupport ?? 0);
+                          return d >= 5
+                            ? <>A solid 5: a safe pair of hands. +{ACT1_HOURS_PER_ORGANIZER} hours a week, and their friends become yours to reach.</>
+                            : <span className="text-amber-300">{d === 4 ? `Signed, but a 4. Some 4s repeat what they hear in committee to a manager.` : `Signed once, and a ${d} now. Likely to talk.`} A seasoned organizer's check-in finds out.</span>;
+                        })()}
+                    {recruitPath && organizers.length >= COMMITTEE_COMFORT && (
+                      <span className="text-red-400"> Past {COMMITTEE_COMFORT}, every member makes the committee likelier to leak and runs the floor hotter.</span>
+                    )}
                   </div>
                 </button>
               )}
@@ -361,5 +417,8 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
     </div>
   );
 }
+
+// The two people the campaign started with never leak and are never vetted.
+const isFounder = (w) => !!ACT1_WORKERS_SEED.find(s => s.id === w.id)?.organizer;
 
 export { Act1WorkerModal };
