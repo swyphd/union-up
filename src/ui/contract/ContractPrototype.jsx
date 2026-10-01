@@ -5,12 +5,11 @@ import { clamp, rand, random } from "../../engine/rng.js";
 import { GlobalStyle, OutcomeScreen, StatRow } from "../shared.jsx";
 import { Act1FloorMap } from "../act1/FloorMap.jsx";
 import { infOn } from "../../engine/act1/influence.js";
-import { generateSocial } from "../../engine/act1/friends.js";
-import { ACT1_WORKERS_SEED, BURN_NARRATIVES, FULFILL_HEX, TEAM_LABEL, fulfillmentLabel, supportTier } from "../../engine/act1/constants.js";
-import { ACTION_LADDER, CAT_HOURS, CAT_IDLE_QUIT, CAT_JOIN_REQ, CONTRACT_ISSUES, CONTRACT_LADDER, CONTRACT_MAX_TIERS, CONTRACT_MILESTONES, CONTRACT_MONTHS, CONTRACT_READ_FRESH, LEVERAGE_COOLING, STALL_MAX, STALL_STEP, catBacking, contractLadderOf, contractRead, contractTierSum, keepUnionChance, makeContractWorkers, participationChance, projectedTurnoutBand, ratifyYesChance, rungFatigue, stalledCost, timingMult } from "../../engine/contract/index.js";
+import { BURN_NARRATIVES, FULFILL_HEX, TEAM_LABEL, fulfillmentLabel } from "../../engine/act1/constants.js";
+import { ACTION_LADDER, CAT_HOURS, CAT_IDLE_QUIT, CAT_JOIN_REQ, CONTRACT_ISSUES, CONTRACT_LADDER, CONTRACT_MAX_TIERS, CONTRACT_MILESTONES, CONTRACT_MONTHS, CONTRACT_READ_FRESH, LEVERAGE_COOLING, STALL_MAX, STALL_STEP, catBacking, contractFloor, contractLadderOf, teamPath, teamTies, contractRead, contractTierSum, keepUnionChance, makeContractWorkers, participationChance, projectedTurnoutBand, ratifyYesChance, rungFatigue, stalledCost, timingMult } from "../../engine/contract/index.js";
 import { orgTier } from "../../engine/act1/committee.js";
 import { tieOn } from "../../engine/act1/affinities.js";
-import { RATING_HEX, rating } from "../../engine/act1/election.js";
+import { RATING_HEX, RATING_WORD, rating } from "../../engine/act1/election.js";
 
 // =====================================================================================
 // PROTOTYPE — THE FIRST CONTRACT
@@ -27,15 +26,12 @@ import { RATING_HEX, rating } from "../../engine/act1/election.js";
 // and the union you won in Act One goes to a decertification vote.
 
 function ContractPrototype({ carry = null, onComplete = null, onExit }) {
-  // The influence map is not regenerated. Who listens to whom did not change because an
+  // The friendships are not regenerated. Who listens to whom did not change because an
   // election happened, and re-rolling it would throw away the one thing the player spent
-  // the whole of Act One learning.
-  // A carried floor brings its own friendships. The playtest (no carry) rolls one, and
-  // keeps it, so the board and the ties it runs on describe the same people. A pre-friends
-  // save has a map but no friendships to show, and the board says so.
-  const [social] = useState(() => carry?.social ?? (carry?.influence ? null : generateSocial(ACT1_WORKERS_SEED)));
-  const [influence] = useState(() => carry?.influence ?? social.influence);
-  const [workers, setWorkers] = useState(() => makeContractWorkers(carry?.workers));
+  // the whole of Act One learning. The playtest (no carry) rolls a floor and keeps it.
+  const [floor] = useState(() => contractFloor(carry));
+  const { social, influence } = floor;
+  const [workers, setWorkers] = useState(() => makeContractWorkers(carry?.workers, floor.social));
   const [turn, setTurn] = useState(1);
   const [phase, setPhase] = useState("plan"); // plan, result, ratify
   const [leverage, setLeverage] = useState(0);
@@ -115,8 +111,8 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
     });
 
     planEntries.filter(e => e.type === "recruit").forEach(e => {
-      const t = byId(e.targetId);
-      if (!t || t.cat || t.commitment < CAT_JOIN_REQ) return;
+      const t = byId(e.targetId), a = byId(e.actorId);
+      if (!t || t.cat || t.commitment < CAT_JOIN_REQ || (a && !teamPath(a, t, w, social))) return;
       t.cat = true;
       t.monthsIdle = 0;
       notes[t.id] = "JOINS THE CAT";
@@ -695,7 +691,10 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
       {selected && phase === "plan" && (() => {
         const w = workers.find(x => x.id === selected.id);
         const backing = catBacking(influence, workers, w.id);
-        const actors = cat.filter(o => o.id !== w.id);
+        const ties = teamTies(social, workers, w);
+        // Friends first: they are who should be doing it.
+        const actors = cat.filter(o => o.id !== w.id).sort((a, b) => (ties.friends.includes(b) ? 2 : ties.crowd.includes(b) ? 1 : 0) - (ties.friends.includes(a) ? 2 : ties.crowd.includes(a) ? 1 : 0));
+        const recruiter = actors.find(x => hoursLeft(x) >= 3 && teamPath(x, w, workers, social));
         return (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto" onClick={() => setSelected(null)}>
             <div className="bg-stone-900 border-2 border-stone-700 max-w-md w-full p-5 my-auto" onClick={e => e.stopPropagation()}>
@@ -705,18 +704,32 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
               </div>
               <p className="text-sm text-stone-400 mb-3">{w.hook}</p>
               {(() => {
-                const r = contractRead(w, turn);
+                // The same digit as their card: will they actually do something.
+                const g = contractGlyph(w);
                 return (
-                  <StatRow label="COMMITMENT" value={r.exact ? r.mid : `${r.lo}\u2013${r.hi}`} hex={supportTier(r.mid).hex} align="left"
-                    info="Whether this person will actually do something — not whether they support the union. They already voted yes; commitment is what turns that into showing up. You only get a number for somebody you have sat down with recently, or who turned out at the last action. Everyone else is a range, and it widens."
-                    sub={r.exact ? "Read is current." : `Nobody has sat down with them or seen them turn out in ${r.age} months. This is an estimate.`} />
+                  <div className="flex items-center gap-3 mb-3">
+                    <span className="font-mono font-bold text-3xl leading-none" style={g.state === "hollow"
+                      ? { color: g.hex, WebkitTextStroke: `1px ${g.hex}`, WebkitTextFillColor: "transparent" }
+                      : { color: g.hex }}>{g.digit}</span>
+                    <span className="text-xs text-stone-400 leading-snug">
+                      {g.state === "solid" ? <>Commitment: {RATING_WORD[g.digit]}. <span className="text-stone-500">Somebody sat down with them, or saw them turn out.</span></>
+                        : <>Was {RATING_WORD[g.digit]}. <span className="text-stone-500">Nobody has sat down with them or seen them turn out in {g.age} months.</span></>}
+                    </span>
+                  </div>
                 );
               })()}
               <StatRow label="JOB FULFILLMENT" value={w.fulfillment} hex={FULFILL_HEX} align="left"
                 info="Still decides who can move them. It also decides how far they'll go: somebody who loves this job will sign a letter but won't hold a milestone hostage."
                 sub={`${fulfillmentLabel(w.fulfillment)} — expect them at the low rungs, not the high ones.`} />
               <div className="text-xs text-stone-400 border-t border-stone-800 pt-2 mb-3">
-                {backing} points of influence on them comes from the action team. That's what pulls them out on the day.
+                {ties.friends.length || ties.crowd.length ? (
+                  <>
+                    {ties.friends.length > 0 && <>Friends on the action team: <span className="text-teal-300">{ties.friends.map(x => x.name).join(", ")}</span>. </>}
+                    {ties.crowd.length > 0 && <>From their crowd: <span className="text-stone-200">{ties.crowd.map(x => x.name).join(", ")}</span>. </>}
+                    <span className="text-stone-500">They are who pull them out on the day.</span>
+                  </>
+                ) : social ? <span className="text-amber-400">Nobody on the action team is their friend or from their crowd. Nobody pulls them out on the day.</span>
+                  : <>{backing} points of influence on them comes from the action team.</>}
               </div>
               <div className="text-xs text-stone-500 tracking-wide mb-1">TURNOUT ODDS</div>
               <div className="grid grid-cols-2 gap-1 mb-3">
@@ -724,9 +737,11 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
                   <div key={t.key} className="text-xs text-stone-400 border border-stone-800 px-2 py-1">
                     {t.label}: <span className="text-stone-200 font-bold">{(() => {
                       const r = contractRead(w, turn);
-                      const lo = Math.round(participationChance({ ...w, commitment: r.lo }, t, backing) * 100);
-                      const hi = Math.round(participationChance({ ...w, commitment: r.hi }, t, backing) * 100);
-                      return lo === hi ? `${lo}%` : `${lo}\u2013${hi}%`;
+                      // Words, not a percentage: the read is not that precise and the panel should not pretend.
+                      const word = (p) => (p >= 0.6 ? "likely" : p >= 0.3 ? "maybe" : "unlikely");
+                      const lo = word(participationChance({ ...w, commitment: r.lo }, t, backing));
+                      const hi = word(participationChance({ ...w, commitment: r.hi }, t, backing));
+                      return lo === hi ? lo : `${lo} to ${hi}`;
                     })()}</span>
                   </div>
                 ))}
@@ -741,21 +756,23 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
                       <button key={o.id} onClick={() => { addPlan(o.id, "oneOnOne", w.id); setSelected(null); }}
                         disabled={hoursLeft(o) < 2 || poolLeft < 2}
                         className={`border px-2 py-1 text-[13px] transition-colors ${hoursLeft(o) < 2 || poolLeft < 2 ? "border-stone-800 text-stone-700 cursor-not-allowed" : "border-stone-700 text-stone-300 hover:bg-stone-800/60"}`}>
-                        {o.name} <span className="text-stone-600">· inf {infOn(influence, o.id, w.id)}</span>
+                        {o.name}{ties.friends.includes(o) ? <span className="text-teal-400"> · friend</span> : ties.crowd.includes(o) ? <span className="text-stone-500"> · crowd</span> : null}
                       </button>
                     ))}
                   </div>
                   <div className="text-xs text-stone-500">Click a name to spend 2 of their hours on a one-on-one.</div>
                   <button
-                    onClick={() => { const o = actors.find(x => hoursLeft(x) >= 3); if (o) { addPlan(o.id, "recruit", w.id); setSelected(null); } }}
-                    disabled={w.commitment < CAT_JOIN_REQ || !actors.some(x => hoursLeft(x) >= 3) || poolLeft < 3}
-                    className={`w-full text-left border-2 px-3 py-2 transition-colors ${w.commitment >= CAT_JOIN_REQ && actors.some(x => hoursLeft(x) >= 3) && poolLeft >= 3 ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                    onClick={() => { if (recruiter) { addPlan(recruiter.id, "recruit", w.id); setSelected(null); } }}
+                    disabled={w.commitment < CAT_JOIN_REQ || !recruiter || poolLeft < 3}
+                    className={`w-full text-left border-2 px-3 py-2 transition-colors ${w.commitment >= CAT_JOIN_REQ && recruiter && poolLeft >= 3 ? "border-amber-700 hover:bg-amber-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
                   >
                     <div className="text-sm text-amber-300">Bring onto the contract action team <span className="text-stone-500">3h</span></div>
                     <div className="text-xs text-stone-400 mt-0.5">
                       {w.commitment < CAT_JOIN_REQ
-                        ? `Needs ${CAT_JOIN_REQ} commitment — they're at ${w.commitment}.`
-                        : `+${CAT_HOURS} hours a month, and everyone they can turn out becomes yours.`}
+                        ? "Not committed enough yet. A one-on-one first."
+                        : !actors.some(x => teamPath(x, w, workers, social))
+                          ? "Nobody on the team can ask. It takes a friend on the team, or a friend in common who signed to vouch."
+                          : `+${CAT_HOURS} hours a month, and everyone they can turn out becomes yours.`}
                     </div>
                   </button>
                 </div>

@@ -11,9 +11,11 @@ import { ACT1_SAVE_KEY, SAVE_VERSION } from "./save.js";
 // TOP-LEVEL WRAPPER — Act 1 (one shop) graduates into Act 2 (the citywide campaign)
 // =====================================================================================
 
-// v2 saves the whole floor, not four names, because the first-contract act now runs on
-// it. A v1 save (leaders only) still loads — it just cannot carry a map that was never
-// written down, so it resumes at the company campaign rather than the contract.
+// v3 saves the whole floor and its friendships, because the first-contract act runs on
+// them. A v2 save that already carries friendships loads as one. Any other v2 floor
+// predates friendships and a v1 save is names only: neither carries the map the contract
+// act needs, so both resume at the company campaign, which reads only the leaders' names
+// and traits.
 
 export default function PermadeathOrganizing() {
   // One shop, then its first contract, then the rest of the company. Each act hands the
@@ -28,10 +30,14 @@ export default function PermadeathOrganizing() {
       const raw = localStorage.getItem(ACT1_SAVE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        const run = parsed && parsed.v === SAVE_VERSION
+        // A v2 save written since friendships arrived carries everything a v3 one does.
+        const run = parsed && (parsed.v === SAVE_VERSION || (parsed.v === 2 && parsed.act1?.social))
           ? parsed
-          // A save from before the acts were reordered: names only, no floor to carry.
-          : (parsed && Array.isArray(parsed.leaders) ? { v: 1, act1: { leaders: parsed.leaders }, contract: null } : null);
+          // An older save: keep the names (and a contract result, if there was one) and
+          // drop the floor, which cannot be bargained on without its friendships.
+          : parsed && Array.isArray(parsed.act1?.leaders) ? { v: parsed.v, act1: { leaders: parsed.act1.leaders }, contract: parsed.contract || null }
+          : parsed && Array.isArray(parsed.leaders) ? { v: 1, act1: { leaders: parsed.leaders }, contract: null }
+          : null;
         if (run && run.act1 && Array.isArray(run.act1.leaders)) {
           setSavedRun(run);
           setAct("choice");
@@ -56,14 +62,15 @@ export default function PermadeathOrganizing() {
   function handleGraduate(payload, save = true) {
     setAct1(payload);
     setContract(null);
-    if (save) persist({ act1: payload, contract: null });
+    // The weight map is derived from the friendships; there is no reason to write it twice.
+    if (save) persist({ act1: { ...payload, influence: undefined }, contract: null });
     setAct("contract");
   }
 
   // The contract fight is done. Whoever is left on the action team goes company-wide.
   function handleContractDone(result) {
     setContract(result);
-    if (act1) persist({ act1, contract: result });
+    if (act1) persist({ act1: { ...act1, influence: undefined }, contract: result });
     setAct("company");
   }
 
@@ -84,7 +91,7 @@ export default function PermadeathOrganizing() {
     content = <div className="min-h-screen bg-stone-950" />;
   } else if (act === "choice") {
     const hasContract = !!savedRun.contract;
-    const hasFloor = Array.isArray(savedRun.act1?.workers);
+    const hasFloor = Array.isArray(savedRun.act1?.workers) && !!savedRun.act1?.social;
     const names = (savedRun.contract?.leaders || savedRun.act1.leaders).map(l => l.name).join(", ");
     content = (
       <div className="min-h-screen bg-stone-950 text-stone-200 font-mono flex items-center justify-center px-6">
@@ -124,7 +131,7 @@ export default function PermadeathOrganizing() {
   } else if (act === "contract") {
     content = (
       <ContractPrototype
-        carry={act1 && act1.workers ? { workers: act1.workers, influence: act1.influence, social: act1.social || null } : null}
+        carry={act1 && act1.workers ? { workers: act1.workers, social: act1.social || null, influence: act1.influence || null } : null}
         onComplete={handleContractDone}
         onExit={handleFullRestart}
       />

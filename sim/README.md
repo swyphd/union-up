@@ -30,11 +30,11 @@ node sim/act2-survey.mjs         # the bargaining survey by timing, and what a s
 node sim/act2-ballot.mjs         # the ballot curve, and what support/fear/recruits/platform buy
 node sim/act2-oneonone.mjs       # does asking who else to talk to beat picking the keenest person?
 node sim/contract-report.mjs     # first-contract act: tiers, ratification, decert
-node sim/carry.mjs               # plays real Act One wins into the contract act
+node sim/carry.mjs               # plays real Act One wins (countering mapper, careful) into the contract act on their own friendships
 ```
 
 `contract-engine.mjs` is the headless first-contract act and takes the same `carry` the shipped
-game hands it — Act One's own workers and influence map — so `carry.mjs` measures the real
+game hands it — Act One's own workers and friendships — so `carry.mjs` measures the real
 handoff rather than a reconstruction of it.
 
 `act2-engine.mjs` and `contract-engine.mjs` import their numbers from `src/engine/company`
