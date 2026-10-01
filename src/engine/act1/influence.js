@@ -66,6 +66,7 @@ function makeAct1Workers(social = null) {
     trueSupport: w.organizer ? clamp(w.support) : clamp(w.support - 6 - rand(14)),
     trueKnown: !!w.organizer,
     trueKnownWeek: w.organizer ? 1 : null,
+    trueReadValue: w.organizer ? clamp(w.support) : null,
     spokenTo: !!w.organizer,
     guarded: 0,
     fulfillment: clamp(w.fulfillment + rand(9) - 4),

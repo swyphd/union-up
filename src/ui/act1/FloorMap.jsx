@@ -1,5 +1,5 @@
 // The floor board: the company's org chart, with the campaign drawn on top of it.
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { HourPieShapes, Pips, truncateNote } from "../shared.jsx";
 import { AffIcon } from "./marks.jsx";
 import { ACT1_WORKERS_SEED, TEAM_HEX, TEAM_LABEL, cardStaleSoon } from "../../engine/act1/constants.js";
@@ -100,7 +100,7 @@ function RatingGlyph({ glyph, x, y, size = 9 }) {
 
 const GLYPH_TIP = {
   solid: "Somebody sat down with them. This is where they stand.",
-  hollow: "Their words. They are this or lower, never higher. Sit down with them to find out.",
+  hollow: "Their words, or an old read. Most people are this or lower. Sit down with them to find out.",
   blank: "Nobody has talked to them yet.",
 };
 
@@ -109,9 +109,10 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
   const svgRef = useRef(null);
   // A committee card being dragged onto somebody. `over` is the card under the pointer;
   // `started` is whether the pointer has moved far enough that this is not a click.
+  // Nothing is captured until it has: capturing on pointerdown sends the pointerup, and
+  // so the click, to the <svg> instead of the card, and a plain click stops working.
   const [drag, setDrag] = useState(null);
   const suppressClick = useRef(false);
-  const holdTimer = useRef(null);
   const active = hoverId;
 
   const byId = (id) => workers.find(w => w.id === id);
@@ -133,6 +134,19 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
   const connectedToActive = (id) => active != null && (id === active || isKnownFriend(byId(active), id));
 
   // ---- drag: a committee card onto a person ----
+  // Chrome ignores touch-action on SVG child elements, so a finger on a committee card
+  // starts a pan and the browser cancels the pointer. Stopping the touch's default here,
+  // and only on those cards, keeps the gesture ours; the rest of the board still scrolls.
+  // It also stops the browser's own click, so a tap is handled on pointerup instead.
+  const dragEnabled = !!onPair;
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg || !dragEnabled) return undefined;
+    const onTouchStart = (e) => { if (e.target.closest && e.target.closest("[data-drag]")) e.preventDefault(); };
+    svg.addEventListener("touchstart", onTouchStart, { passive: false });
+    return () => svg.removeEventListener("touchstart", onTouchStart);
+  }, [dragEnabled]);
+
   const toBoard = (evt) => {
     const svg = svgRef.current;
     if (!svg) return { x: 0, y: 0 };
@@ -144,33 +158,33 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
     const hit = Object.entries(layout.cards).find(([, c]) => p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h);
     return hit ? Number(hit[0]) : null;
   };
-  const beginDrag = (w, evt) => {
-    const p = toBoard(evt);
-    try { svgRef.current.setPointerCapture(evt.pointerId); } catch (e) { /* not every pointer can be captured */ }
-    setDrag({ actorId: w.id, x: p.x, y: p.y, x0: p.x, y0: p.y, over: null, started: false });
-  };
   const onCardPointerDown = (w, evt) => {
     if (!onPair || !w.organizer || w.burned || evt.button > 0) return;
-    if (evt.pointerType === "touch") {
-      // On touch a drag starts after a hold, so a plain scroll over the board still scrolls.
-      clearTimeout(holdTimer.current);
-      const e2 = { clientX: evt.clientX, clientY: evt.clientY, pointerId: evt.pointerId };
-      holdTimer.current = setTimeout(() => beginDrag(w, e2), 350);
-      return;
-    }
-    beginDrag(w, evt);
+    const p = toBoard(evt);
+    setDrag({ actorId: w.id, pointerId: evt.pointerId, pointerType: evt.pointerType, x: p.x, y: p.y, x0: p.x, y0: p.y, over: null, started: false });
   };
   const onSvgPointerMove = (evt) => {
-    if (holdTimer.current && !drag) { clearTimeout(holdTimer.current); holdTimer.current = null; }
-    if (!drag) return;
+    if (!drag || evt.pointerId !== drag.pointerId) return;
     const p = toBoard(evt);
     const started = drag.started || Math.hypot(p.x - drag.x0, p.y - drag.y0) > 2.5;
+    if (started && !drag.started) {
+      // Now it is a drag: keep the pointer even if it leaves the board.
+      try { svgRef.current.setPointerCapture(evt.pointerId); } catch (e) { /* not every pointer can be captured */ }
+    }
     const over = started ? cardAt(p) : null;
     setDrag({ ...drag, x: p.x, y: p.y, started, over: over === drag.actorId ? null : over });
   };
-  const endDrag = () => {
-    clearTimeout(holdTimer.current); holdTimer.current = null;
+  const endDrag = (evt) => {
     if (!drag) return;
+    if (!drag.started && drag.pointerType === "touch" && evt?.type === "pointerup") {
+      // A tap on a committee card: the browser will not send a click (see above).
+      const actor = byId(drag.actorId);
+      suppressClick.current = true;
+      setTimeout(() => { suppressClick.current = false; }, 400);
+      setDrag(null);
+      if (actor && !actor.burned) onSelect(actor);
+      return;
+    }
     if (drag.started) {
       suppressClick.current = true;
       setTimeout(() => { suppressClick.current = false; }, 0);
@@ -199,8 +213,9 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
           {/* The three states of the digit, as the digit itself. Hover for the sentence. */}
           <span className="flex items-center gap-2 border-l border-stone-800 pl-3 font-mono font-bold text-sm leading-none">
             <span title={GLYPH_TIP.solid} style={{ color: RATING_HEX[4] }}>4</span>
-            <span title={GLYPH_TIP.hollow} style={{ color: RATING_HEX[4], WebkitTextStroke: `0.6px ${RATING_HEX[4]}`, WebkitTextFillColor: "transparent" }}>4</span>
-            <span title={GLYPH_TIP.blank} className="inline-block w-2.5 h-3 border border-dashed border-stone-700" />
+            <span title={labels.hollowTip || GLYPH_TIP.hollow} style={{ color: RATING_HEX[4], WebkitTextStroke: `0.6px ${RATING_HEX[4]}`, WebkitTextFillColor: "transparent" }}>4</span>
+            {!labels.numberLegend && <span title={GLYPH_TIP.blank} className="inline-block w-2.5 h-3 border border-dashed border-stone-700" />}
+            {labels.numberLegend && <span className="font-sans text-[10px] font-normal text-stone-400 tracking-wide">= {labels.numberLegend}</span>}
           </span>
           {ladder && (
             <span className="flex items-center gap-2 border-l border-stone-800 pl-3">
@@ -216,7 +231,6 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
 
       <div className="relative">
       <svg ref={svgRef} viewBox={`0 0 ${layout.width} ${layout.height}`} className="w-full block select-none"
-        style={{ touchAction: drag ? "none" : "auto" }}
         onPointerMove={onSvgPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag} onPointerLeave={() => { if (drag && !drag.started) endDrag(); }}>
         <defs>
           <marker id="org-arrow-hot" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
@@ -298,6 +312,7 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
           // right-hand slot belongs to the change marks.
           const budget = hoursLeft && !w.burned && !hl && hoursLeft[w.id] != null ? hoursLeft[w.id] : null;
           const glyph = glyphOf(w, weekNow);
+          // Without the floor's social structure (an old save) all we have is what was learned.
           const friendIds = social ? friendsOf(social, w.id) : knownFriends(w);
           const isOver = drag?.started && drag.over === w.id;
           const isDragging = drag?.actorId === w.id && drag.started;
@@ -306,6 +321,10 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
               key={w.id}
               opacity={w.burned ? 0.4 : dim ? 0.35 : 1}
               className={w.burned ? "" : onPair && w.organizer ? "cursor-grab" : "cursor-pointer"}
+              // A finger on one of your people is a drag, not a scroll (see the touchstart
+              // handler: the style alone is not enough on SVG in Chrome).
+              style={onPair && w.organizer && !w.burned ? { touchAction: "none" } : undefined}
+              data-drag={onPair && w.organizer && !w.burned ? "1" : undefined}
               onClick={() => {
                 if (w.burned || suppressClick.current) return;
                 onSelect(w);
@@ -452,7 +471,7 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
               {(() => {
                 const ids = social ? friendsOf(social, hovered.id) : knownFriends(hovered);
                 const known = ids.filter(id => isKnownFriend(hovered, id));
-                if (!ids.length) return <span className="text-stone-600 italic">keeps to themselves</span>;
+                if (!ids.length) return <span className="text-stone-600 italic">{social ? "keeps to themselves" : "none you know of"}</span>;
                 return (
                   <>
                     <span className="text-stone-300">{known.map(id => byId(id)?.name).join(", ")}</span>
@@ -472,7 +491,7 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
           </div>
         ) : (
           <div className="text-xs text-stone-500 leading-snug">
-            <div>Click anyone to plan. Drag one of your people onto somebody to send them.</div>
+            {onPair && <div>Click anyone to plan. Drag one of your people onto somebody to send them.</div>}
             {mappedEdges.length > 0 && (
               <div className="text-stone-500 mt-0.5">
                 {mappedEdges.length}{totalEdges != null ? ` of ${totalEdges}` : ""} friendships mapped, <span className="text-stone-200 font-bold">{crossMapped}</span> across team lines.

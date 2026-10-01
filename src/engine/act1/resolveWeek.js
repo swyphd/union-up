@@ -81,6 +81,7 @@ export function resolveWeek(state, planEntries) {
     const trueGain = e.type === "deep" ? g.deepTrue : g.quickTrue;
     bump(target, e.type === "deep" ? g.deep : g.quick, trueGain);
     stats.convoGain += target.support - before;
+    if (e.type === "deep") target.trueReadValue = target.trueSupport;
     if (target.guarded > 0 && e.type === "deep" && visibleShared(actor, target).length) target.guarded = 0;
     convoPulses.push({ from: actor.id, to: target.id, tone: "up" });
     // Only common ground you have SURFACED does any work, so only that is worth
@@ -101,7 +102,7 @@ export function resolveWeek(state, planEntries) {
         ? `${target.name}: a long, honest conversation with ${actor.name} — ${flavor}. You now know where ${target.name} actually stands: a ${rating(target.trueSupport)}${rating(target.trueSupport) < rating(target.support) ? `, against the ${rating(target.support)} they talk like` : ", and they talk like it"}. That read is good for a few weeks before people move again.${foundNames.length ? ` You also learn: ${foundNames.join(", ")}.` : ""}`
         : `${target.name}: a quick word with ${actor.name} — ${flavor}. They talk ${rating(target.support) > rating(before) ? `warmer, like a ${rating(target.support)} now` : "warmer"}, which is a ceiling and not a read.${foundNames.length ? ` You learn: ${foundNames.join(", ")}.` : ""}`
     );
-    target.history.push(`Week ${week}: ${ACT1_ACTION[e.type].label.toLowerCase()} with ${actor.name} .`);
+    target.history.push(`Week ${week}: ${ACT1_ACTION[e.type].label.toLowerCase()} with ${actor.name}.`);
   });
   if (convoLines.length) steps.push({ label: "ONE-ON-ONES", sub: "Influence is relationship-specific — the same conversation lands differently depending on who has it.", workers: w.map(x => ({ ...x })), lines: convoLines, edgePulses: convoPulses, notes: convoNotes });
 
@@ -227,9 +228,10 @@ export function resolveWeek(state, planEntries) {
     // the Act One version of the shop committee's true-support read in Act Two.
     newMember.trueKnown = true;
     newMember.trueKnownWeek = week;
+    newMember.trueReadValue = newMember.trueSupport;
     outgoingTies(influence, newMember.id).filter(t => t.weight >= 40).forEach(t => {
       const target = byId(t.id);
-      if (target) { target.trueKnown = true; target.trueKnownWeek = week; }
+      if (target) { target.trueKnown = true; target.trueKnownWeek = week; target.trueReadValue = target.trueSupport; }
     });
   };
   planEntries.filter(e => e.type === "recruit").forEach(e => {

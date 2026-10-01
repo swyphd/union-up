@@ -4,20 +4,20 @@ import { X } from "lucide-react";
 import { AffinityMarks, InfluenceTraitChip } from "./marks.jsx";
 import { CostPips, HourPie } from "../shared.jsx";
 import { infOn, outgoingTies } from "../../engine/act1/influence.js";
-import { ACT1_ACTION, EDGE_MIN_DRAW, PUBLIC_TIERS, convoGain, influenceKnown, misfireChance, publicGain, shownInfluence, signChance } from "../../engine/act1/actions.js";
+import { ACT1_ACTION, EDGE_MIN_DRAW, PUBLIC_TIERS, convoGain, influenceKnown, misfireChance, publicGain, shownInfluence } from "../../engine/act1/actions.js";
 import { affList, knownAff, tieBonus, tieFrom } from "../../engine/act1/affinities.js";
 import { ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, TEAM_HEX, TEAM_LABEL } from "../../engine/act1/constants.js";
 import { RATING_WORD, deltaMarks, ratingGlyph } from "../../engine/act1/election.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
 
-function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, unlockPublic, consultantActive = false, onPlan, onClose }) {
+function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, unlockPublic, onPlan, onClose }) {
   const others = organizers.filter(o => o.id !== worker.id);
   const [actorId, setActorId] = useState(() => {
-    if (preferActorId && preferActorId !== worker.id && others.some(o => o.id === preferActorId)) return preferActorId;
-    if (worker.organizer) return worker.id;
-    // If the player picked the actor off the shelf first, honour that choice.
-    if (preferActorId && preferActorId !== worker.id && others.some(o => o.id === preferActorId)) return preferActorId;
+    // A dragged-in organizer, unless their week is already spent.
+    const dragged = others.find(o => o.id === preferActorId && preferActorId !== worker.id);
+    if (dragged && hoursLeftFor(dragged) >= 1) return dragged.id;
+    if (worker.organizer && !dragged) return worker.id;
     // Default to whoever carries the most weight with this person — but skip anyone
     // whose week is already spent, so the panel doesn't open fully greyed out.
     const ranked = [...others].sort((a, b) => infOn(influence, b.id, worker.id) - infOn(influence, a.id, worker.id));
@@ -28,7 +28,10 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
   // A pair that arrived by drag is already decided, so the panel is an action card for
   // that pair rather than a place to shop for a different organizer. A plain click on
   // somebody shows the whole committee, closest relationship first.
-  const locked = !isSelfPanel && preferActorId != null && preferActorId !== worker.id;
+  // A dragged-in organizer with no hours left is no pair at all: show the picker instead
+  // of a panel that says "pick someone else" with the picker hidden.
+  const preferred = others.find(o => o.id === preferActorId);
+  const locked = !isSelfPanel && !!preferred && hoursLeftFor(preferred) > 0;
   const rankedOthers = [...others].sort((a, b) =>
     tieFrom(influenceKnown(b, worker) ? infOn(influence, b.id, worker.id) : 0, b, worker)
     - tieFrom(influenceKnown(a, worker) ? infOn(influence, a.id, worker.id) : 0, a, worker));
@@ -40,7 +43,6 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
   const tie = actor && !isSelfPanel ? tieFrom(weight, actor, worker) : 0;
   const weightKnown = influenceKnown(actor, worker);
   const gains = actor && !isSelfPanel ? convoGain(actor, worker, tie) : null;
-  const chance = actor && !isSelfPanel ? signChance(actor, worker, tie) : 0;
 
   const canAfford = (type) => actor && hoursLeftFor(actor) >= ACT1_ACTION[type].hours;
 
@@ -88,7 +90,9 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
               <span className="text-xs text-stone-400 leading-snug">
                 {worker.signed ? <>Signed. <span className="text-stone-500">A signature is an act, not an estimate.</span></>
                   : g.state === "solid" ? <>{word[0].toUpperCase() + word.slice(1)}. <span className="text-stone-500">Somebody sat down with them recently.</span></>
-                  : g.state === "hollow" ? <>Says {word}. <span className="text-stone-500">{g.age > 1 ? "That read is old, and people move." : "Their words are a ceiling: this or lower, never higher."}</span></>
+                  : g.state === "hollow" ? (g.age != null
+                    ? <>Was {word}. <span className="text-stone-500">That read is {g.age} weeks old, and people move.</span></>
+                    : <>Says {word}. <span className="text-stone-500">Their words, and words run warm: most people are this or lower.</span></>)
                   : <span className="text-stone-500">Nobody has talked to them.</span>}
               </span>
             </div>
@@ -317,7 +321,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                     {(() => {
                       const g = ratingGlyph(worker, week);
                       if (g.state === "solid") return g.digit >= 5 ? "Ready. Ask." : g.digit === 4 ? "With you, and it could go either way on paper." : "Not ready underneath. Asking now is worse than not asking.";
-                      if (g.state === "hollow") return <span className="text-amber-400">You have their word, not a read. A hollow {g.digit} can be anything below it. Sit down first.</span>;
+                      if (g.state === "hollow") return <span className="text-amber-400">{g.age != null ? `Your read is ${g.age} weeks old.` : "You have their word, not a read."} A hollow {g.digit} is usually lower underneath. Sit down first.</span>;
                       return <span className="text-amber-400">Nobody has even talked to them.</span>;
                     })()}
                     {worker.askedRecently > 0 && " Asked recently — harder right now."}

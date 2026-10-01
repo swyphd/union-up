@@ -124,7 +124,7 @@ export default function PermadeathOrganizing() {
   } else if (act === "contract") {
     content = (
       <ContractPrototype
-        carry={act1 && act1.workers ? { workers: act1.workers, influence: act1.influence } : null}
+        carry={act1 && act1.workers ? { workers: act1.workers, influence: act1.influence, social: act1.social || null } : null}
         onComplete={handleContractDone}
         onExit={handleFullRestart}
       />

@@ -15,7 +15,7 @@ let bestHadLine = 0, bestNoLine = 0, totalOrg = 0;
 let evBestLine = 0, evBestAny = 0;
 let linesShown = 0;
 for (let g = 0; g < N; g++) {
-  const ws = C.makeAct1Workers(); const inf = C.generateInfluence(ws);
+  const soc = C.generateSocial(); const ws = C.makeAct1Workers(soc); const inf = soc.influence;
   // mid-game: floor mapped, a couple of rounds of scouting done
   ws.forEach(x => { x.revealed = true; if (C.random() < 0.6) x.knownAffinities = [...C.affList(x)]; });
   for (const a of ws.filter(x => x.organizer)) {

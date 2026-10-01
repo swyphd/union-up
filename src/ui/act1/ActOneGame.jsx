@@ -473,6 +473,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           <Act1FloorMap
             workers={resStep.workers}
+            social={social}
             weekNow={resStep.week ?? week}
             influence={influence}
             layout={ORG_LAYOUT}
@@ -659,7 +660,6 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           plannedFor={planEntries.filter(e => e.targetId === selectedWorker.id || (e.actorId === selectedWorker.id && !e.targetId))}
           onCancelPlans={(key) => setPlanEntries(es => es.filter(e => e.key !== key))}
           unlockPublic={unlockPublic}
-          consultantActive={consultant.active}
           onPlan={(actorId, type, targetId) => { addPlan(actorId, type, targetId); setSelectedWorker(null); setPairActorId(null); }}
           onClose={() => { setSelectedWorker(null); setPairActorId(null); }}
         />
