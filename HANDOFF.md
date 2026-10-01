@@ -21,8 +21,11 @@ human in a browser:
 2. **Card staleness pacing (Act 1).** `CARD_LIFESPAN = 14` was balanced against an
    assumed first signature around week 6. If the real first card lands week 9+, the
    window is looser than intended — tighten toward 12.
-3. **Drag-to-pair (Act 1).** Drag a committee card onto a person; on touch, hold first.
-   Driven headlessly, never by a hand.
+3. **Drag-to-pair (Act 1).** Drag a committee card onto a person. Verified headlessly with
+   a mouse and with emulated touch (Chrome DevTools touch events); never by a hand on a real
+   device. Chrome ignores `touch-action` on SVG child elements, so the board claims touches
+   that start on committee cards with a non-passive `touchstart` listener and handles a tap
+   on `pointerup`. If a phone ever scrolls instead of dragging, that listener is where to look.
 4. **Committee neglect curve.** Members lose an hour per idle week past 2 and walk at 5.
    May be too punishing in a long campaign.
 

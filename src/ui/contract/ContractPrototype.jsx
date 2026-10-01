@@ -4,11 +4,13 @@ import { X, Megaphone } from "lucide-react";
 import { clamp, rand, random } from "../../engine/rng.js";
 import { GlobalStyle, OutcomeScreen, StatRow } from "../shared.jsx";
 import { Act1FloorMap } from "../act1/FloorMap.jsx";
-import { generateInfluence, infOn } from "../../engine/act1/influence.js";
+import { infOn } from "../../engine/act1/influence.js";
+import { generateSocial } from "../../engine/act1/friends.js";
 import { ACT1_WORKERS_SEED, BURN_NARRATIVES, FULFILL_HEX, TEAM_LABEL, fulfillmentLabel, supportTier } from "../../engine/act1/constants.js";
 import { ACTION_LADDER, CAT_HOURS, CAT_IDLE_QUIT, CAT_JOIN_REQ, CONTRACT_ISSUES, CONTRACT_LADDER, CONTRACT_MAX_TIERS, CONTRACT_MILESTONES, CONTRACT_MONTHS, CONTRACT_READ_FRESH, LEVERAGE_COOLING, STALL_MAX, STALL_STEP, catBacking, contractLadderOf, contractRead, contractTierSum, keepUnionChance, makeContractWorkers, participationChance, projectedTurnoutBand, ratifyYesChance, rungFatigue, stalledCost, timingMult } from "../../engine/contract/index.js";
 import { orgTier } from "../../engine/act1/committee.js";
 import { tieOn } from "../../engine/act1/affinities.js";
+import { RATING_HEX, rating } from "../../engine/act1/election.js";
 
 // =====================================================================================
 // PROTOTYPE — THE FIRST CONTRACT
@@ -28,7 +30,11 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
   // The influence map is not regenerated. Who listens to whom did not change because an
   // election happened, and re-rolling it would throw away the one thing the player spent
   // the whole of Act One learning.
-  const [influence] = useState(() => carry?.influence ?? generateInfluence(ACT1_WORKERS_SEED));
+  // A carried floor brings its own friendships. The playtest (no carry) rolls one, and
+  // keeps it, so the board and the ties it runs on describe the same people. A pre-friends
+  // save has a map but no friendships to show, and the board says so.
+  const [social] = useState(() => carry?.social ?? (carry?.influence ? null : generateSocial(ACT1_WORKERS_SEED)));
+  const [influence] = useState(() => carry?.influence ?? social.influence);
   const [workers, setWorkers] = useState(() => makeContractWorkers(carry?.workers));
   const [turn, setTurn] = useState(1);
   const [phase, setPhase] = useState("plan"); // plan, result, ratify
@@ -308,13 +314,20 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
     setPhase("plan");
   }
 
-  // Past recognition there is no hidden-support game left: these are your members and
-  // you know where they stand, so every read on this board is exact.
+  // The board speaks Act One's 1-5, but what it measures here is commitment: will this
+  // person actually do something. Solid where the read is current (sat down with, or seen
+  // at the last action), hollow where it has gone stale, as the member panel says.
   const boardWorkers = workers.map(w => ({
-    ...w, support: w.commitment, organizer: w.cat, signed: w.participated,
-    trueSupport: w.commitment, trueKnown: true, trueKnownWeek: 1,
+    ...w, support: w.commitment, organizer: w.cat, signed: w.participated, trueSupport: w.commitment,
   }));
-  const labels = { organizerLegend: "ON THE ACTION TEAM", signedLegend: "TURNED OUT LAST TIME", numberLegend: "COMMITMENT" };
+  const contractGlyph = (w) => {
+    if (w.burned) return { digit: null, state: "out", hex: "#57534e" };
+    const r = contractRead(w, turn);
+    const d = rating(r.mid);
+    return { digit: d, state: r.exact ? "solid" : "hollow", hex: RATING_HEX[d], age: r.exact ? null : r.age };
+  };
+  const labels = { organizerLegend: "ON THE ACTION TEAM", signedLegend: "TURNED OUT LAST TIME", numberLegend: "COMMITMENT",
+    hollowTip: "Nobody has sat down with them or seen them turn out lately. This is an old read." };
   const canResolve = planEntries.length > 0 || actionPlan;
   const overBudget = cat.some(o => hoursLeft(o) < 0) || totalUsed > totalHours;
   const poolLeft = totalHours - totalUsed;
@@ -516,6 +529,8 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
             workers={boardWorkers}
             weekNow={1}
             influence={influence}
+            social={social}
+            glyphOf={contractGlyph}
             planEntries={planEntries}
             planLabel={(e) => (e.type === "oneOnOne" ? "1:1" : "recruit")}
             onSelect={(w) => phase === "plan" && setSelected(w)}

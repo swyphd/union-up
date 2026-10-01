@@ -47,8 +47,11 @@ function readOf(w, week = 1) {
   if (w.trueKnown) {
     const age = Math.max(0, week - (w.trueKnownWeek ?? week));
     const half = Math.min(READ_BLUR_CAP, READ_FRESH_HALF + age * READ_BLUR_RATE);
+    // What you learned when you sat down with them, not where they are now: after the
+    // sit-down they keep moving and the read does not follow them.
+    const learned = w.trueReadValue ?? commitment;
     return {
-      lo: clamp(commitment - half), hi: clamp(commitment + half), mid: commitment,
+      lo: clamp(learned - half), hi: clamp(learned + half), mid: learned,
       exact: half <= READ_NUMBER_MAX, kind: age <= 1 ? "fresh" : "fading", age,
     };
   }
@@ -83,7 +86,7 @@ function ratingGlyph(w, week = 1) {
   const r = readOf(w, week);
   if (r.kind === "cold") return { digit: null, state: "blank", hex: "#57534e" };
   if (r.exact) { const d = rating(r.mid); return { digit: d, state: "solid", hex: RATING_HEX[d], signed: !!w.signed }; }
-  // Warm: the top of the band is what they say. Fading: the last number you had.
+  // Warm: the top of the band is what they say. Fading: the number you learned then.
   const d = rating(r.kind === "fading" ? r.mid : r.hi);
   return { digit: d, state: "hollow", hex: RATING_HEX[d], age: r.age };
 }

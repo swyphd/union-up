@@ -8,7 +8,7 @@ let infTot = 0, infCross = 0;
 let pairsSame = 0, pairsCross = 0, shareSame = 0, shareCross = 0;
 let orgCross = 0, orgCrossShared = 0;
 for (let g = 0; g < N; g++) {
-  const ws = C.makeAct1Workers(); const inf = C.generateInfluence(ws);
+  const soc = C.generateSocial(); const ws = C.makeAct1Workers(soc); const inf = soc.influence;
   for (const a of ws) for (const t of C.outgoingTies(inf, a.id)) {
     const b = ws.find(x => x.id === t.id); if (!b) continue;
     infTot++; if (a.team !== b.team) infCross++;

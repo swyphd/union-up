@@ -6,7 +6,7 @@ import * as C from '../src/engine/act1/index.js';
 let actionable = 0, total = 0, games = 0;
 let passiveOnly = 0, unreachable = 0;
 for (let g = 0; g < 200; g++) {
-  const ws = C.makeAct1Workers(); const inf = C.generateInfluence(ws);
+  const soc = C.generateSocial(); const ws = C.makeAct1Workers(soc); const inf = soc.influence;
   if (process.argv[2] === 'mapped') ws.forEach(x => {
     x.revealed = true; x.knownAffinities = [...C.affList(x)];
   });
