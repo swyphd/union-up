@@ -3,17 +3,17 @@ import React, { useState } from "react";
 import { X } from "lucide-react";
 import { AffinityMarks, InfluenceTraitChip } from "./marks.jsx";
 import { CostPips, HourPie } from "../shared.jsx";
-import { infOn, outgoingTies } from "../../engine/act1/influence.js";
-import { ACT1_ACTION, EDGE_MIN_DRAW, PUBLIC_TIERS, pathTo, convoGain, influenceKnown, misfireChance, publicGain, shownInfluence } from "../../engine/act1/actions.js";
+import { infOn } from "../../engine/act1/influence.js";
+import { ACT1_ACTION, pathTo, convoGain, influenceKnown, misfireChance, shownInfluence } from "../../engine/act1/actions.js";
 import { affList, knownAff, tieBonus, tieFrom, tieOn } from "../../engine/act1/affinities.js";
 import { ACT1_HOURS_PER_ORGANIZER, ACT1_WORKERS_SEED, TEAM_HEX, TEAM_LABEL } from "../../engine/act1/constants.js";
 import { RATING_WORD, deltaMarks, rating, ratingGlyph } from "../../engine/act1/election.js";
 import { COMMITTEE_COMFORT, VET_MIN_XP } from "../../engine/act1/coverage.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
-import { FRIEND_TIE, VOUCH_TIE, vouchFor } from "../../engine/act1/friends.js";
+import { FRIEND_TIE, VOUCH_TIE, isKnownFriend, vouchFor } from "../../engine/act1/friends.js";
 
-function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, unlockPublic, onPlan, onClose }) {
+function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, move = null, stage = "drive", onOpenMove = null, onPlan, onClose }) {
   const others = organizers.filter(o => o.id !== worker.id);
   const [actorId, setActorId] = useState(() => {
     // A dragged-in organizer, unless their week is already spent.
@@ -63,16 +63,8 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
 
   const canAfford = (type) => actor && hoursLeftFor(actor) >= ACT1_ACTION[type].hours;
 
-  const publicPreview = (tier) => {
-    const uses = worker.publicUses?.[tier] || 0;
-    const reached = outgoingTies(influence, worker.id).map(t => {
-      const target = allWorkers.find(x => x.id === t.id);
-      return target && !target.burned ? { ...t, target, tie: tieFrom(t.weight, worker, target) } : null;
-    }).filter(t => t && t.tie >= EDGE_MIN_DRAW);
-    const known = reached.filter(t => influenceKnown(worker, t.target));
-    const total = known.reduce((s, t) => s + publicGain(worker, t.target, t.tie, tier, uses), 0);
-    return { count: reached.length, knownCount: known.length, total, uses };
-  };
+  // Phase 2: this person is who management's move is aimed at this week.
+  const marked = !!move && (move.kind === "threat" || move.kind === "raise") && move.targetId === worker.id;
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto" onClick={onClose}>
@@ -194,43 +186,14 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                 </div>
               </button>
             )}
-            {!unlockPublic && (
-              <div className="text-xs text-stone-600 italic border border-stone-800 px-3 py-2">
-                Right now {worker.name} can only have conversations. Click someone else on the floor to plan one.
-              </div>
+            {marked && onOpenMove && (
+              <button onClick={onOpenMove} className="w-full text-left border-2 border-red-700 hover:bg-red-950/30 px-3 py-2 transition-colors">
+                <div className="text-sm text-red-300">Kirkman has a job threat lined up for {worker.name}. Somebody stands with them {"\u2192"}</div>
+              </button>
             )}
-            {unlockPublic && ["small", "medium", "large"].map(tier => {
-              const p = publicPreview(tier);
-              const t = PUBLIC_TIERS[tier];
-              const affordable = hoursLeftFor(worker) >= ACT1_ACTION[tier].hours;
-              return (
-                <button
-                  key={tier}
-                  disabled={!affordable}
-                  onClick={() => onPlan(worker.id, tier)}
-                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${affordable ? "border-stone-700 hover:bg-stone-800/60" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
-                >
-                  <div className="text-sm text-stone-100 flex justify-between">
-                    <span>{ACT1_ACTION[tier].label}</span>
-                    <CostPips hours={ACT1_ACTION[tier].hours} affordable={affordable} />
-                  </div>
-                  <div className="text-xs text-stone-400 leading-snug mt-0.5">{t.blurb}</div>
-                  <div className="text-xs text-teal-400 leading-snug mt-0.5">
-                    Reaches {p.count} coworker{p.count === 1 ? "" : "s"} they carry weight with{p.knownCount < p.count ? `, ${p.count - p.knownCount} of them you have not met` : ""}.
-                  </div>
-                  {p.uses > 0 && (
-                    <div className="text-xs text-amber-500 leading-snug mt-0.5">
-                      {worker.name} has already done this {p.uses === 1 ? "once" : `${p.uses} times`} — it isn't news anymore. Escalating lands harder than repeating.
-                    </div>
-                  )}
-                  {t.burn > 0 && (
-                    <div className="text-xs text-red-400 leading-snug mt-0.5">
-                      Exposure risk: {tier === "large" ? "high" : "some"}. If management moves on them, they're out of the campaign and everyone they carry loses ground.
-                    </div>
-                  )}
-                </button>
-              );
-            })}
+            <div className="text-xs text-stone-600 italic border border-stone-800 px-3 py-2">
+              Drag {worker.name} onto somebody, or click them, to plan.
+            </div>
           </div>
         ) : others.length === 0 ? (
           <div className="text-sm text-stone-500">Nobody on the committee is free to work on {worker.name} right now.</div>
@@ -333,6 +296,36 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                     {worker.leakKnown
                       ? `${worker.name} has been talking. Off the committee, they hear nothing more.`
                       : `They step back the way a neglected member does: they lose ground, and most of what they have learned.`}
+                  </div>
+                </button>
+              )}
+              {marked && (
+                <button
+                  disabled={!canAfford("standwith")}
+                  onClick={() => onPlan(actor.id, "standwith", worker.id)}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("standwith") ? "border-red-700 hover:bg-red-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                >
+                  <div className="text-sm text-red-300 flex justify-between">
+                    <span>{ACT1_ACTION.standwith.label}</span>
+                    <CostPips hours={1} affordable={canAfford("standwith")} />
+                  </div>
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">
+                    {move.kind === "raise" ? "Kirkman has an offer for them this week." : "Kirkman has a threat lined up for them this week."} With {actor.name} beside them, it does not land.
+                  </div>
+                </button>
+              )}
+              {stage === "campaign" && !worker.organizer && isKnownFriend(actor, worker.id) && (
+                <button
+                  disabled={!canAfford("debrief")}
+                  onClick={() => onPlan(actor.id, "debrief", worker.id)}
+                  className={`w-full text-left border-2 px-3 py-2 transition-colors ${canAfford("debrief") ? "border-teal-800 hover:bg-teal-950/30" : "border-stone-800 opacity-40 cursor-not-allowed"}`}
+                >
+                  <div className="text-sm text-teal-300 flex justify-between">
+                    <span>{ACT1_ACTION.debrief.label}</span>
+                    <CostPips hours={1} affordable={canAfford("debrief")} />
+                  </div>
+                  <div className="text-xs text-stone-400 leading-snug mt-0.5">
+                    Friends. After whatever management does this week, {actor.name} talks it over with them: the digit turns solid, and what it put in them goes.
                   </div>
                 </button>
               )}

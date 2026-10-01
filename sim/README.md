@@ -9,13 +9,14 @@ report below moves with it. Nothing is generated or extracted.
 for byte. That is how a refactor of the engine is checked.
 
 ```
-node sim/verify-ballot.mjs   # win rate, margin and projection error by player skill (mapper, careful, sloppy, careless)
+node sim/verify-ballot.mjs   # win rate, margin and projection error by player skill (mapper with and without Phase 2 counters, careful, sloppy, careless)
+node sim/phase2.mjs [n] [wk] # Phase 2: a player who counters management's calendar against one who keeps talking, and coverage at filing against the margin
+node sim/phase2-sweep.mjs    # sweeps CAMPAIGN_TUNING, FEAR and the coordinated-action tiers (JSON on the command line)
 node sim/mapper-tune.mjs     # mapper variants (recruiting for coverage / everybody / 5s, patience) against careful
 node sim/committee-sweep.mjs # leak and committee-size costs against recruiting strategies
 node sim/fallouts.mjs        # falling outs and rumors per game, and how stale the map goes if you stop mapping
 node sim/clarity.mjs         # how much of the floor a player can see, week by week
 node sim/sweep.mjs           # ballot-curve sweep: pivot and span against margin
-node sim/drive.mjs           # cost of public actions during the card drive
 node sim/company-reach.mjs   # which company moves can still reach the ballot
 ```
 
@@ -48,7 +49,12 @@ the way Act One's week was.
 - `policy.mjs` — the simulated player. Decides on what the UI actually shows: stated
   support, revealed affinities, true support only where `trueKnown` is set. Options:
   `askBar` (how convinced someone must look before you ask), `blindDeep` (deep-talk
-  without scouting first), `pubPhase` / `pubTier` / `noPublic`.
+  without scouting first), and for the mapper `recruit`, `askAt`, `stopMappingAt`. After
+  filing, `phase2: 'counter'` answers the calendar (`planWeekPhase2`: inoculate with whoever
+  covers the most of the department or crowd, stand with the threatened, debrief friends who
+  sat through last week's move, a coordinated action every other week at the highest tier the
+  visible count clears); `phase2: 'talker'` keeps having sit-downs. `electionWeeks` overrides
+  the length of Phase 2.
 
 The player profiles the drivers compare are `mapper` (`planWeekMapper`: reads only the
 board, sits down only along a path in, favours hubs, recruits uncovered crowds first),

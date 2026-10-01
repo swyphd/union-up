@@ -114,8 +114,8 @@ solid 4, never a hollow anything.**
 *As built in M1:* the ask stays clickable on a hollow digit, with the panel warning in amber
 rather than greying the button. Disabling it would remove the gamble the sim's `careless`
 profile exists to measure, and the lesson is taught better by a "no" than by a locked button.
-Signed shows as the teal border rather than a corner mark. Management's own set-piece log
-lines still quote their arithmetic; they are rewritten with Phase 2 in M5.
+Signed shows as the teal border rather than a corner mark. Management's drive-phase
+set-piece log lines still quote their arithmetic; Phase 2's moves (M5) do not.
 
 Direction: 5 = strongest. Real charting uses the inverse (1 = leader, 5 = hard no). Five is
 more intuitive on a card; a single constant flips it if you want the field convention.
@@ -422,7 +422,59 @@ you last saw (`slotsSeen`) and the crowd you last saw somebody in (`circleSeen`)
 you did not see leaves both stale until somebody on the committee talks to either party,
 and that conversation says "they don't talk anymore". The rumor's counter in M4 is any
 conversation (quick chat or sit-down) with either party within a week; Phase 2's debrief
-(M5) can take that over. Two committee members never fall out with each other.
+(M5) does it too. Two committee members never fall out with each other.
+
+### 7.5 As built in M5
+
+- **The calendar.** `src/engine/act1/campaign.js`. Filing books the first move
+  (`openCampaign`); every Phase 2 week resolves the booked move and books the next. Moves:
+  captive-audience meeting on a department (weight 3), a perk for a crowd, a job threat on a
+  committee member, a raise for a signed or warm worker (weight 1-1.5 each, two of each per
+  game as before). Below `KIRKMAN_SIGHT` with no leak he books by headcount; sighted, he
+  books the department and crowd the committee is thinnest in. The rumor stays hidden and
+  fires on the set-piece cadence at half chance. The drive's random "management responds"
+  moves and the weekly all-hands are gone in Phase 2; one-on-ones drop from four to two.
+- **Board marks.** A booked department's box turns red with the move's icon; a bought
+  crowd's bubble turns red in the social view; a threatened or bought person gets a red
+  frame and a tag. Every card the move will hit, as far as your map knows, gets a red
+  corner. A strip above the board names the move and how many of its targets are covered;
+  clicking it (or the red box or bubble) opens the counter panel.
+- **Inoculate reaches further than the text above.** A committee member who works in the
+  booked department, or runs with the bought crowd, covers all of it; anyone else covers
+  only their own friends and crowd. Without that, teams and crowds cut across each other so
+  much that one hour protected one or two people and the sim never inoculated. This is
+  where team coverage pays: it is what the coverage dots were asking for.
+- **Fear.** The meeting's "solid digits go hollow" is there, and it leaves something behind:
+  a hidden fear mark (0-3) on everyone who sat through it cold, and on everyone a one-on-one
+  or a threat lands near. Each mark is -0.08 on the yes chance and -0.03 on turnout
+  (`FEAR` in `election.js`). A debrief takes two away, turning out takes them all away, and
+  an action that clears its bar takes one off everybody. This is the plan's "fear term".
+- **A leak** makes the week's move land before anything the committee planned against it
+  (inoculations and stand-withs do nothing; "it was moved up a day"). That is the plan's
+  "a week early", made legible inside one week.
+- **Coordinated actions.** The megaphone beside the hours count opens a picker: three tiers
+  (button day needs 6, open letter 8, walk-in on Daniels 10) and a toggle per committee
+  member, with a one-line forecast (reach, how many you can be sure of, the bar). Each
+  participant turns out their real friends and crowd; a person you reach shows with a chance
+  from their true support against the tier's centre, plus a quarter if signed, minus fear.
+  Clearing the bar moves everybody's true support (3/5/7, with `publicFatigue`'s decay on
+  repeats), lifts a perk off any crowd that turned out, and backfires a job threat booked
+  for that week. Missing it costs heat. The walk-in can get a participant walked out.
+- **Before filing** the only public action is the open letter, once, from two cards short of
+  the filing line. The three per-person tiers and their panel cards are gone.
+- **Debrief** needs a mapped friendship and takes over rumor repair (any conversation still
+  repairs one too, as in M4). **Stand with** is in the targeted person's panel and the
+  counter panel.
+- **Numbers** (`node sim/phase2.mjs`, SEED=7): see the milestone row. Coordinated actions
+  are worth about five points on their own (counters without them: 79.3%); running one
+  every week instead of every other is no better (83.7%), and a player who reaches for a
+  tier its visible count does not clear does worse. Fear left at the ballot: 9.5 marks
+  across the floor for the counter player, 27.8 for the talker. Falling outs rose to 1.2 a
+  game and rumors to 1.65 with the longer Phase 2. The sim's non-mapping players do not
+  counter and fall further (careful 26.5%, sloppy 11.3%, careless 2.7%). Six weeks kept: the
+  countering player's lead over the talker grows with length (4 weeks +10, 6 weeks +10,
+  7 weeks +15) and the talker does not improve, so six gives the rhythm room without
+  making the ballot a foregone conclusion.
 
 ---
 
@@ -478,7 +530,7 @@ Each one is playable in the browser and measurable in the sim before the next st
 | M2 | social view + toggle; sticky layout; conversation map payloads; coverage dots | M | **done**: mapper 73.2 / careful 59.7 / sloppy 41.7 / careless 15.9 at SEED=7, n=1500. Vouch shipped here. Layout as built: each crowd is a rigid block in its bubble, blocks laid out by d3-force (see §4 note) |
 | M3 | committee redesign: recruit as judgment, leaks, size heat, coverage in the filing prompt and the unwinnable detector | M | **done**: coverage 77.9 / recruit-everyone 70.6 / only-5s 72.9 (SEED=11, n=1000). See §6.2 note for what changed from the text |
 | M4 | falling out + rumor set-piece; cracked slots; social-view snap | S | **done**: 1.01 falling outs and 1.03 rumors per game; the map is wrong at the end in 1% of games for a mapper that keeps talking, 27% for one that stops at week 8 (SEED=7, n=600) |
-| M5 | Phase 2 as its own screen: calendar, inoculate/debrief/stand-with, coordinated actions, six weeks, drive-phase public actions cut to the open letter | L | a policy that counters beats one that keeps having conversations; coverage predicts the ballot margin |
+| M5 | Phase 2 as its own screen: calendar, inoculate/debrief/stand-with, coordinated actions, six weeks, drive-phase public actions cut to the open letter | L | **done**: the player who counters wins 84.0%, the one who keeps having sit-downs 72.1% (SEED=7, n=1500). Coverage at filing predicts the margin: 3 teams + crowds covered wins 49% (margin +0.8), 4 wins 76%, 5 wins 86%, 6 wins 89%. Six weeks kept. See §7.5 |
 | M6 | contract act on friends; `influence` adapter for the company campaign; save v3 | S | carry sim (`carry.mjs`) runs end to end |
 
 M1 is the risky one and should be sliced: friends + adapter first (everything else still

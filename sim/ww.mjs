@@ -18,7 +18,7 @@ function play(opts, strip) {
     const signed = G.workers.filter(x => x.signed).length;
     if (G.stage === 'drive' && signed >= C.ACT1_CARDS_NEEDED + 1)
       G = { ...G, stage: 'campaign', filedWeek: G.week, electionWeek: G.week + C.ELECTION_WEEKS };
-    G = E.resolveWeek(G, planWeek(G, { askBar: 74, pubPhase: 'campaign', ...opts }));
+    G = E.resolveWeek(G, planWeek(G, { askBar: 74, ...opts }));
     if (G.ballot) return G;
   }
   return G;

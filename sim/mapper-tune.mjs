@@ -3,11 +3,11 @@ import './seed.mjs';
 import { playGame } from './run.mjs';
 const N = Number(process.argv[2] || 800);
 const rows = {
-  careful: { askBar: 74, pubPhase: 'campaign' },
-  'mapper (coverage)': { askBar: 74, pubPhase: 'campaign', mapper: true },
-  'mapper recruits all': { askBar: 74, pubPhase: 'campaign', mapper: true, recruit: 'all' },
-  'mapper recruits 5s': { askBar: 74, pubPhase: 'campaign', mapper: true, recruit: 'fives' },
-  'patient mapper': { askBar: 74, pubPhase: 'campaign', mapper: true, askAt: 78 },
+  careful: { askBar: 74 },
+  'mapper (coverage)': { askBar: 74, mapper: true },
+  'mapper recruits all': { askBar: 74, mapper: true, recruit: 'all' },
+  'mapper recruits 5s': { askBar: 74, mapper: true, recruit: 'fives' },
+  'patient mapper': { askBar: 74, mapper: true, askAt: 78 },
 };
 for (const [name, o] of Object.entries(rows)) {
   let won = 0, filed = 0, wk = 0, com = 0;

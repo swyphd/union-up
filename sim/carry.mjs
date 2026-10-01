@@ -17,7 +17,7 @@ for (const [name, opts] of Object.entries(PLAYERS)) {
   let tries = 0;
   while (wins[name].length < N && tries < N * 12) {
     tries++;
-    const r = playGame({ askBar: 74, pubPhase: 'campaign', ...opts });
+    const r = playGame({ askBar: 74, ...opts });
     if (r.won) wins[name].push(r);
   }
 }

@@ -21,7 +21,7 @@ for (const [name, opts] of Object.entries(PLAYERS)) {
       if (G.stage === 'drive' && signed >= C.ACT1_CARDS_NEEDED + 1)
         G = { ...G, stage: 'campaign', filedWeek: G.week, electionWeek: G.week + C.ELECTION_WEEKS };
       if (at[G.week]) at[G.week].push(C.floorClarity(G.workers, G.week));
-      G = E.resolveWeek(G, planWeek(G, { askBar: 74, pubPhase: 'campaign', ...opts }));
+      G = E.resolveWeek(G, planWeek(G, { askBar: 74, ...opts }));
       if (G.ballot) {
         const live = G.workers.filter(x => !x.burned);
         endC.push(C.floorClarity(G.workers, G.week));

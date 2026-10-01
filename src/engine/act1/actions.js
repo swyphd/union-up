@@ -1,4 +1,4 @@
-// What a conversation, a card ask and a public action are worth.
+// What a conversation and a card ask are worth, and what every action costs.
 import { clamp, rand, random } from "../rng.js";
 import { infOn } from "./influence.js";
 import { infTrait, recvMult, senderMult } from "./traits.js";
@@ -87,38 +87,21 @@ function signChance(actor, target, tie) {
   return Math.min(0.93, readiness * trustPart * recent * guard * complacencyMult(target) * senderMult(actor));
 }
 
-const PUBLIC_TIERS = {
-  small: { base: 6, heat: 3, burn: 0, selfSupport: 3, blurb: "Wears the button on the floor all week and answers questions about it." },
-  medium: { base: 11, heat: 7, burn: 0.06, selfSupport: 5, blurb: "Puts their name at the top of an open letter about the Play-Eye rollout." },
-  large: { base: 19, heat: 14, burn: 0.18, selfSupport: 8, blurb: "Stands up at the all-hands and says it out loud, with their name on it." },
-};
-// The second time someone wears the button it isn't news, and the third time even less.
-// Repeating one cheap public action forever should lose to escalating — that's how
-// structure tests actually work.
-function publicFatigue(uses) {
-  return 1 / (1 + 0.6 * uses);
-}
-function publicGain(actor, target, tie, tier, uses = 0) {
-  const t = infTrait(actor);
-  const cross = infTrait(actor).crossTeam && actor.team !== target.team ? t.crossTeam : 1;
-  return Math.round(
-    PUBLIC_TIERS[tier].base * (tie / 100) * publicFatigue(uses)
-    * senderMult(actor) * recvMult(target) * (t.publicGain || 1) * cross
-  );
-}
-
 const ACT1_ACTION = {
   quick: { label: "Quick chat", hours: 1, short: "chat" },
   deep: { label: "Deep conversation", hours: 2, short: "deep talk" },
   ask: { label: "Ask them to sign a card", hours: 2, short: "card ask" },
   recruit: { label: "Bring onto the committee", hours: 3, short: "recruit" },
-  small: { label: "Small public action", hours: 1, short: "small action" },
-  medium: { label: "Medium public action", hours: 2, short: "medium action" },
-  large: { label: "Big public action", hours: 3, short: "big action" },
   checkin: { label: "Check in with them", hours: 1, short: "check-in" },
   drop: { label: "Take them off the committee", hours: 1, short: "step back" },
+  // Phase 2 (campaign.js). Inoculate aims at a department or a crowd, not a person; a
+  // coordinated action is one hour from every participant, with no target at all.
+  inoculate: { label: "Get there first", hours: 1, short: "gets ahead" },
+  debrief: { label: "Debrief", hours: 1, short: "debrief" },
+  standwith: { label: "Stand with them", hours: 1, short: "stand with" },
+  turnout: { label: "Turn people out", hours: 1, short: "turns out" },
 };
 // A tie below this is too weak to draw, and too weak for a public action to carry along.
 const EDGE_MIN_DRAW = 20;
 
-export { pathTo, complacencyMult, ASSUMED_INFLUENCE, influenceKnown, shownInfluence, CONVO_BASE, TRUE_RATIO, convoGain, misfireChance, revealCount, revealAffinities, signChance, PUBLIC_TIERS, publicFatigue, publicGain, ACT1_ACTION, EDGE_MIN_DRAW };
+export { pathTo, complacencyMult, ASSUMED_INFLUENCE, influenceKnown, shownInfluence, CONVO_BASE, TRUE_RATIO, convoGain, misfireChance, revealCount, revealAffinities, signChance, ACT1_ACTION, EDGE_MIN_DRAW };
