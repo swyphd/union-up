@@ -13,15 +13,15 @@ import { rand, random } from "../rng.js";
 import { ACT1_WORKERS_SEED } from "./constants.js";
 
 const CIRCLES = [
-  { id: "oldguard", label: "THE OLD GUARD", affinity: "ttrpg", members: [4, 12, 15, 19],
+  { id: "oldguard", hex: "#f59e0b", label: "THE OLD GUARD", affinity: "ttrpg", members: [4, 12, 15, 19],
     blurb: "Here before the acquisition. Still run the Thursday game, still remember profit-sharing." },
-  { id: "dock", label: "THE DOCK", affinity: "smoker", members: [5, 8, 18, 17],
+  { id: "dock", hex: "#f87171", label: "THE DOCK", affinity: "smoker", members: [5, 8, 18, 17],
     blurb: "The loading-dock break: the one place on the lot with no manager in earshot." },
-  { id: "parents", label: "THE PARENTS", affinity: "parent", members: [1, 9, 3, 20],
+  { id: "parents", hex: "#a3e635", label: "THE PARENTS", affinity: "parent", members: [1, 9, 3, 20],
     blurb: "Pickup at five thirty, and a group chat about whose kid is sick this week." },
-  { id: "raid", label: "THE RAID", affinity: "modder", members: [10, 2, 14, 7],
+  { id: "raid", hex: "#818cf8", label: "THE RAID", affinity: "modder", members: [10, 2, 14, 7],
     blurb: "Came up through mods. Friday night Discord, and they play what they ship." },
-  { id: "lunch", label: "THE LUNCH TABLE", affinity: "commute", members: [11, 16, 6],
+  { id: "lunch", hex: "#22d3ee", label: "THE LUNCH TABLE", affinity: "commute", members: [11, 16, 6],
     blurb: "Long commutes, same train, same table at twelve fifteen." },
 ];
 const CIRCLE_BY_ID = Object.fromEntries(CIRCLES.map(c => [c.id, c]));
@@ -123,6 +123,29 @@ function learnFriends(workers, social, id) {
   friendsOf(social, id).forEach(f => learnFriendship(workers, id, f));
   return knownFriends(workers.find(x => x.id === id)).length - before;
 }
+// A quick chat gets you one name: somebody they mention. Returns that friend's id, or null
+// if you already knew everyone they would mention.
+function learnOneFriend(workers, social, id) {
+  const w = workers.find(x => x.id === id);
+  const unknown = friendsOf(social, id).filter(f => !isKnownFriend(w, f));
+  if (!unknown.length) return null;
+  const f = unknown[rand(unknown.length)];
+  learnFriendship(workers, id, f);
+  return f;
+}
+
+// ---------- THE VOUCH ----------
+// Your friend's friend will hear you out once your friend has signed. A committee member
+// reaches somebody they do not know through a mutual friend who is already in, and only
+// when you know both friendships exist: a path you have not mapped does no work for you,
+// the same rule common ground follows. This is what mapping pays for.
+const VOUCH_TIE = 18;
+function vouchFor(a, b, workers) {
+  if (!a || !b || !workers || isKnownFriend(a, b.id)) return null;
+  const mutual = knownFriends(a).filter(id => isKnownFriend(b, id));
+  return mutual.map(id => workers.find(x => x.id === id)).find(c => c && c.signed && !c.burned) || null;
+}
+
 // One friendship per pair, for counting and drawing.
 function allEdges(social) {
   const out = [];
@@ -135,5 +158,5 @@ function knownEdges(workers) {
   return out;
 }
 
-export { CIRCLES, CIRCLE_BY_ID, MAX_FRIENDS, FRIEND_TIE, CIRCLE_TIE, generateSocial, influenceFrom,
+export { learnOneFriend, VOUCH_TIE, vouchFor, CIRCLES, CIRCLE_BY_ID, MAX_FRIENDS, FRIEND_TIE, CIRCLE_TIE, generateSocial, influenceFrom,
   friendsOf, circleOfId, knownFriends, isKnownFriend, learnFriendship, learnFriends, allEdges, knownEdges };

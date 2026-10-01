@@ -138,6 +138,12 @@ not a decider.
   still passes `ladder`/`rungOf`); selection is target-first, with drag-a-committee-card as
   the shortcut and no armed mode. Verify with `SEED=7 node sim/verify-ballot.mjs`: careful
   should sit near 60 and clear sloppy and careless.
+- **Since M2:** conversations draw the map (a quick chat names one friend; a sit-down maps
+  all of them, their crowd, and a hollow read on each friend via `heardAbout`), a signed
+  mutual friend vouches (+18 tie, only along mapped friendships), and a sit-down misfires
+  only with no path in (`pathTo` in `actions.js`). The social view is
+  `src/ui/act1/socialLayout.js` (pure, cached by a signature of what is known) drawn by the
+  same `Act1FloorMap`; the view choice lives in `ActOneGame` so the playback board keeps it.
 - The sim imports the engine directly; there is nothing to regenerate. `SEED=7 node
   sim/verify-ballot.mjs` is replayable byte for byte, which is the acceptance test for any
   engine refactor. See `sim/README.md`.

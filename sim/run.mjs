@@ -1,7 +1,7 @@
 import './seed.mjs';
 import * as E from './engine.mjs';
 import * as C from '../src/engine/act1/index.js';
-import { planWeek } from './policy.mjs';
+import { planWeek, planWeekMapper } from './policy.mjs';
 
 const MAX_WEEKS = 40;
 export function playGame(opts = {}) {
@@ -15,7 +15,7 @@ export function playGame(opts = {}) {
       G = { ...G, stage: 'campaign', filedWeek: G.week, electionWeek: G.week + C.ELECTION_WEEKS };
       filedOn = G.week;
     }
-    G = E.resolveWeek(G, planWeek(G, opts));
+    G = E.resolveWeek(G, (opts.mapper ? planWeekMapper : planWeek)(G, opts));
     if (G.ballot) {
       // What the campaign believed on the eve of the vote, minus what happened.
       const proj = C.voteProjection(G.workers);

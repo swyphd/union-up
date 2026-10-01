@@ -78,3 +78,71 @@ export function planWeek(G, opts = {}) {
   }
   return plan;
 }
+
+// THE MAPPER. Plays the social floor the way the plan says it should be played: it reads
+// only what the board shows (friend slots, known friendships, circles you have found, the
+// digit), sits down only where it has a path in (a friend, a vouch through a signed mutual
+// friend, or common ground it has found), favours hubs, asks solid 4s and 5s through
+// whoever is closest, and recruits from circles and teams the committee does not cover.
+export function planWeekMapper(G, opts = {}) {
+  const w = G.workers, soc = G.social;
+  const orgs = w.filter(x => x.organizer && !x.burned);
+  const budget = new Map(orgs.map(o => [o.id, committeeHours(o)]));
+  const plan = [];
+  const left = (id) => budget.get(id) || 0;
+  const take = (o, type, targetId) => {
+    const cost = ACT1_ACTION[type].hours;
+    if (left(o.id) < cost) return false;
+    budget.set(o.id, left(o.id) - cost);
+    plan.push({ actorId: o.id, type, targetId });
+    return true;
+  };
+  const tie = (o, t) => C.tieOn(G.influence, o, t, w);
+  const best = (t, cost, needPath = false) => orgs
+    .filter(o => o.id !== t.id && left(o.id) >= cost && (!needPath || C.pathTo(o, t, w)))
+    .sort((a, b) => tie(b, t) - tie(a, t))[0];
+  const slots = (x) => C.friendsOf(soc, x.id).length;
+  const busy = new Set();
+  const read = (x) => C.readOf(x, G.week);
+
+  // 1. Keep the committee.
+  orgs.filter(x => (x.weeksIdle || 0) >= 2 || x.shaken > 0).forEach(t => {
+    const a = best(t, 1); if (a) { take(a, 'checkin', t.id); busy.add(t.id); }
+  });
+
+  // 2. Recruit, uncovered circles and teams first.
+  const coveredCircle = new Set(orgs.map(o => C.circleOfId(soc, o.id)).filter(Boolean));
+  const coveredTeam = new Set(orgs.map(o => o.team));
+  w.filter(x => x.signed && !x.organizer && !x.burned && x.trueKnown && (x.trueSupport ?? 0) >= ACT1_RECRUIT_REQ && !busy.has(x.id))
+    .map(x => ({ x, gap: (x.circleKnown && !coveredCircle.has(C.circleOfId(soc, x.id)) ? 2 : 0) + (!coveredTeam.has(x.team) ? 1 : 0) }))
+    .sort((p, q) => q.gap - p.gap || slots(q.x) - slots(p.x))
+    .forEach(({ x }) => { const a = best(x, 3); if (a) { take(a, 'recruit', x.id); busy.add(x.id); } });
+
+  // 3. Ask the people whose read says ready.
+  w.filter(x => !x.signed && !x.burned && !busy.has(x.id) && !x.askedRecently)
+    .map(x => ({ x, r: read(x) }))
+    .filter(({ r }) => r.exact && r.mid >= (opts.askAt ?? opts.askBar ?? 74))
+    .sort((p, q) => q.r.mid - p.r.mid)
+    .forEach(({ x }) => { const a = best(x, 2); if (a) { take(a, 'ask', x.id); busy.add(x.id); } });
+
+  // 4. Sit down where there is a path. Unread hubs first (a hub's sit-down maps three
+  //    people), then everyone below the ask bar, closest to it first: the sit-down is
+  //    also the only thing that really moves somebody.
+  const bar = opts.askAt ?? opts.askBar ?? 74;
+  const deepScore = (x) => {
+    const r = read(x);
+    if (!r.exact) return 200 + slots(x) * (opts.hubWeight ?? 20) + r.hi / 4;
+    return r.mid < bar ? 100 + r.mid : -1;
+  };
+  w.filter(x => !x.signed && !x.burned && !busy.has(x.id) && deepScore(x) >= 0)
+    .sort((p, q) => deepScore(q) - deepScore(p))
+    .forEach(t => { const a = best(t, 2, true); if (a) { take(a, 'deep', t.id); busy.add(t.id); } });
+
+  // 5. Scout with what is left: people next to the mapped network, hubs first, so the
+  //    next sit-down has a path.
+  const nearNetwork = (x) => C.knownFriends(x).length > 0 ? 1 : 0;
+  w.filter(x => !x.signed && !x.burned && !busy.has(x.id))
+    .sort((p, q) => nearNetwork(q) - nearNetwork(p) || slots(q) - slots(p))
+    .forEach(t => { const a = best(t, 1); if (a) { take(a, 'quick', t.id); busy.add(t.id); } });
+  return plan;
+}

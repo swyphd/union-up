@@ -1,6 +1,7 @@
 // Common ground, and the tie it is made of.
 import { clamp } from "../rng.js";
 import { infOn } from "./influence.js";
+import { FRIEND_TIE, VOUCH_TIE, vouchFor } from "./friends.js";
 
 // ---------- AFFINITY TRAITS ----------
 // Tier two of the trait system. These do not make anyone a better organizer — they
@@ -85,8 +86,11 @@ function tieFrom(base, a, b) {
   const n = tieBonus(a, b);
   return Math.round(clamp(base * (TIE_COLD + TIE_PER_SHARED * n) + TIE_STRANGER_STEP * n));
 }
-function tieOn(influence, a, b) {
-  return tieFrom(infOn(influence, a.id, b.id), a, b);
+// With `workers`, a signed mutual friend you have mapped adds VOUCH_TIE to the standing.
+function tieOn(influence, a, b, workers = null) {
+  const base = infOn(influence, a.id, b.id);
+  const vouched = workers && base < FRIEND_TIE && vouchFor(a, b, workers);
+  return tieFrom(vouched ? base + VOUCH_TIE : base, a, b);
 }
 
 export { AFFINITY_POOL, PERK_WEEKS, AFF_BY_ID, affList, knownAff, poisonedAff, isPoisoned, sharedAffinities, visibleShared, TIE_COLD, TIE_PER_SHARED, TIE_STRANGER_STEP, TIE_SHARED_CAP, tieBonus, tieFrom, tieOn };

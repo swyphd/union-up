@@ -57,10 +57,12 @@ function readOf(w, week = 1) {
   }
   // Mapping tells you who listens to whom. It tells you nothing about where somebody
   // stands, so only an actual conversation narrows this.
-  const drop = w.spokenTo ? READ_WARM_DROP : READ_COLD_DROP;
+  // A friend's account of them counts as words: a ceiling, the same as their own.
+  const heard = w.spokenTo || w.heardAbout;
+  const drop = heard ? READ_WARM_DROP : READ_COLD_DROP;
   return {
     lo: clamp(w.support - drop), hi: clamp(w.support), mid: clamp(w.support - drop / 2),
-    exact: false, kind: w.spokenTo ? "warm" : "cold",
+    exact: false, kind: heard ? "warm" : "cold",
   };
 }
 // ---------- THE RATING ----------

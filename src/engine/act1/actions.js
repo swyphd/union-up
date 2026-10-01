@@ -3,6 +3,7 @@ import { clamp, rand, random } from "../rng.js";
 import { infOn } from "./influence.js";
 import { infTrait, recvMult, senderMult } from "./traits.js";
 import { affList, knownAff, sharedAffinities, visibleShared } from "./affinities.js";
+import { isKnownFriend, vouchFor } from "./friends.js";
 
 // ---------- FULFILLMENT AS COMPLACENCY ----------
 // Fulfillment no longer decides who persuades whom. It decides how much a person
@@ -42,8 +43,17 @@ function convoGain(actor, target, tie) {
 // THE ANSWER TO "why not deep-talk everyone." It isn't the hour cost — it's that a
 // structured organizing conversation run on someone you haven't scouted lands as a
 // pitch. They get guarded, and a guarded worker is harder to move for weeks.
-function misfireChance(actor, target) {
-  if (visibleShared(actor, target).length > 0) return 0;
+// It lands as a pitch only when there is no path in: not their friend, nobody signed
+// between you who can vouch, and nothing found in common.
+function pathTo(actor, target, workers = null) {
+  if (isKnownFriend(actor, target.id)) return { kind: "friend" };
+  const via = vouchFor(actor, target, workers);
+  if (via) return { kind: "vouch", via };
+  if (visibleShared(actor, target).length > 0) return { kind: "ground" };
+  return null;
+}
+function misfireChance(actor, target, workers = null) {
+  if (pathTo(actor, target, workers)) return 0;
   const blindness = affList(target).filter(t => !knownAff(target).includes(t)).length;
   return Math.min(0.55, 0.16 + 0.09 * blindness);
 }
@@ -110,4 +120,4 @@ const ACT1_ACTION = {
 // A tie below this is too weak to draw, and too weak for a public action to carry along.
 const EDGE_MIN_DRAW = 20;
 
-export { complacencyMult, ASSUMED_INFLUENCE, influenceKnown, shownInfluence, CONVO_BASE, TRUE_RATIO, convoGain, misfireChance, revealCount, revealAffinities, signChance, PUBLIC_TIERS, publicFatigue, publicGain, ACT1_ACTION, EDGE_MIN_DRAW };
+export { pathTo, complacencyMult, ASSUMED_INFLUENCE, influenceKnown, shownInfluence, CONVO_BASE, TRUE_RATIO, convoGain, misfireChance, revealCount, revealAffinities, signChance, PUBLIC_TIERS, publicFatigue, publicGain, ACT1_ACTION, EDGE_MIN_DRAW };
