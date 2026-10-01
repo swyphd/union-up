@@ -317,6 +317,25 @@ Recruiting changes from a gate to a judgment:
 Committee members still earn XP, still idle out, still get shaken. Nothing about the
 `ORG_TIERS` ladder changes.
 
+*As built in M3 (decided with the user: recruits must have signed a card):*
+- **The leak line moved.** Signing puts somebody at a 4 or better and a signed person's
+  digit is always solid, so "under 4 leaks" would almost never fire. A solid 5 is safe; a 4
+  leaks 40% of the time, a 3 half the time. The risk is visible before you recruit.
+- **Big committees leak on their own.** Each member past four adds a 15% weekly chance
+  that somebody on it starts talking (never the two founders). Heat alone did not bite:
+  the sim's recruit-everyone player kept winning until the room itself leaked.
+- **What a leak does now:** tips management off to one of the week's card asks (it signs
+  at a fifth of its chance) or sit-downs (half strength), which the playback reports as
+  "somebody knew"; hands Kirkman the map (the banner says so); sends his one-on-ones to the
+  leak's friends first; +3 heat a week. The "telegraphed moves land early" effect waits
+  for Phase 2 (M5).
+- **Vetting** is a check-in by a SEASONED organizer; a committee member's own panel has a
+  "Somebody checks in on them" button, since a click otherwise opens their own actions.
+- **Coverage** shows on the filing prompt as named gaps. It is not yet scored; M5 does that.
+- **Balance moved both ways.** Recruiting now needs a friend or a vouch, so players who map
+  got stronger (mapper 80%) and the sim's non-mapping players fell hard (careful 35%,
+  sloppy 19%, careless 8%). Where Act One's difficulty should sit is a design call.
+
 ### 6.3 Filing
 
 Cards at 30% unlocks the filing prompt as today. The prompt shows the coverage row and the
@@ -450,7 +469,7 @@ Each one is playable in the browser and measurable in the sim before the next st
 | M0 | engine split, seeded RNG, sim imports engine | M | **done**, branch `plan/social-floor`: seeded output identical at every step; the real `resolveWeek` runs in the sim |
 | M1 | titles; friends + circles replace influence; rating glyph; new card; percentages gone; target-first + drag; armed mode removed | L | **done**: careful 60.6 / sloppy 42.6 / careless 14.5 at SEED=7, n=1500, with no retune needed (the gap widened; careful held). Three deferrals noted under §2.2 and §7 |
 | M2 | social view + toggle; sticky layout; conversation map payloads; coverage dots | M | **done**: mapper 73.2 / careful 59.7 / sloppy 41.7 / careless 15.9 at SEED=7, n=1500. Vouch shipped here. Layout as built: each crowd is a rigid block in its bubble, blocks laid out by d3-force (see §4 note) |
-| M3 | committee redesign: recruit as judgment, leaks, size heat, coverage in the filing prompt and the unwinnable detector | M | a policy that recruits everyone loses to one that recruits for coverage |
+| M3 | committee redesign: recruit as judgment, leaks, size heat, coverage in the filing prompt and the unwinnable detector | M | **done**: coverage 77.9 / recruit-everyone 70.6 / only-5s 72.9 (SEED=11, n=1000). See §6.2 note for what changed from the text |
 | M4 | falling out + rumor set-piece; cracked slots; social-view snap | S | about one per Phase 1 campaign; the map is measurably wrong for players who stop mapping |
 | M5 | Phase 2 as its own screen: calendar, inoculate/debrief/stand-with, coordinated actions, six weeks, drive-phase public actions cut to the open letter | L | a policy that counters beats one that keeps having conversations; coverage predicts the ballot margin |
 | M6 | contract act on friends; `influence` adapter for the company campaign; save v3 | S | carry sim (`carry.mjs`) runs end to end |

@@ -7,7 +7,8 @@ import { ACT1_INTRO_BEATS, IntroCommitteeVisual, IntroInfluenceVisual } from "./
 import { Act1FloorMap, ORG_LAYOUT } from "./FloorMap.jsx";
 import { Act1WorkerModal } from "./WorkerPanel.jsx";
 import { makeAct1Workers } from "../../engine/act1/influence.js";
-import { CIRCLES, generateSocial } from "../../engine/act1/friends.js";
+import { CIRCLES, generateSocial, isKnownFriend, vouchFor } from "../../engine/act1/friends.js";
+import { activeLeaks, coverageGaps, recentlyTipped } from "../../engine/act1/coverage.js";
 import { TEAM_HEX, TEAM_LABEL, ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_PUBLIC_UNLOCK_WEEK, ACT1_RECRUIT_REQ, ACT1_SHIP_WEEK, ACT1_TOTAL_WORKERS, ACT1_WORKERS_SEED, act1Stars, cardStaleSoon } from "../../engine/act1/constants.js";
 import { committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { ACT1_ACTION } from "../../engine/act1/actions.js";
@@ -69,7 +70,13 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   // one-on-one work, and handing over the visible options early lets a player skip it.
   const unlockPublic = week >= ACT1_PUBLIC_UNLOCK_WEEK;
   const anyPublicDone = workers.some(w => w.history.some(h => h.includes("public")));
-  const anyRecruitable = workers.some(w => w.signed && !w.organizer && !w.burned && w.trueKnown && (w.trueSupport ?? 0) >= ACT1_RECRUIT_REQ);
+  // Somebody who signed and has a friend on the committee, or a signed friend in common.
+  const anyRecruitable = workers.some(w => w.signed && !w.organizer && !w.burned
+    && organizers.some(o => isKnownFriend(o, w.id) || vouchFor(o, w, workers)));
+  const tippedOff = recentlyTipped(workers, week);
+  // A leak hands him the map whatever the heat, and the banner does not pretend otherwise.
+  const leakFeedsHim = activeLeaks(workers).length > 0;
+  const gaps = coverageGaps(workers, social);
 
   const resStep = phase === "resolving" && resolutionSteps.length > 0 ? resolutionSteps[stepIndex] : null;
   const resHighlights = {};
@@ -291,8 +298,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
               <div className="text-stone-500 text-xs flex items-center gap-1"><Eye size={11} /> HEAT</div>
               <div className={`text-lg font-bold ${heat >= 60 ? "text-red-500" : heat >= 35 ? "text-amber-400" : "text-teal-400"}`}>{heat}</div>
               {consultant.active && (
-                <div className={`text-[10px] ${heat >= KIRKMAN_SIGHT ? "text-red-400 font-bold" : "text-stone-600"}`}>
-                  {heat >= KIRKMAN_SIGHT ? "HE SEES THE NETWORK" : `${KIRKMAN_SIGHT - heat} from being seen`}
+                <div className={`text-[10px] ${heat >= KIRKMAN_SIGHT || leakFeedsHim ? "text-red-400 font-bold" : "text-stone-600"}`}>
+                  {heat >= KIRKMAN_SIGHT || leakFeedsHim ? "HE SEES THE NETWORK" : `${KIRKMAN_SIGHT - heat} from being seen`}
                 </div>
               )}
             </div>
@@ -348,7 +355,13 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           {anyRecruitable && (
             <div className="mb-4 flex items-start gap-2 text-teal-300 text-sm border border-teal-700 bg-teal-950/30 px-3 py-2">
               <UsersRound size={14} className="shrink-0 mt-0.5" />
-              <span><span className="font-bold text-teal-400">SOMEONE'S READY TO ORGANIZE.</span> A signer with strong support can join the committee — {ACT1_HOURS_PER_ORGANIZER} more hours a week, and their relationships become yours to use.</span>
+              <span><span className="font-bold text-teal-400">SOMEBODY CAN JOIN THE COMMITTEE.</span> Anyone who signed can be asked by a friend on the committee, or through a signed friend in common. A solid 5 is safe; a 4 might talk.</span>
+            </div>
+          )}
+          {tippedOff.length > 0 && (
+            <div className="mb-4 flex items-start gap-2 text-red-300 text-sm border border-red-800 bg-red-950/30 px-3 py-2">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <span><span className="font-bold text-red-400">SOMEBODY KNEW.</span> Management got to {tippedOff.map(x => x.name).join(" and ")} before you did. Somebody on the committee is talking. A seasoned organizer's check-in finds out who.</span>
             </div>
           )}
 
@@ -430,9 +443,11 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
                       left.map(([n, one, many]) => `${n} ${n === 1 ? one : many}`).join(", ")} left.`;
                   })()}
                 </span>{" "}
-                <span className={heat >= KIRKMAN_SIGHT || stage === "campaign" ? "text-red-400 font-bold" : "text-teal-400"}>
+                <span className={heat >= KIRKMAN_SIGHT || stage === "campaign" || leakFeedsHim ? "text-red-400 font-bold" : "text-teal-400"}>
                   {heat >= KIRKMAN_SIGHT || stage === "campaign"
                     ? "He can see your map."
+                    : leakFeedsHim
+                    ? "He can see your map, and the floor is not loud enough for that. Somebody told him."
                     : `He can't see your map yet — at ${heat} heat he's picking names off the org chart, at half strength. It changes at ${KIRKMAN_SIGHT}.`}
                 </span>{" "}
                 <span className="text-stone-400">
@@ -575,6 +590,12 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
               </div>
             </div>
             <div className="border border-stone-700 p-3 mb-4">
+              {(gaps.teams.length > 0 || gaps.crowds.length > 0) && (
+                <div className="text-xs text-amber-400 mb-2">
+                  Nobody on the committee in {[...gaps.teams.map(t => TEAM_LABEL[t]), ...gaps.crowds.map(c => c.label)].join(", ")}.
+                  <span className="text-stone-500"> Those are the people their campaign reaches first.</span>
+                </div>
+              )}
               <div className="text-xs text-stone-500 tracking-wide mb-1">TODAY'S PROJECTION, BEFORE ANY OF THAT</div>
               <div className="flex items-center gap-4 text-base">
                 <span className="text-teal-400 font-bold">{projection.yes} YES</span>
