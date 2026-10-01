@@ -26,7 +26,7 @@ export function play(cfg, opts = {}) {
     if (G.stage === 'drive' && signed >= C.ACT1_CARDS_NEEDED + 1)
       G = { ...G, stage: 'campaign', filedWeek: G.week, electionWeek: G.week + C.ELECTION_WEEKS };
     const isElection = G.stage === 'campaign' && G.week >= G.electionWeek;
-    G = E.resolveWeek(G, planWeek(G, { askBar: 74, pubPhase: 'campaign', ...opts }));
+    G = E.resolveWeek(G, planWeek(G, { askBar: 74, ...opts }));
     if (isElection) return runBallot(G.workers, cfg);
   }
   return null;   // never filed: a loss, but not a ballot

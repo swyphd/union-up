@@ -152,6 +152,15 @@ not a decider.
   structure is now per-week state: `resolveWeek` clones it, may change it, and returns it as
   `pending.social` (the game and the sim both commit it). Display code reads the believed
   map through `believedSlots` and `seenCircle`, never `friendsOf`/`circleOf` directly.
+- **Since M5:** filing starts Phase 2, run by `src/engine/act1/campaign.js`. State is
+  `campaign` (`next` = the move on management's calendar, `last`, coordinated-action `uses`,
+  `letterDone`), passed into `resolveWeek` and returned as `pending.campaign`; filing calls
+  `openCampaign` to book the first move. Player actions `inoculate` (carries `team` or
+  `circle`, no target), `debrief`, `standwith`, `turnout` (carries `tier`, one entry per
+  participant). Per-worker `fear` (0-3, hidden) is a ballot term (`FEAR` in `election.js`).
+  The three per-person public tiers are gone; before filing the only public action is the
+  open letter, once. `ELECTION_WEEKS` is 6. Tune with `CAMPAIGN_TUNING`, `COORDINATED` and
+  `FEAR`; measure with `node sim/phase2.mjs` and sweep with `sim/phase2-sweep.mjs`.
 - The sim imports the engine directly; there is nothing to regenerate. `SEED=7 node
   sim/verify-ballot.mjs` is replayable byte for byte, which is the acceptance test for any
   engine refactor. See `sim/README.md`.

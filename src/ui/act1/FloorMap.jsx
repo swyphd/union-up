@@ -12,6 +12,8 @@ import { believedSlots, recentBreaks } from "../../engine/act1/fallout.js";
 import { CIRCLE_BY_ID, allEdges, friendsOf, isKnownFriend, knownEdges, knownFriends } from "../../engine/act1/friends.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
+import { visibleHit } from "../../engine/act1/campaign.js";
+import { MOVE_ICON, MOVE_RED, MOVE_WORD } from "./Campaign.jsx";
 
 // ---------- THE ORG CHART (Act One board) ----------
 // The chart is the company's own picture of itself: teams, boxes, reporting lines. The
@@ -109,7 +111,7 @@ const GLYPH_TIP = {
   blank: "Nobody has talked to them yet.",
 };
 
-function Act1FloorMap({ workers, influence, social = null, view = "org", onView = null, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onPair = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, labels = FLOOR_LABELS, ladder = null, rungOf = null, hoursLeft = null, tierOf = null, glyphOf = ratingGlyph, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
+function Act1FloorMap({ workers, influence, social = null, view = "org", onView = null, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onPair = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, labels = FLOOR_LABELS, ladder = null, rungOf = null, hoursLeft = null, tierOf = null, glyphOf = ratingGlyph, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type, move = null, onMoveTarget = null, onInoculate = null }) {
   const [hoverId, setHoverId] = useState(null);
   const svgRef = useRef(null);
   // A committee card being dragged onto somebody. `over` is the card under the pointer;
@@ -140,6 +142,20 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
   const sl = socialView ? socialLayoutFor(workers, social, layout.width, ORG_CARD_W, ORG_CARD_H) : null;
   const rects = socialView ? sl.pos : Object.fromEntries(Object.entries(layout.cards).map(([id, c]) => [id, { ...c, scale: 1 }]));
   const boardH = socialView ? sl.height : layout.height;
+
+  // Phase 2: what management has booked this week, drawn where it lands. The cards it will
+  // hit, as far as you know, carry a red corner; the person it is aimed at, a red frame.
+  const moveHit = new Set(move ? visibleHit(move, workers, social).map(x => x.id) : []);
+  const MoveIcon = move ? MOVE_ICON[move.kind] : null;
+  // The department box or the crowd's bubble, if that is where the move lands: a place to
+  // drop one of your people to get there first.
+  const moveZone = (() => {
+    if (!move) return null;
+    if (move.kind === "meeting" && !socialView) return layout.teamBoxes[move.team];
+    if (move.kind === "perk" && socialView) return sl.bubbles.find(b => b.id === move.circle) || null;
+    return null;
+  })();
+  const moveWhere = move?.kind === "meeting" ? { team: move.team } : move?.kind === "perk" ? { circle: move.circle } : null;
 
   const hovered = byId(active);
   // Hovering anyone lights the friendships you know about; everyone else steps back.
@@ -184,7 +200,9 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
       try { svgRef.current.setPointerCapture(evt.pointerId); } catch (e) { /* not every pointer can be captured */ }
     }
     const over = started ? cardAt(p) : null;
-    setDrag({ ...drag, x: p.x, y: p.y, started, over: over === drag.actorId ? null : over });
+    const inZone = started && over == null && !!moveZone && !!onInoculate
+      && p.x >= moveZone.x && p.x <= moveZone.x + moveZone.w && p.y >= moveZone.y && p.y <= moveZone.y + moveZone.h;
+    setDrag({ ...drag, x: p.x, y: p.y, started, over: over === drag.actorId ? null : over, zone: inZone });
   };
   const endDrag = (evt) => {
     if (!drag) return;
@@ -205,6 +223,7 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
       // After the click that trails this pointer-up, or the panel it opens would take
       // that click on its own backdrop and close again.
       if (target && !target.burned && onPair) setTimeout(() => onPair(actor, target), 0);
+      else if (drag.zone && actor && onInoculate && moveWhere) setTimeout(() => onInoculate(actor, moveWhere), 0);
     }
     setDrag(null);
   };
@@ -291,26 +310,43 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
         <text x={layout.root.cx} y={layout.root.y + 5} textAnchor="middle" fontSize="4" fill="#a8a29e" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.3">THE STUDIO</text>
         <text x={layout.root.cx} y={layout.root.y + 9.5} textAnchor="middle" fontSize="2.9" fill="#57534e" fontFamily="'Courier New', monospace">{workers.length} WORKERS · PLAY-EYE RUNS THE FLOOR</text>
 
-        {Object.entries(layout.teamBoxes).map(([team, tb]) => (
-          <g key={team}>
-            <rect x={tb.x} y={tb.y} width={tb.w} height={tb.h} rx="1" fill="#1c1917" stroke={TEAM_HEX[team]} strokeWidth="0.5" strokeOpacity="0.7" />
-            <rect x={tb.x} y={tb.y} width={tb.w} height="1.4" fill={TEAM_HEX[team]} fillOpacity="0.8" />
-            <text x={tb.cx} y={tb.y + 7.6} textAnchor="middle" fontSize="4.5" fill="#d6d3d1" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.25">{TEAM_LABEL[team]}</text>
-          </g>
-        ))}
+        {Object.entries(layout.teamBoxes).map(([team, tb]) => {
+          const booked = move?.kind === "meeting" && move.team === team;
+          const dropping = booked && drag?.zone;
+          return (
+            <g key={team} className={booked && onMoveTarget ? "cursor-pointer" : ""} onClick={booked && onMoveTarget ? () => { if (!suppressClick.current) onMoveTarget(); } : undefined}>
+              <rect x={tb.x} y={tb.y} width={tb.w} height={tb.h} rx="1" fill={booked ? "#2a1212" : "#1c1917"} stroke={booked ? MOVE_RED : TEAM_HEX[team]} strokeWidth={dropping ? 1.1 : booked ? 0.8 : 0.5} strokeOpacity={booked ? 1 : 0.7} />
+              <rect x={tb.x} y={tb.y} width={tb.w} height="1.4" fill={TEAM_HEX[team]} fillOpacity="0.8" />
+              <text x={tb.cx} y={tb.y + 7.6} textAnchor="middle" fontSize="4.5" fill="#d6d3d1" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.25">{TEAM_LABEL[team]}</text>
+              {booked && MoveIcon && (
+                <g transform={`translate(${tb.x + 2.2} ${tb.y + 2.6})`} style={{ color: MOVE_RED }}>
+                  <MoveIcon x={0} y={0} width={6.4} height={6.4} strokeWidth={2.4} />
+                </g>
+              )}
+            </g>
+          );
+        })}
         </>)}
 
         {socialView && (<>
           {/* ---- the crowds you have found ---- */}
-          {sl.bubbles.map(bb => (
-            <g key={`bubble-${bb.id}`}>
-              <rect x={bb.x} y={bb.y} width={bb.w} height={bb.h} rx="6" fill={bb.hex} fillOpacity="0.06" stroke={bb.hex} strokeOpacity="0.45" strokeWidth="0.45" />
+          {sl.bubbles.map(bb => {
+            const booked = move?.kind === "perk" && move.circle === bb.id;
+            return (
+            <g key={`bubble-${bb.id}`} className={booked && onMoveTarget ? "cursor-pointer" : ""} onClick={booked && onMoveTarget ? () => { if (!suppressClick.current) onMoveTarget(); } : undefined}>
+              <rect x={bb.x} y={bb.y} width={bb.w} height={bb.h} rx="6" fill={booked ? MOVE_RED : bb.hex} fillOpacity={booked ? 0.1 : 0.06} stroke={booked ? MOVE_RED : bb.hex} strokeOpacity={booked ? 1 : 0.45} strokeWidth={booked && drag?.zone ? 1.1 : booked ? 0.8 : 0.45} />
+              {booked && MoveIcon && (
+                <g transform={`translate(${bb.x + bb.w - 13} ${bb.y + 0.8})`} style={{ color: MOVE_RED }}>
+                  <MoveIcon x={0} y={0} width={5} height={5} strokeWidth={2.4} />
+                </g>
+              )}
               <text x={bb.x + 3} y={bb.y + 4.6} fontSize="3" fill={bb.hex} fillOpacity="0.9" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.2">{bb.label}</text>
               {AFF_ICON[bb.affinity] && (
                 <g transform={`translate(${bb.x + bb.w - 6.2} ${bb.y + 1}) scale(0.42)`} style={{ color: bb.hex }} opacity="0.85">{AFF_ICON[bb.affinity]}</g>
               )}
             </g>
-          ))}
+            );
+          })}
           {/* ---- friendships you have mapped ---- */}
           <g fill="none">
             {sl.links.map(({ source, target }) => {
@@ -418,6 +454,16 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
               <rect x={c.x} y={c.y} width="1.6" height={c.h} rx="0.4" fill={TEAM_HEX[w.team]} fillOpacity={w.burned ? 0.3 : 0.9} />
               {planLabels && !w.burned && (
                 <rect x={c.x - 1.3} y={c.y - 1.3} width={c.w + 2.6} height={c.h + 2.6} rx="1.6" fill="none" stroke="#f59e0b" strokeWidth="0.45" strokeDasharray="1.6 1.2" />
+              )}
+              {move && (move.kind === "threat" || move.kind === "raise") && move.targetId === w.id && !w.burned && (
+                <g>
+                  <rect x={c.x - 1.6} y={c.y - 1.6} width={c.w + 3.2} height={c.h + 3.2} rx="1.8" fill="none" stroke={MOVE_RED} strokeWidth="0.8" />
+                  <rect x={c.x + c.w - 15} y={c.y + c.h - 0.4} width="14" height="4" rx="0.8" fill={MOVE_RED} />
+                  <text x={c.x + c.w - 8} y={c.y + c.h + 2.6} textAnchor="middle" fontSize="2.8" fontWeight="bold" fill="#0c0a09" fontFamily="'Courier New', monospace">{MOVE_WORD[move.kind]}</text>
+                </g>
+              )}
+              {moveHit.has(w.id) && move && (move.kind === "meeting" || move.kind === "perk") && !w.burned && (
+                <path d={`M ${c.x} ${c.y + 4.2} L ${c.x} ${c.y + 1.2} Q ${c.x} ${c.y} ${c.x + 1.2} ${c.y} L ${c.x + 4.2} ${c.y} Z`} fill={MOVE_RED} />
               )}
               {(isOver || isDragging) && (
                 <rect x={c.x - 2.2} y={c.y - 2.2} width={c.w + 4.4} height={c.h + 4.4} rx="2.2" fill="none" stroke="#fcd34d" strokeWidth="0.7" />
@@ -582,7 +628,7 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
           </div>
         ) : (
           <div className="text-xs text-stone-500 leading-snug">
-            {onPair && <div>Click anyone to plan. Drag one of your people onto somebody to send them.</div>}
+            {onPair && <div>{move && moveZone ? "Drag one of your people onto the red box to get there before management does." : "Click anyone to plan. Drag one of your people onto somebody to send them."}</div>}
             {socialView && sl.unplacedCount > 0 && <div className="text-stone-600">Talking to people puts them on the map. A sit-down maps all their friends and their crowd.</div>}
             {mappedEdges.length > 0 && (
               <div className="text-stone-500 mt-0.5">

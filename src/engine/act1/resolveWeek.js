@@ -1,33 +1,37 @@
 // One week of Act One, resolved. This is the whole turn loop, as a pure function of the
 // campaign's state and the plan the player laid: nothing here reads or writes React.
 //
-// `state` is { workers, influence, week, stage, heat, consultant, perks, outsiders,
-// electionWeek }. It returns the animation steps the board plays back, the `pending`
+// `state` is { workers, influence, social, week, stage, heat, consultant, perks, outsiders,
+// electionWeek, campaign }. `campaign` is Phase 2's state (campaign.js): the move on
+// management's calendar and how often each coordinated action has run. It returns the animation steps the board plays back, the `pending`
 // state the component commits once the playback ends, and a small tally the sim reads.
 // The component and the headless sim both call this, which is the point.
 import { clamp, rand, random } from "../rng.js";
 import { IDLE_GRACE, IDLE_QUIT, XP_PER_ACTION, XP_PER_CARD, committeeHours } from "./committee.js";
-import { ACT1_ACTION, EDGE_MIN_DRAW, PUBLIC_TIERS, convoGain, misfireChance, publicGain, revealAffinities, revealCount, signChance } from "./actions.js";
+import { ACT1_ACTION, convoGain, misfireChance, revealAffinities, revealCount, signChance } from "./actions.js";
 import { AFFINITY_POOL, AFF_BY_ID, PERK_WEEKS, affList, poisonedAff, tieBonus, tieFrom, tieOn, visibleShared } from "./affinities.js";
 import { infTrait, recvMult } from "./traits.js";
 import { outgoingTies } from "./influence.js";
 import { friendsOf, isKnownFriend, learnFriends, learnOneFriend, vouchFor } from "./friends.js";
-import { FALLOUT_TUNING, RUMOR_REPAIR_WEEKS, breakFriendship, catchUp, cloneSocial, pickFallout, pickRumor, repairFriendship, seeCircle } from "./fallout.js";
+import { FALLOUT_TUNING, RUMOR_REPAIR_WEEKS, breakFriendship, catchUp, cloneSocial, pickFallout, pickRumor, refreshInfluence, repairFriendship, seeCircle } from "./fallout.js";
 import { COMMITTEE_TUNING, DROP_LEAK_TRUE, LEAK_TIP_TRUE, VET_MIN_XP, activeLeaks, committeeOf, leakChance, leakHeat, sizeHeat, sizeLeakChance } from "./coverage.js";
 import { ACT1_WORKERS_SEED, ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, ACT1_TOTAL_WORKERS, BURN_NARRATIVES, CARD_LIFESPAN, TEAM_LABEL } from "./constants.js";
 import { CONSULTANT_FIRM, CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_NAME_UC, CONSULTANT_ONE_ON_ONES, CONSULTANT_SETPIECE_GAP, CONSULTANT_TRIGGER_COMMITTEE, KIRKMAN_SIGHT, OUTSIDERS, holdsFast, orgChartResistance, signedBacking } from "./consultant.js";
 import { rating, turnoutChance, voteProjection, yesChance } from "./election.js";
+import { CAMPAIGN_TUNING, addFear, newCampaign, planMove, resolveDebriefs, resolveMove, resolveTurnout } from "./campaign.js";
 
 export function resolveWeek(state, planEntries) {
   const { workers, influence, week, stage, heat, consultant, perks, outsiders, electionWeek } = state;
   // This week's own copy of who is friends with whom: a falling out changes it, and the
   // changed copy is handed back with everything else.
   const social = cloneSocial(state.social);
+  let campaignNext = { ...newCampaign(), ...(state.campaign || {}) };
+  const inCampaign = stage === "campaign";
   const organizers = workers.filter(x => x.organizer && !x.burned);
   const totalHours = organizers.reduce((s, o) => s + committeeHours(o), 0);
   const totalUsed = planEntries.reduce((s, e) => s + ACT1_ACTION[e.type].hours, 0);
   // What the week added up to, for the sim. The board reads the steps instead.
-  const stats = { convoGain: 0, publicGain: 0, passiveGain: 0, misfires: 0, asks: 0, signs: 0, burns: 0 };
+  const stats = { convoGain: 0, passiveGain: 0, misfires: 0, asks: 0, signs: 0, burns: 0 };
   const steps = [];
   let w = workers.map(x => ({ ...x }));
   const byId = (id) => w.find(x => x.id === id);
@@ -67,6 +71,25 @@ export function resolveWeek(state, planEntries) {
     tipLines.push(`${t.name} had a quiet word from a manager the day before anybody from the committee got to them. Somebody knew it was coming.`);
   });
   if (tipLines.length) steps.push({ label: "SOMEBODY KNEW", sub: "Management got there first.", workers: w.map(x => ({ ...x })), lines: tipLines });
+
+  // --- PHASE 2: A LEAK MOVES THE CALENDAR UP ---
+  // With somebody on the committee talking, Kirkman knows what the committee has planned
+  // for his move, and runs it before any of it happens.
+  let consultantAfterMove = consultant;
+  let movePerk = null;
+  const moveStep = (res, early) => {
+    heatNext = clamp(heatNext + res.heat);
+    consultantAfterMove = res.consultant;
+    if (res.perk) movePerk = res.perk;
+    Object.entries(res.stats).forEach(([k, v]) => { stats[k] = (stats[k] || 0) + v; });
+    if (early) stats.earlyMoves = (stats.earlyMoves || 0) + 1;
+    steps.push({ label: "MANAGEMENT'S MOVE", sub: early ? "It came a day early." : "The one on the calendar.", workers: w.map(x => ({ ...x })), lines: res.lines, notes: res.notes, edgePulses: res.pulses });
+  };
+  let moveDone = false;
+  if (inCampaign && campaignNext.next && activeLeaks(w).length > 0) {
+    moveStep(resolveMove({ move: campaignNext.next, w, social, plan: planEntries, week, early: true, actionHeld: false, consultant }), true);
+    moveDone = true;
+  }
 
   // --- CONVERSATIONS ---
   const convoLines = [];
@@ -167,73 +190,28 @@ export function resolveWeek(state, planEntries) {
   });
   if (convoLines.length) steps.push({ label: "ONE-ON-ONES", sub: "Influence is relationship-specific — the same conversation lands differently depending on who has it.", workers: w.map(x => ({ ...x })), lines: convoLines, edgePulses: convoPulses, notes: convoNotes });
 
-  // --- PUBLIC ACTIONS ---
-  const publicLines = [];
-  const publicPulses = [];
-  const publicNotes = {};
-  planEntries.filter(e => PUBLIC_TIERS[e.type]).forEach(e => {
-    const actor = byId(e.actorId);
-    if (!actor || actor.burned) return;
-    const tier = PUBLIC_TIERS[e.type];
-    const uses = actor.publicUses?.[e.type] || 0;
-    actor.publicUses = { ...actor.publicUses, [e.type]: uses + 1 };
-    actor.support = clamp(actor.support + tier.selfSupport);
-    heatNext = clamp(heatNext + Math.round(tier.heat * (infTrait(actor).publicHeat || 1)));
-    // Reach is measured on the tie, so common ground you have surfaced can pull a
-    // relationship over the line and put somebody inside this person's reach who
-    // wasn't there last week.
-    const reached = outgoingTies(influence, actor.id).map(t => {
-      const target = byId(t.id);
-      return target && !target.burned ? { ...t, target, tie: tieFrom(t.weight, actor, target) } : null;
-    }).filter(t => t && t.tie >= EDGE_MIN_DRAW);
-    let moved = 0;
-    reached.forEach(t => {
-      const target = t.target;
-      const gain = publicGain(actor, target, t.tie, e.type, uses);
-      if (gain <= 0) return;
-      // Visibility is not commitment. Watching a coworker go public makes people say
-      // warmer things; it barely moves what they'd sign.
-      bump(target, gain, Math.round(gain * 0.15));
-      stats.publicGain += gain;
-      moved++;
-      publicPulses.push({ from: actor.id, to: t.id, tone: "up" });
-    });
-    publicNotes[actor.id] = e.type === "large" ? "goes public, loudly" : e.type === "medium" ? "puts their name on it" : "wears the button";
-    publicLines.push(`${actor.name} ${tier.blurb} ${moved > 0 ? `${moved} coworker${moved === 1 ? "" : "s"} who take cues from ${actor.name} move${uses > 0 ? " — though this isn't news anymore" : ""}.` : "Nobody who takes cues from them notices."}`);
-    gainXp(actor, XP_PER_ACTION);
-    actor.history.push(`Week ${week}: took a ${e.type} public action.`);
-
-    if (tier.burn > 0) {
-      const lastOne = w.filter(x => x.organizer && !x.burned).length <= 1;
-      // HOTHEADs are the ones who get walked out. The CAUTIOUS almost never are.
-      const risk = tier.burn * (0.6 + heatNext / 100) * (infTrait(actor).burnMult ?? 1);
-      if (random() < risk) {
-        if (lastOne) {
-          heatNext = clamp(heatNext + 8);
-          publicLines.push(`${actor.name} gets pulled aside about "tone" the next morning. It's a warning shot — and they're the only organizer left, so they take it and keep going.`);
-          actor.shaken = 1;
-        } else {
-          actor.burned = true;
-          actor.organizer = false;
-          stats.burns++;
-          const narrative = BURN_NARRATIVES[rand(BURN_NARRATIVES.length)](actor.name);
-          publicNotes[actor.id] = "pulled out of play";
-          publicLines.push(`${narrative} ${actor.name} is out of the campaign — the card they signed still counts, but their hours and their reach don't.`);
-          actor.history.push(`Week ${week}: exposed after a big public action — out of play.`);
-          outgoingTies(influence, actor.id).forEach(t => {
-            const target = byId(t.id);
-            if (!target || target.burned) return;
-            const hit = Math.round((t.weight / 100) * 9);
-            if (hit <= 0) return;
-            bump(target, -hit);
-            publicPulses.push({ from: actor.id, to: t.id, tone: "down" });
-          });
-          heatNext = clamp(heatNext + 6);
-        }
-      }
+  // --- COORDINATED ACTION ---
+  // One a week at most, one tier, every participant an hour. In the card drive the only one
+  // there is is the open letter, once, with the filing line in sight.
+  let actionHeld = false;
+  {
+    let entries = planEntries.filter(e => e.type === "turnout");
+    if (!inCampaign) entries = campaignNext.letterDone || w.filter(x => x.signed).length < ACT1_CARDS_NEEDED - 2 ? [] : entries.map(e => ({ ...e, tier: "letter" }));
+    if (entries.length) {
+      const tier = entries[0].tier;
+      const res = resolveTurnout({ entries: entries.filter(e => e.tier === tier), w, social, week, campaign: campaignNext, move: campaignNext.next });
+      campaignNext = res.campaign;
+      actionHeld = res.held;
+      heatNext = clamp(heatNext + res.heat);
+      stats.actions = (stats.actions || 0) + 1;
+      if (res.held) stats.actionsHeld = (stats.actionsHeld || 0) + 1;
+      stats.turnout = (stats.turnout || 0) + res.count;
+      stats.burns += res.burned.length;
+      res.burned.forEach(p => p.history.push(`Week ${week}: named after the ${res.tier.short} and walked off the floor.`));
+      w.filter(x => res.notes[x.id] === "turns out").forEach(x => touched.add(x.id));
+      steps.push({ label: res.tier.label.toUpperCase(), sub: "The count is a read: who showed up did something.", workers: w.map(x => ({ ...x })), lines: res.lines, notes: res.notes, edgePulses: res.pulses });
     }
-  });
-  if (publicLines.length) steps.push({ label: "PUBLIC ACTIONS", sub: "What your people are seen doing travels down every line they carry.", workers: w.map(x => ({ ...x })), lines: publicLines, edgePulses: publicPulses, notes: publicNotes });
+  }
 
   // --- CARD ASKS ---
   const askLines = [];
@@ -582,7 +560,8 @@ export function resolveWeek(state, planEntries) {
     heatNext = clamp(heatNext + leakWarmth);
     mgmtLines.push(`Somebody upstairs knows when the committee met, and where. +${leakWarmth} heat.`);
   }
-  if (heatNext >= 45 && random() < 0.55) {
+  // In Phase 2 his moves are on the calendar instead.
+  if (!inCampaign && heatNext >= 45 && random() < 0.55) {
     const roll = rand(100);
     if (roll < 45) {
       // ORG-CHART MOVE. He books a department, not a set of relationships, so the
@@ -636,7 +615,7 @@ export function resolveWeek(state, planEntries) {
   // Once the committee is clearly working, management stops improvising and hires
   // someone. From then on there is a second organizer on the floor, working the same
   // relationships in the opposite direction.
-  let consultantNext = { ...consultant };
+  let consultantNext = { ...consultantAfterMove };
   const consultantLines = [];
   const consultantNotes = {};
   const consultantPulses = [];
@@ -645,6 +624,12 @@ export function resolveWeek(state, planEntries) {
   // A perk wears off. People work out that the dog day was a one-off, and the thing
   // they have in common goes back to being theirs.
   let perksNext = perks.filter(pk => pk.until > week);
+  // A crowd the company bought in Phase 2 goes back to being friends at the same time.
+  const boughtOut = Object.entries(social.bought || {}).filter(([, until]) => until <= week);
+  if (boughtOut.length) {
+    boughtOut.forEach(([cid]) => { delete social.bought[cid]; });
+    refreshInfluence(social, w);
+  }
   perks.filter(pk => pk.until <= week).forEach(pk => {
     const aff = AFF_BY_ID[pk.id];
     w.forEach(x => { x.poisoned = poisonedAff(x).filter(t => t !== pk.id); });
@@ -664,15 +649,12 @@ export function resolveWeek(state, planEntries) {
   } else if (consultantNext.active) {
     // One-on-ones: he works the people closest to signing, minus whoever is already
     // surrounded by organizers. Density is the defence.
-    // Once a petition is filed he stops being a side project and works the floor full
-    // time — this is the stretch where campaigns are actually lost.
-    const inCampaign = stage === "campaign";
     // Below the sight threshold he is picking names off an org chart: whoever looks
     // wobbly on paper, by department. Above it, the campaign has been loud enough
     // that he can see who is actually isolated — and that is when he gets dangerous.
     // A leak on the committee hands him the map whatever the heat.
     const leaking = activeLeaks(w);
-    const seesNetwork = heat >= KIRKMAN_SIGHT || inCampaign || leaking.length > 0;
+    const seesNetwork = heat >= KIRKMAN_SIGHT || leaking.length > 0;
     const leakFriends = new Set(leaking.flatMap(l => friendsOf(social, l.id)));
     const marks = w
       .filter(x => !x.burned && x.support >= 30 && (inCampaign || !x.signed))
@@ -682,7 +664,7 @@ export function resolveWeek(state, planEntries) {
         return { t: x, backing, score: x.support - backing * 0.35 - (x.signed ? 25 : 0) + (leakFriends.has(x.id) ? 40 : 0) };
       })
       .sort((a, b) => b.score - a.score)
-      .slice(0, inCampaign ? 4 : 2);
+      .slice(0, inCampaign ? CAMPAIGN_TUNING.oneOnOnes : 2);
 
     marks.forEach(({ t, backing }) => {
       if (holdsFast(t)) {
@@ -700,6 +682,7 @@ export function resolveWeek(state, planEntries) {
       t.trueSupport = clamp((t.trueSupport ?? t.support) - Math.round(hit * 0.6));
       t.underPressure = 2;
       t.pressuredCount = (t.pressuredCount || 0) + 1;
+      if (inCampaign) { addFear(t); t.hitWeek = week; }
       consultantNotes[t.id] = `${CONSULTANT_NAME_UC} works on them`;
       consultantLines.push(
         `${seesNetwork ? "TARGETED 1:1" : "ORG-CHART 1:1"} \u2014 ${t.name}: \u2212${before - t.support} to what they'll say, \u2212${Math.round((before - t.support) * 0.6)} to where they stand. ` +
@@ -713,32 +696,6 @@ export function resolveWeek(state, planEntries) {
       );
       t.history.push(`Week ${week}: ${CONSULTANT_NAME} worked on them (-${before - t.support} support).`);
     });
-
-    if (inCampaign) {
-      // The biggest single effect in the whole counter-campaign, and the easiest to
-      // miss because it touches everybody at once. So it reports its own total.
-      let meetingTotal = 0, meetingCount = 0, meetingWorst = 0;
-      w.forEach(x => {
-        if (x.burned) return;
-        const backing = signedBacking(influence, w, x.id);
-        const hit = Math.max(1, Math.round(4 - backing / 70 - (x.signed ? 1 : 0)));
-        x.support = clamp(x.support - hit);
-        meetingTotal += hit; meetingCount += 1; meetingWorst = Math.max(meetingWorst, hit);
-      });
-      consultantLines.push(
-        `CAPTIVE-AUDIENCE MEETING \u2014 all ${meetingCount} workers. Not one vote moves. ` +
-        `A mandatory meeting changes what people are willing to say out loud, not what they'd do behind a curtain, ` +
-        `so every number this costs you is a number you were reading, not a number you had. ` +
-        `Up to \u2212${meetingWorst} each off what they'll admit to \u2014 least from the ones who have signed, ` +
-        `and least of all from the ones with signed coworkers they trust standing behind them.`
-      );
-      consultantLines.push(
-        `WHICH IS THE POINT. He is not trying to change minds in that room; he is trying to make the room unreadable, ` +
-        `so that you spend your last weeks reassuring people who were never going to leave and miss the ones who were. ` +
-        `The only cure is a conversation: anyone you have actually sat down with still reads true. ` +
-        `Paid time, catered, and nobody from the union side allowed to answer back. It runs again every week until the ballot.`
-      );
-    }
 
     // Set pieces, spaced out: the raise and the threat.
     const sinceLast = week - (consultantNext.lastSetPiece || 0);
@@ -769,10 +726,12 @@ export function resolveWeek(state, planEntries) {
       const canPerk = consultantNext.perks < CONSULTANT_MAX_EACH && perkCandidates.length > 0;
 
       const options = [];
-      if (canThreat && threatPool.length > 1) options.push("threat");
-      if (canRaise && raisePool.length) options.push("raise");
-      if (canPerk) options.push("perk");
-      const rumorPair = (consultantNext.rumors || 0) < CONSULTANT_MAX_EACH ? pickRumor(w, social) : null;
+      // In Phase 2 the threat, the raise and the perk are on the calendar; only the rumor
+      // stays a surprise.
+      if (!inCampaign && canThreat && threatPool.length > 1) options.push("threat");
+      if (!inCampaign && canRaise && raisePool.length) options.push("raise");
+      if (!inCampaign && canPerk) options.push("perk");
+      const rumorPair = (consultantNext.rumors || 0) < CONSULTANT_MAX_EACH && (!inCampaign || random() < CAMPAIGN_TUNING.rumorChance) ? pickRumor(w, social) : null;
       if (rumorPair) options.push("rumor");
       const chosen = options.length ? options[rand(options.length)] : null;
       const doThreat = chosen === "threat";
@@ -865,7 +824,7 @@ export function resolveWeek(state, planEntries) {
             consultantPulses.push({ from: mark.id, to: t.id, tone: "up" });
           });
         }
-      } else if (canRaise && raisePool.length) {
+      } else if (chosen === "raise") {
         const mark = [...raisePool].sort((a, b) => a.support - b.support)[0];
         const before35 = mark.support;
         const takeChance = Math.min(0.7, Math.max(0.05, (100 - mark.support) / 60));
@@ -908,6 +867,40 @@ export function resolveWeek(state, planEntries) {
     });
   }
 
+  // --- PHASE 2: THE MOVE ON THE CALENDAR ---
+  if (inCampaign && campaignNext.next && !moveDone) {
+    const res = resolveMove({ move: campaignNext.next, w, social, plan: planEntries, week, early: false, actionHeld, consultant: consultantNext });
+    moveStep(res, false);
+    consultantNext = { ...consultantNext, ...res.consultant };
+  }
+  if (movePerk) consultantPerks.push(movePerk);
+
+  // --- DEBRIEFS ---
+  // After the move, the committee talks it over with their friends. A debrief also gets a
+  // rumor's story straight, the way any conversation could in the card drive.
+  {
+    const res = resolveDebriefs({ plan: planEntries, w, social, week });
+    if (res.count) {
+      stats.debriefs = (stats.debriefs || 0) + res.count;
+      planEntries.filter(e => e.type === "debrief").forEach(e => {
+        const t = byId(e.targetId), a = byId(e.actorId);
+        if (!t || !a) return;
+        touched.add(t.id);
+        gainXp(a, 4);
+        social.rumors.filter(r => week - r.week <= RUMOR_REPAIR_WEEKS && (r.a === t.id || r.b === t.id)).forEach(r => {
+          const other = byId(r.a === t.id ? r.b : r.a);
+          if (other && repairFriendship(w, social, t, other, week)) {
+            r.repaired = true;
+            stats.repairs = (stats.repairs || 0) + 1;
+            res.lines.push(`${a.name} gets the story straight: ${t.name} and ${other.name} are talking again.`);
+          }
+        });
+        social.rumors = social.rumors.filter(r => !r.repaired);
+      });
+      steps.push({ label: "DEBRIEFS", sub: "Afterwards, somebody they trust asks how it went.", workers: w.map(x => ({ ...x })), lines: res.lines, notes: res.notes, edgePulses: res.pulses });
+    }
+  }
+
   // --- FRIENDSHIPS GIVE WAY ---
   // About once a drive, and more often under the pressure of a petition, two friends stop
   // talking. You see it only if you had mapped that friendship.
@@ -935,6 +928,16 @@ export function resolveWeek(state, planEntries) {
   social.rumors = social.rumors.filter(r => week - r.week < RUMOR_REPAIR_WEEKS + 1);
 
   const signedNow = w.filter(x => x.signed).length;
+
+  // Next week's move goes on the calendar.
+  if (inCampaign) {
+    campaignNext = {
+      ...campaignNext,
+      lastMeeting: campaignNext.next?.kind === "meeting" ? campaignNext.next.team : campaignNext.lastMeeting,
+      last: campaignNext.next ? { ...campaignNext.next, week } : campaignNext.last,
+      next: planMove({ workers: w, social, consultant: consultantNext, campaign: campaignNext, heat: heatNext }),
+    };
+  }
 
   // --- ELECTION DAY ---
   let ballot = null;
@@ -978,6 +981,7 @@ export function resolveWeek(state, planEntries) {
       outsidersNext,
       perksNext: [...perksNext, ...consultantPerks],
       social,
+      campaign: campaignNext,
       // Reaching 30% no longer ends the game — it unlocks the choice to file.
       reachedThreshold: stage === "drive" && signedNow >= ACT1_CARDS_NEEDED,
     },

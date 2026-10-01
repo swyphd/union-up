@@ -2,8 +2,7 @@
 // stated support, revealed affinities, true support only where trueKnown is set — so
 // the sim measures the rules, not a cheat.
 import * as C from '../src/engine/act1/index.js';
-const { ACT1_ACTION, ACT1_RECRUIT_REQ, ACT1_PUBLIC_UNLOCK_WEEK, committeeHours, infOn,
-  visibleShared, affList, knownAff, EDGE_MIN_DRAW, outgoingTies, ASSUMED } = C;
+const { ACT1_ACTION, ACT1_RECRUIT_REQ, committeeHours, infOn, visibleShared, affList, knownAff } = C;
 
 export function planWeek(G, opts = {}) {
   const w = G.workers;
@@ -48,20 +47,6 @@ export function planWeek(G, opts = {}) {
     .sort((a, b) => b.read - a.read)
     .forEach(({ x }) => { const a = bestActor(x, 2); if (a) { take(a, 'ask', x.id); busy.add(x.id); } });
 
-  // 4. Public actions, once unlocked: escalate with the most-connected organizer.
-  // The ballot runs on stated support; the cards run on true support. So the sharp
-  // question is not whether to go public but WHEN — `pubPhase` picks the stage.
-  const pubOk = opts.pubPhase === 'campaign' ? G.stage === 'campaign'
-    : opts.pubPhase === 'drive' ? G.stage === 'drive' : true;
-  if (G.week >= ACT1_PUBLIC_UNLOCK_WEEK && !opts.noPublic && pubOk) {
-    const reach = (o) => outgoingTies(G.influence, o.id).filter(t => t.weight >= EDGE_MIN_DRAW).length;
-    const loud = [...orgs].sort((a, b) => reach(b) - reach(a))[0];
-    if (loud && reach(loud) >= 2) {
-      const tier = opts.pubTier ?? (G.heat < 40 ? 'medium' : 'small');
-      if (spent(loud.id) >= ACT1_ACTION[tier].hours) take(loud, tier, null);
-    }
-  }
-
   // 5. Deep talks. The careful player only sits down where there is visible common
   //    ground; the sloppy one runs the long version on whoever they have most pull with
   //    and eats the misfires. This is the whole scouting question, in one flag.
@@ -91,8 +76,9 @@ export function planWeek(G, opts = {}) {
 export function planWeekMapper(G, opts = {}) {
   const w = G.workers, soc = G.social;
   const orgs = w.filter(x => x.organizer && !x.burned);
-  const budget = new Map(orgs.map(o => [o.id, committeeHours(o)]));
-  const plan = [];
+  // `opts.spent` and `opts.plan` let the Phase 2 player spend its counters first.
+  const budget = new Map(orgs.map(o => [o.id, committeeHours(o) - (opts.spent?.get(o.id) || 0)]));
+  const plan = opts.plan ? [...opts.plan] : [];
   const left = (id) => budget.get(id) || 0;
   const take = (o, type, targetId) => {
     const cost = ACT1_ACTION[type].hours;
@@ -106,7 +92,7 @@ export function planWeekMapper(G, opts = {}) {
     .filter(o => o.id !== t.id && left(o.id) >= cost && (!needPath || C.pathTo(o, t, w)))
     .sort((a, b) => tie(b, t) - tie(a, t))[0];
   const slots = (x) => C.friendsOf(soc, x.id).length;
-  const busy = new Set();
+  const busy = new Set(opts.busy || []);
   const read = (x) => C.readOf(x, G.week);
 
   // 1. Keep the committee.
@@ -170,4 +156,79 @@ export function planWeekMapper(G, opts = {}) {
     .sort((p, q) => nearNetwork(q) - nearNetwork(p) || slots(q) - slots(p))
     .forEach(t => { const a = best(t, 1); if (a) { take(a, 'quick', t.id); busy.add(t.id); } });
   return plan;
+}
+
+// PHASE 2. `opts.phase2` picks the player once the petition is in:
+//   'counter'  answers the calendar: gets to the department or crowd first with whoever on
+//              the committee knows the most people there, stands with whoever is threatened
+//              or bought, debriefs the friends who sat through last week's move, and runs a
+//              coordinated action every other week, escalating. Then it keeps mapping.
+//   'talker'   ignores the calendar and keeps having sit-downs (the mapper, unchanged).
+// Reads only what the board shows: the calendar, known friends, crowds found, the digit.
+export function planWeekPhase2(G, opts = {}) {
+  if (opts.phase2 === 'idle') return [];
+  if (opts.phase2 !== 'counter') return planWeekMapper(G, opts);
+  const w = G.workers, soc = G.social;
+  const orgs = w.filter(x => x.organizer && !x.burned);
+  const spent = new Map();
+  const left = (o) => committeeHours(o) - (spent.get(o.id) || 0);
+  const plan = [], busy = new Set();
+  const take = (o, type, extra = {}) => {
+    if (left(o) < ACT1_ACTION[type].hours) return false;
+    spent.set(o.id, (spent.get(o.id) || 0) + ACT1_ACTION[type].hours);
+    plan.push({ actorId: o.id, type, targetId: null, ...extra });
+    return true;
+  };
+  // Who a committee member can be seen to cover: the friends you have mapped, and the
+  // people you have found in their crowd.
+  const covers = (o) => {
+    const mine = C.seenCircle(o, soc);
+    const inside = move?.kind === 'meeting' ? o.team === move.team : move?.kind === 'perk' && mine === move.circle;
+    return new Set([o.id, ...C.knownFriends(o), ...w.filter(x => (mine && C.seenCircle(x, soc) === mine)
+      || (inside && (move.kind === 'meeting' ? x.team === move.team : C.seenCircle(x, soc) === move.circle))).map(x => x.id)]);
+  };
+  const move = G.campaign?.next;
+  if (move && (move.kind === 'meeting' || move.kind === 'perk')) {
+    const hit = move.kind === 'meeting'
+      ? w.filter(x => !x.burned && !x.organizer && x.team === move.team)
+      : w.filter(x => !x.burned && !x.organizer && C.seenCircle(x, soc) === move.circle);
+    const hitIds = new Set(hit.map(x => x.id));
+    const covered = new Set();
+    const gain = (o) => [...covers(o)].filter(id => hitIds.has(id) && !covered.has(id)).length;
+    for (let i = 0; i < (opts.inoculators ?? 2); i++) {
+      const o = orgs.filter(o => left(o) >= 1).sort((a, b) => gain(b) - gain(a))[0];
+      if (!o || gain(o) < (i === 0 ? 1 : 2)) break;
+      covers(o).forEach(id => covered.add(id));
+      take(o, 'inoculate', move.kind === 'meeting' ? { team: move.team } : { circle: move.circle });
+    }
+  } else if (move && (move.kind === 'threat' || move.kind === 'raise')) {
+    const t = w.find(x => x.id === move.targetId);
+    const o = orgs.filter(o => o.id !== move.targetId && left(o) >= 1)
+      .sort((a, b) => (C.isKnownFriend(b, move.targetId) ? 1 : 0) - (C.isKnownFriend(a, move.targetId) ? 1 : 0))[0];
+    if (t && o) { take(o, 'standwith', { targetId: t.id }); busy.add(t.id); }
+  }
+  // Debrief the friends who sat through last week's move and no longer read solid.
+  const last = G.campaign?.last;
+  if (last && G.week - last.week <= 1) {
+    const victims = C.moveVictims(last, w, soc).filter(x => !x.organizer && !C.readOf(x, G.week).exact);
+    victims.slice(0, opts.debriefs ?? 3).forEach(x => {
+      const o = orgs.filter(o => C.isKnownFriend(o, x.id) && left(o) >= 1).sort((a, b) => left(b) - left(a))[0];
+      if (o && !busy.has(x.id)) { take(o, 'debrief', { targetId: x.id }); busy.add(x.id); }
+    });
+  }
+  // A coordinated action every other week, at the highest tier the count you can see clears.
+  // The count you can see: the committee, everyone signed they reach, and half of the rest
+  // who read as a 4 or better.
+  const sinceFiling = G.week - (G.filedWeek ?? G.week);
+  if ((opts.actionEvery ?? 2) > 0 && sinceFiling % (opts.actionEvery ?? 2) === (opts.actionPhase ?? 1)) {
+    const parts = orgs.filter(o => left(o) >= 1);
+    const pool = new Set(parts.flatMap(o => [...covers(o)]));
+    const expect = [...pool].map(id => w.find(x => x.id === id)).filter(x => x && !x.burned)
+      .reduce((n, x) => n + (x.organizer ? 1 : x.signed ? 0.8 : (C.ratingGlyph(x, G.week).digit || 0) >= 4 ? 0.5 : 0.1), 0);
+    const uses = G.campaign?.uses || {};
+    const fits = C.COORDINATED_ORDER.filter(t => C.COORDINATED[t].bar <= expect * (opts.actionNerve ?? 1));
+    const tier = opts.tier ?? (fits.filter(t => !uses[t]).pop() || fits.pop());
+    if (tier) parts.forEach(o => take(o, 'turnout', { tier }));
+  }
+  return planWeekMapper(G, { ...opts, spent, plan, busy });
 }

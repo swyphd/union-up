@@ -12,7 +12,7 @@ const play = (o) => { let won = 0, com = 0, leaks = 0, tips = 0; for (let i = 0;
 console.log('sizeHeat leakHeat leak4 tip | coverage (won, size, leaks, tips) | all | fives | careful');
 for (const g of grid) {
   C.COMMITTEE_TUNING.sizeHeat = g.sizeHeat; C.COMMITTEE_TUNING.leakHeat = g.leakHeat; C.LEAK_CHANCE[4] = g.leak4; C.COMMITTEE_TUNING.tipAsk = g.tip; C.COMMITTEE_TUNING.sizeLeak = g.sizeLeak;
-  const base = { askBar: 74, pubPhase: 'campaign' };
+  const base = { askBar: 74 };
   const cov = play({ ...base, mapper: true }), all = play({ ...base, mapper: true, recruit: 'all' }), fives = play({ ...base, mapper: true, recruit: 'fives' }), car = play(base);
   console.log(`${g.sizeHeat} ${g.leakHeat} ${g.leak4} ${g.tip} ${g.sizeLeak} | ${cov.join(' ')} | ${all.join(' ')} | ${fives.join(' ')} | ${car.join(' ')}`);
 }

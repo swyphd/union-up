@@ -27,16 +27,17 @@ const DRIFT_CAP = 15;
 // A deep enough copy that a week can change who is friends with whom without touching the
 // state it was handed.
 function cloneSocial(social) {
-  if (!social) return { friends: {}, circleOf: {}, influence: {}, rumors: [] };
+  if (!social) return { friends: {}, circleOf: {}, influence: {}, rumors: [], bought: {} };
   return {
     ...social,
     friends: Object.fromEntries(Object.entries(social.friends || {}).map(([k, v]) => [k, [...v]])),
     circleOf: { ...(social.circleOf || {}) },
     rumors: [...(social.rumors || [])],
+    bought: { ...(social.bought || {}) },
   };
 }
 const refreshInfluence = (social, workers) => {
-  social.influence = influenceFrom(social.friends, social.circleOf, workers);
+  social.influence = influenceFrom(social.friends, social.circleOf, workers, social.bought || {});
   return social;
 };
 

@@ -7,7 +7,8 @@ import { clamp } from "../rng.js";
 // secret ballot decides it on a majority of votes actually cast. The whole point of this
 // stage is the third loss in the chain the game has been teaching: support isn't a
 // signature, and a signature isn't a vote.
-const ELECTION_WEEKS = 4;
+// Six since M5, so the move-and-counter rhythm of Phase 2 has room. sim/phase2.mjs sweeps it.
+const ELECTION_WEEKS = 6;
 const VOLUNTARY_RECOGNITION_FLOOR = 0.5;
 
 // A secret ballot is decided by what somebody would actually do, not by what they have
@@ -108,18 +109,26 @@ function floorClarity(workers, week) {
 
 const BALLOT_PIVOT = 20;
 const BALLOT_SPAN = 35;
+// Fear. What a captive-audience meeting or a one-on-one leaves behind that is not a change
+// of mind: a worry about what happens to people who vote yes. Marks run 0-3 and are hidden;
+// each one takes this much off the yes chance and off the chance they vote at all. A
+// debrief from a friend, or turning out with coworkers, takes them away again.
+const FEAR_MAX = 3;
+// One object so the sim can sweep it.
+const FEAR = { yes: 0.08, turnout: 0.03 };
+const fearOf = (w) => Math.max(0, Math.min(FEAR_MAX, w.fear || 0));
 
 // Turnout: people with strong feelings in either direction show up. Fence-sitters are the
 // ones who stay at their desks, and a fence-sitter who doesn't vote is a vote you lost.
 function turnoutChance(w) {
   const conviction = Math.abs(ballotStanding(w) - 50) / 50;
-  return Math.min(0.96, 0.62 + 0.28 * conviction + (w.signed ? 0.06 : 0));
+  return Math.min(0.96, 0.62 + 0.28 * conviction + (w.signed ? 0.06 : 0) - FEAR.turnout * fearOf(w));
 }
 // Even someone who signed can vote no in the booth, and at the top end there is always a
 // little slippage that no amount of organizing removes.
 function yesChance(w) {
   const base = (ballotStanding(w) - BALLOT_PIVOT) / BALLOT_SPAN;
-  return Math.min(0.93, Math.max(0.02, base + (w.signed ? 0.05 : 0)));
+  return Math.min(0.93, Math.max(0.02, base + (w.signed ? 0.05 : 0) - FEAR.yes * fearOf(w)));
 }
 // The projection is a read, not an oracle. It can only use the true number for people the
 // campaign has actually sat down with; everywhere else it has to go on what they have been
@@ -128,7 +137,8 @@ function yesChance(w) {
 function voteProjection(workers) {
   let yes = 0, no = 0, out = 0;
   workers.forEach(w => {
-    const believed = { ...w, trueSupport: w.trueKnown ? ballotStanding(w) : w.support };
+    // Fear is part of what a sit-down tells you, and invisible otherwise.
+    const believed = { ...w, trueSupport: w.trueKnown ? ballotStanding(w) : w.support, fear: w.trueKnown ? w.fear : 0 };
     const t = turnoutChance(believed);
     const y = yesChance(believed);
     yes += t * y;
@@ -148,7 +158,7 @@ function voteProjectionBand(workers, week = 1) {
     const r = readOf(w, week);
     if (!r.exact) exact = false;
     const at = (v) => {
-      const believed = { ...w, support: v, trueSupport: v, trueKnown: true };
+      const believed = { ...w, support: v, trueSupport: v, trueKnown: true, fear: r.exact ? w.fear : 0 };
       return turnoutChance(believed) * yesChance(believed);
     };
     lo += at(r.lo); hi += at(r.hi);
@@ -166,4 +176,4 @@ function recognitionChance(cardShare, consultantActive, heat) {
   return c;
 }
 
-export { RATING_BANDS, rating, RATING_HEX, RATING_WORD, ratingGlyph, deltaMarks, ELECTION_WEEKS, VOLUNTARY_RECOGNITION_FLOOR, ballotStanding, READ_COLD_DROP, READ_WARM_DROP, READ_FRESH_HALF, READ_BLUR_RATE, READ_BLUR_CAP, READ_NUMBER_MAX, readOf, floorClarity, BALLOT_PIVOT, BALLOT_SPAN, turnoutChance, yesChance, voteProjection, voteProjectionBand, recognitionChance };
+export { RATING_BANDS, rating, RATING_HEX, RATING_WORD, ratingGlyph, deltaMarks, ELECTION_WEEKS, VOLUNTARY_RECOGNITION_FLOOR, ballotStanding, READ_COLD_DROP, READ_WARM_DROP, READ_FRESH_HALF, READ_BLUR_RATE, READ_BLUR_CAP, READ_NUMBER_MAX, readOf, floorClarity, BALLOT_PIVOT, BALLOT_SPAN, FEAR_MAX, FEAR, fearOf, turnoutChance, yesChance, voteProjection, voteProjectionBand, recognitionChance };

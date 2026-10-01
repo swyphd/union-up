@@ -14,3 +14,4 @@ export * from "./ladder.js";
 export * from "./resolveWeek.js";
 export * from "./coverage.js";
 export * from "./fallout.js";
+export * from "./campaign.js";

@@ -10,7 +10,7 @@ import { makeAct1Workers } from "../../engine/act1/influence.js";
 import { CIRCLES, generateSocial, isKnownFriend, vouchFor } from "../../engine/act1/friends.js";
 import { activeLeaks, coverageGaps, recentlyTipped } from "../../engine/act1/coverage.js";
 import { seenCircle } from "../../engine/act1/fallout.js";
-import { TEAM_HEX, TEAM_LABEL, ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_PUBLIC_UNLOCK_WEEK, ACT1_RECRUIT_REQ, ACT1_SHIP_WEEK, ACT1_TOTAL_WORKERS, ACT1_WORKERS_SEED, act1Stars, cardStaleSoon } from "../../engine/act1/constants.js";
+import { TEAM_HEX, TEAM_LABEL, ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, ACT1_SHIP_WEEK, ACT1_TOTAL_WORKERS, ACT1_WORKERS_SEED, act1Stars, cardStaleSoon } from "../../engine/act1/constants.js";
 import { committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { ACT1_ACTION } from "../../engine/act1/actions.js";
 import { resolveWeek as runWeek } from "../../engine/act1/resolveWeek.js";
@@ -18,6 +18,8 @@ import { ACT1_SAVE_KEY } from "../../save.js";
 import { ELECTION_WEEKS, readOf, recognitionChance, voteProjection } from "../../engine/act1/election.js";
 import { CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_SETPIECE_GAP, KIRKMAN_SIGHT, OUTSIDERS, act1Winnability } from "../../engine/act1/consultant.js";
 import { AFF_BY_ID } from "../../engine/act1/affinities.js";
+import { COORDINATED_ORDER, newCampaign, openCampaign } from "../../engine/act1/campaign.js";
+import { ActionPicker, CalendarStrip, MovePanel } from "./Campaign.jsx";
 
 function ActOneGame({ onGraduate, onSkipToCompany }) {
   const [week, setWeek] = useState(1);
@@ -33,6 +35,10 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   const [perks, setPerks] = useState([]); // { id, until } — company perks currently poisoning an affinity
   // Which rungs of the outsider ladder have already arrived. They never leave.
   const [outsiders, setOutsiders] = useState([]);
+  // Phase 2: the move on management's calendar, and the coordinated actions run so far.
+  const [campaign, setCampaign] = useState(newCampaign);
+  const [showMove, setShowMove] = useState(false);
+  const [showAction, setShowAction] = useState(false);
   const [resolutionSteps, setResolutionSteps] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedWorker, setSelectedWorker] = useState(null);
@@ -66,11 +72,11 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   const totalHours = organizers.reduce((s, o) => s + hoursFor(o), 0);
   const totalUsed = planEntries.reduce((s, e) => s + ACT1_ACTION[e.type].hours, 0);
 
-  // Progressive unlocks — a mechanic introduces itself the week it first matters.
-  // Public actions stay locked for the first three weeks: the opening of a drive is
-  // one-on-one work, and handing over the visible options early lets a player skip it.
-  const unlockPublic = week >= ACT1_PUBLIC_UNLOCK_WEEK;
-  const anyPublicDone = workers.some(w => w.history.some(h => h.includes("public")));
+  // The only public action before filing: one open letter, once the filing line is in
+  // sight. After filing, the megaphone runs any of the three.
+  const letterOpen = stage === "drive" && !campaign.letterDone && signedCount >= ACT1_CARDS_NEEDED - 2;
+  const megaphone = stage === "campaign" || letterOpen;
+  const move = stage === "campaign" ? campaign.next : null;
   // Somebody who signed and has a friend on the committee, or a signed friend in common.
   const anyRecruitable = workers.some(w => w.signed && !w.organizer && !w.burned
     && organizers.some(o => isKnownFriend(o, w.id) || vouchFor(o, w, workers)));
@@ -116,9 +122,18 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     ? splitLinesByEntity(resStep.lines, resStep.workers.map(w => ({ id: w.id, name: w.name })))
     : { banner: [] };
 
-  function addPlan(actorId, type, targetId = null) {
+  function addPlan(actorId, type, targetId = null, extra = {}) {
     planKeyRef.current += 1;
-    setPlanEntries(prev => [...prev, { key: planKeyRef.current, actorId, type, targetId }]);
+    setPlanEntries(prev => [...prev, { key: planKeyRef.current, actorId, type, targetId, ...extra }]);
+  }
+  // The megaphone replaces the whole coordinated action at once: one tier, these people.
+  function setTurnout(tier, actorIds) {
+    setPlanEntries(prev => {
+      const rest = prev.filter(e => e.type !== "turnout");
+      if (!tier) return rest;
+      return [...rest, ...actorIds.map(id => { planKeyRef.current += 1; return { key: planKeyRef.current, actorId: id, type: "turnout", targetId: null, tier }; })];
+    });
+    setShowAction(false);
   }
   function removePlan(key) {
     setPlanEntries(prev => prev.filter(e => e.key !== key));
@@ -127,7 +142,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   // ---------- WEEK RESOLUTION ----------
   function resolveWeek() {
     const { steps, pending } = runWeek(
-      { workers, influence, social, week, stage, heat, consultant, perks, outsiders, electionWeek },
+      { workers, influence, social, week, stage, heat, consultant, perks, outsiders, electionWeek, campaign },
       planEntries,
     );
     setResolutionSteps(steps);
@@ -137,7 +152,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   }
 
   function commitWeek() {
-    const { workers: w, heat: h, consultant: c, ballot, outsidersNext, perksNext, reachedThreshold, social: socialNext } = pendingRef.current;
+    const { workers: w, heat: h, consultant: c, ballot, outsidersNext, perksNext, reachedThreshold, social: socialNext, campaign: campaignNext } = pendingRef.current;
+    if (campaignNext) setCampaign(campaignNext);
     setWorkers(w);
     // Friendships can end in a week; the floor's structure moves on with everything else.
     if (socialNext) setSocial(socialNext);
@@ -170,6 +186,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     setHeat(0);
     setConsultant({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0, perks: 0 });
     setPerks([]);
+    setCampaign(newCampaign());
     setStage("drive");
     setFiledWeek(null);
     setElectionWeek(null);
@@ -213,7 +230,10 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     setElectionWeek(week + ELECTION_WEEKS);
     // Nobody sits out their own election. If management hadn't hired anyone yet, they do
     // the day the petition lands.
-    setConsultant(c => (c.active ? c : { ...c, active: true, arrivedWeek: week }));
+    const onSite = consultant.active ? consultant : { ...consultant, active: true, arrivedWeek: week };
+    setConsultant(onSite);
+    // His first move goes on the calendar the day the petition lands.
+    setCampaign(openCampaign({ workers, social, consultant: onSite, heat, campaign }));
     const share = signedCount / ACT1_TOTAL_WORKERS;
     if (random() < recognitionChance(share, consultant.active, heat)) {
       setPhase("recognized");
@@ -234,7 +254,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
       <div className="border-b-2 border-stone-800 bg-stone-900 px-4 py-3 sm:px-6 flex items-center justify-between flex-wrap gap-2">
         <div>
           <div className="font-stencil text-2xl sm:text-3xl tracking-wide text-amber-400">ONE SHOP</div>
-          <div className="text-xs sm:text-sm tracking-[0.2em] text-stone-500">ACT ONE — CARDS ON THE TABLE</div>
+          <div className="text-xs sm:text-sm tracking-[0.2em] text-stone-500">{stage === "campaign" ? "ACT ONE — THEIR CAMPAIGN" : "ACT ONE — CARDS ON THE TABLE"}</div>
         </div>
         {phase !== "intro" && (
           <div className="flex items-center gap-4 sm:gap-6 text-sm sm:text-base">
@@ -346,13 +366,10 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
 
       {phase === "plan" && (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
-          {unlockPublic && !anyPublicDone && (
+          {letterOpen && (
             <div className="mb-4 flex items-start gap-2 text-teal-300 text-sm border border-teal-700 bg-teal-950/30 px-3 py-2">
               <Megaphone size={14} className="shrink-0 mt-0.5" />
-              {/* The tier cards in the worker panel already quote the reach, the support
-                  it moves, the exposure risk and what repeating one costs — live, per
-                  person, per tier. This only has to say the option now exists. */}
-              <span><span className="font-bold text-teal-400">NEW — PUBLIC ACTIONS.</span> One of your people can do something visible instead of having one more conversation. Open anyone on the committee to see what it reaches, and what it risks.</span>
+              <span><span className="font-bold text-teal-400">THE OPEN LETTER.</span> Once, before you file: who signs it reads solid, who doesn't reads hollow. The megaphone, below the board.</span>
             </div>
           )}
           {anyRecruitable && (
@@ -393,9 +410,11 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
                   employer owns every week left on that clock. */}
               <div className="text-xs text-stone-400 leading-relaxed">
                 Majority of ballots cast wins it, and <span className="text-stone-200 font-bold">{projection.yes > projection.no ? "you are ahead" : "you are behind"}</span> on today's read.
-                Every week left on the clock is a week the employer campaigns.
               </div>
             </div>
+          )}
+          {move && (
+            <CalendarStrip move={move} workers={workers} social={social} planEntries={planEntries} onOpen={() => setShowMove(true)} />
           )}
 
           {canFile && (
@@ -430,12 +449,12 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
               <span>
                 <span className="font-bold text-red-400">{CONSULTANT_NAME.toUpperCase()} IS ON SITE.</span>{" "}
                 <span className="text-stone-300">
-                  {stage === "campaign" ? "Four" : "Two"} one-on-ones a week, aimed at whoever looks strongest and isn't already
+                  Two one-on-ones a week, aimed at whoever looks strongest and isn't already
                   covered by signed friends; each one moves where somebody stands.
                   {stage === "campaign"
-                    ? " Plus a mandatory all-hands every week that moves no votes and makes the room harder to read: solid digits go hollow."
+                    ? " And one move a week on the calendar above, where you can see it coming."
                     : ""}
-                  {" "}{(() => {
+                  {" "}{stage !== "campaign" && (() => {
                     const left = [
                       [CONSULTANT_MAX_EACH - (consultant.raises || 0), "raise", "raises"],
                       [CONSULTANT_MAX_EACH - (consultant.threats || 0), "job threat", "job threats"],
@@ -447,8 +466,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
                       left.map(([n, one, many]) => `${n} ${n === 1 ? one : many}`).join(", ")} left.`;
                   })()}
                 </span>{" "}
-                <span className={heat >= KIRKMAN_SIGHT || stage === "campaign" || leakFeedsHim ? "text-red-400 font-bold" : "text-teal-400"}>
-                  {heat >= KIRKMAN_SIGHT || stage === "campaign"
+                <span className={heat >= KIRKMAN_SIGHT || leakFeedsHim ? "text-red-400 font-bold" : "text-teal-400"}>
+                  {heat >= KIRKMAN_SIGHT
                     ? "He can see your map."
                     : leakFeedsHim
                     ? "He can see your map, and the floor is not loud enough for that. Somebody told him."
@@ -483,6 +502,9 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
             social={social}
             onSelect={(w) => { setPairActorId(null); setSelectedWorker(w); }}
             onPair={(actor, target) => { setPairActorId(actor.id); setSelectedWorker(target); }}
+            move={move}
+            onMoveTarget={() => setShowMove(true)}
+            onInoculate={(actor, where) => addPlan(actor.id, "inoculate", null, where)}
             staleWeek={week}
           />
 
@@ -490,8 +512,18 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
               member's own card; what's left is the one instruction and the one button. */}
           <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
             <p className="text-xs text-stone-500 flex-1 min-w-[16rem]">
-              Click anyone to plan. Drag one of your people onto somebody to send them.
+              {move ? "Click anyone to plan. Drag one of your people onto somebody, or onto what management has booked." : "Click anyone to plan. Drag one of your people onto somebody to send them."}
             </p>
+            {megaphone && (() => {
+              const n = planEntries.filter(e => e.type === "turnout").length;
+              return (
+                <button type="button" onClick={() => setShowAction(true)} aria-label="Coordinated action"
+                  title={stage === "campaign" ? "A coordinated action: turn the floor out." : "The open letter: once, before you file."}
+                  className={`shrink-0 flex items-center gap-1.5 border-2 px-2.5 py-1 text-sm font-bold transition-colors ${n ? "border-teal-500 text-teal-300 bg-teal-950/40" : "border-teal-800 text-teal-400 hover:bg-teal-950/30"}`}>
+                  <Megaphone size={15} />{n ? ` ${n}` : ""}
+                </button>
+              );
+            })()}
             <span className={`text-base font-bold shrink-0 ${overBudget ? "text-red-500" : totalUsed === totalHours ? "text-teal-400" : "text-amber-400"}`}>
               {totalUsed} / {totalHours} HOURS
             </span>
@@ -522,6 +554,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
             edgePulses={resStep.edgePulses || []}
             stepKey={stepIndex}
             notes={resNotes}
+            move={stage === "campaign" ? campaign.next : null}
           />
           <div className="flex items-center justify-between gap-3 mb-2">
             <div className="flex-1 min-h-[1.5rem] text-sm text-stone-400 font-mono">
@@ -589,8 +622,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
                 ballots actually cast — someone who stays at their desk is a vote you didn't get.
               </div>
               <div>
-                <span className="text-stone-200 font-bold">Those {ELECTION_WEEKS} weeks belong to them.</span> Mandatory meetings every week, one-on-ones
-                with everyone wavering, and no way to withdraw once you've filed.
+                <span className="text-stone-200 font-bold">Those {ELECTION_WEEKS} weeks belong to them.</span> A move on their calendar every week, one-on-ones
+                with whoever stands alone, and no way to withdraw once you've filed.
               </div>
             </div>
             <div className="border border-stone-700 p-3 mb-4">
@@ -610,7 +643,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
                 {projection.yes > projection.no + 2
                   ? "A real cushion. This is roughly where organizers actually file."
                   : projection.yes > projection.no
-                    ? "Ahead by a hair. Four weeks of their campaign will eat that."
+                    ? `Ahead by a hair. ${ELECTION_WEEKS} weeks of their campaign will eat that.`
                     : "You would lose this vote today."}
               </div>
             </div>
@@ -634,8 +667,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
             matter goes to the labor board. An election is scheduled for <span className="text-stone-100 font-bold">week {electionWeek}</span>.
           </p>
           <p className="text-stone-500 mb-6 leading-relaxed text-sm">
-            {CONSULTANT_NAME} is now on the floor full time. There will be a mandatory meeting every week between now and the ballot,
-            and he will sit down with everyone who looks like they might waver. You have {ELECTION_WEEKS} weeks and the same hours you always had.
+            {CONSULTANT_NAME} is now on the floor full time. Every week his next move goes on the calendar: a meeting, a perk, a threat, a raise.
+            Get there first with whoever on the committee knows those people. You have {ELECTION_WEEKS} weeks and the same hours you always had.
           </p>
           <button onClick={() => setPhase("plan")} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
             GET TO WORK
@@ -682,7 +715,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
             ]},
             { lines: [
               "Thirty percent gets you an election. It doesn't win one.",
-              "Between the petition and the ballot, the company got four uninterrupted weeks with everyone you hadn't locked down.",
+              "Between the petition and the ballot, the company worked everyone the committee could not reach.",
             ]},
             { lines: [
               "A signature on a card was never the same thing as a yes in a booth.",
@@ -704,10 +737,25 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           preferActorId={pairActorId}
           plannedFor={planEntries.filter(e => e.targetId === selectedWorker.id || (e.actorId === selectedWorker.id && !e.targetId))}
           onCancelPlans={(key) => setPlanEntries(es => es.filter(e => e.key !== key))}
-          unlockPublic={unlockPublic}
+          move={move}
+          stage={stage}
+          onOpenMove={() => { setSelectedWorker(null); setPairActorId(null); setShowMove(true); }}
           onPlan={(actorId, type, targetId) => { addPlan(actorId, type, targetId); setSelectedWorker(null); setPairActorId(null); }}
           onClose={() => { setSelectedWorker(null); setPairActorId(null); }}
         />
+      )}
+
+      {showMove && move && phase === "plan" && (
+        <MovePanel week={week} move={move} workers={workers} social={social} organizers={organizers}
+          hoursLeftFor={hoursLeftFor} hoursFor={hoursFor} planEntries={planEntries}
+          onPlan={(actorId, type, extra) => addPlan(actorId, type, extra.targetId ?? null, extra)}
+          onCancel={removePlan} onClose={() => setShowMove(false)} />
+      )}
+      {showAction && phase === "plan" && megaphone && (
+        <ActionPicker week={week} workers={workers} social={social} organizers={organizers}
+          hoursLeftFor={hoursLeftFor} hoursFor={hoursFor} planEntries={planEntries}
+          uses={campaign.uses} tiers={stage === "campaign" ? COORDINATED_ORDER : ["letter"]}
+          onSet={setTurnout} onClose={() => setShowAction(false)} />
       )}
 
       {phase !== "intro" && (

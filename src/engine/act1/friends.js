@@ -93,14 +93,17 @@ function w_isOrganizer(seed, id) { return !!seed.find(w => w.id === id)?.organiz
 // number is now made of. Symmetric, because a friendship is; the asymmetry that used to
 // be a random weight is now the sender's trait, applied where the formulas already apply
 // it. Strangers are absent rather than zero so reach lists stay short.
-function influenceFrom(friends, circleOf, seed = ACT1_WORKERS_SEED) {
+// `bought` is the crowds the company has bought a perk for in Phase 2: friendships inside
+// one count for no more than knowing each other, until the perk lapses or is broken.
+function influenceFrom(friends, circleOf, seed = ACT1_WORKERS_SEED, bought = {}) {
   const inf = {};
   seed.forEach(a => {
     inf[a.id] = {};
     seed.forEach(b => {
       if (a.id === b.id) return;
-      if (friends[a.id].includes(b.id)) inf[a.id][b.id] = FRIEND_TIE;
-      else if (circleOf[a.id] && circleOf[a.id] === circleOf[b.id]) inf[a.id][b.id] = CIRCLE_TIE;
+      const sameCircle = circleOf[a.id] && circleOf[a.id] === circleOf[b.id];
+      if (friends[a.id].includes(b.id)) inf[a.id][b.id] = sameCircle && bought[circleOf[a.id]] ? CIRCLE_TIE : FRIEND_TIE;
+      else if (sameCircle) inf[a.id][b.id] = CIRCLE_TIE;
     });
   });
   return inf;

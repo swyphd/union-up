@@ -18,7 +18,7 @@ const mapError = (r) => {
 const run = (label, opts) => {
   let f = 0, seen = 0, rum = 0, rep = 0, fDrive = 0, won = 0, slots = 0, crowd = 0, wrongGames = 0;
   for (let i = 0; i < N; i++) {
-    const r = playGame({ askBar: 74, pubPhase: 'campaign', mapper: true, ...opts });
+    const r = playGame({ askBar: 74, mapper: true, ...opts });
     f += r.fallouts; seen += r.falloutsSeen; rum += r.rumors; rep += r.repairs; won += r.won;
     const e = mapError(r); slots += e.slots; crowd += e.crowd; if (e.slots + e.crowd > 0) wrongGames++;
   }
