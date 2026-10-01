@@ -123,8 +123,13 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     : { banner: [] };
 
   function addPlan(actorId, type, targetId = null, extra = {}) {
-    planKeyRef.current += 1;
-    setPlanEntries(prev => [...prev, { key: planKeyRef.current, actorId, type, targetId, ...extra }]);
+    setPlanEntries(prev => {
+      // The Phase 2 counters do their work once: a second copy would only cost an hour.
+      const same = (e) => e.actorId === actorId && e.type === type && e.targetId === targetId && e.team === extra.team && e.circle === extra.circle;
+      if (["inoculate", "standwith", "debrief"].includes(type) && prev.some(same)) return prev;
+      planKeyRef.current += 1;
+      return [...prev, { key: planKeyRef.current, actorId, type, targetId, ...extra }];
+    });
   }
   // The megaphone replaces the whole coordinated action at once: one tier, these people.
   function setTurnout(tier, actorIds) {
@@ -187,6 +192,9 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     setConsultant({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0, perks: 0 });
     setPerks([]);
     setCampaign(newCampaign());
+    setShowMove(false);
+    setShowAction(false);
+    setPairActorId(null);
     setStage("drive");
     setFiledWeek(null);
     setElectionWeek(null);
@@ -504,7 +512,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
             onPair={(actor, target) => { setPairActorId(actor.id); setSelectedWorker(target); }}
             move={move}
             onMoveTarget={() => setShowMove(true)}
-            onInoculate={(actor, where) => addPlan(actor.id, "inoculate", null, where)}
+            onInoculate={(actor, where) => { if (hoursLeftFor(actor) >= 1) addPlan(actor.id, "inoculate", null, where); }}
             staleWeek={week}
           />
 

@@ -133,9 +133,9 @@ function Act2NetworkMap({ locations, allocations = {}, onSelect, edgePulses = []
 
   return (
     <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
-      <div className="flex items-center justify-between px-3 pt-2">
+      <div className="flex items-center justify-between flex-wrap gap-y-1 px-3 pt-2">
         <div className="font-stencil text-lg tracking-wide text-stone-200">THE COMPANY</div>
-        <div className="flex items-center gap-3 text-[11px] text-stone-500">
+        <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-[11px] text-stone-500">
           <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-teal-400" /> MORALE 70+</span>
           <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-stone-400" /> MID</span>
           <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 rounded-full bg-red-400" /> LOW</span>

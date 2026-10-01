@@ -165,6 +165,9 @@ not a decider.
   workers with `makeContractWorkers(workers, social)`; recruiting to the action team needs
   `teamPath` (friend, vouch, or a found crowd-mate). Saves are v3 (`src/save.js`): the floor
   and its friendships, no weight map. The company campaign reads only leaders.
+- `SEED=7 node sim/fuzz.mjs` throws random and adversarial plans at the real week and
+  checks invariants every week, including that `resolveWeek` never mutates the state it
+  was handed. Run it after any engine change; it prints "no problems" when clean.
 - The sim imports the engine directly; there is nothing to regenerate. `SEED=7 node
   sim/verify-ballot.mjs` is replayable byte for byte, which is the acceptance test for any
   engine refactor. See `sim/README.md`.

@@ -32,7 +32,7 @@ function cloneSocial(social) {
     ...social,
     friends: Object.fromEntries(Object.entries(social.friends || {}).map(([k, v]) => [k, [...v]])),
     circleOf: { ...(social.circleOf || {}) },
-    rumors: [...(social.rumors || [])],
+    rumors: (social.rumors || []).map(r => ({ ...r })),
     bought: { ...(social.bought || {}) },
   };
 }

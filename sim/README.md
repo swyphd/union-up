@@ -12,6 +12,7 @@ for byte. That is how a refactor of the engine is checked.
 node sim/verify-ballot.mjs   # win rate, margin and projection error by player skill (mapper with and without Phase 2 counters, careful, sloppy, careless)
 node sim/phase2.mjs [n] [wk] # Phase 2: a player who counters management's calendar against one who keeps talking, and coverage at filing against the margin
 node sim/phase2-sweep.mjs    # sweeps CAMPAIGN_TUNING, FEAR and the coordinated-action tiers (JSON on the command line)
+node sim/fuzz.mjs [games]    # random and adversarial plans through the real week, invariants checked; prints "no problems" when clean
 node sim/mapper-tune.mjs     # mapper variants (recruiting for coverage / everybody / 5s, patience) against careful
 node sim/committee-sweep.mjs # leak and committee-size costs against recruiting strategies
 node sim/fallouts.mjs        # falling outs and rumors per game, and how stale the map goes if you stop mapping
