@@ -462,6 +462,11 @@ conversation (quick chat or sit-down) with either party within a week; Phase 2's
   for that week. Missing it costs heat. The walk-in can get a participant walked out.
 - **Before filing** the only public action is the open letter, once, from two cards short of
   the filing line. The three per-person tiers and their panel cards are gone.
+- **Edge rules** (from the post-M6 bug pass): a threat or raise whose target is gone before
+  it lands does not use up one of Kirkman's two; a second debrief of the same person in a
+  week does nothing; a perk a crowd breaks by turning out comes off the company's list at
+  once; the perk's preview counts everyone you know shares the thing it buys, not only the
+  crowd.
 - **Debrief** needs a mapped friendship and takes over rumor repair (any conversation still
   repairs one too, as in M4). **Stand with** is in the targeted person's panel and the
   counter panel.

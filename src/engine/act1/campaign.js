@@ -208,12 +208,13 @@ function resolveMove({ move, w, social, plan, week, early, actionHeld, consultan
     out.stats.standWiths = stood.length;
     const backed = stood.length > 0 || actionHeld;
     const backingOf = (x) => signedBacking(social.influence, w, x.id);
-    if (move.kind === "threat") out.consultant.threats = (out.consultant.threats || 0) + 1;
-    else out.consultant.raises = (out.consultant.raises || 0) + 1;
     if (!mark || mark.burned || (move.kind === "threat" && !mark.organizer)) {
+      // The person is out of reach before it happens. He keeps it for somebody else.
       out.lines.push(`${CONSULTANT_NAME} had something lined up for ${mark?.name ?? "somebody"}. It never happens.`);
       return out;
     }
+    if (move.kind === "threat") out.consultant.threats = (out.consultant.threats || 0) + 1;
+    else out.consultant.raises = (out.consultant.raises || 0) + 1;
     const carry = (dir) => friendsOf(social, mark.id).forEach(fid => {
       const f = byId(fid);
       if (!f || f.burned) return;
@@ -225,6 +226,7 @@ function resolveMove({ move, w, social, plan, week, early, actionHeld, consultan
       const fold = backed ? 0 : Math.max(0.1, Math.min(0.5, 0.5 - backingOf(mark) / 300));
       if (random() < fold) {
         mark.organizer = false;
+        mark.leak = false; mark.leakKnown = false;
         mark.support = clamp(mark.support - 25);
         mark.underPressure = 2;
         addFear(mark, 2);
@@ -265,7 +267,7 @@ function resolveMove({ move, w, social, plan, week, early, actionHeld, consultan
 // One coordinated action. `entries` are the participants' plan entries, all one tier.
 function resolveTurnout({ entries, w, social, week, campaign, move }) {
   const byId = (id) => w.find(x => x.id === id);
-  const tierId = entries[0]?.tier || "button";
+  const tierId = COORDINATED[entries[0]?.tier] ? entries[0].tier : "button";
   const tier = COORDINATED[tierId];
   const out = { tierId, tier, lines: [], notes: {}, pulses: [], heat: 0, held: false, count: 0, counted: 0, burned: [], restored: [], campaign: { ...campaign, uses: { ...(campaign.uses || {}) } } };
   const parts = entries.map(e => byId(e.actorId)).filter((a, i, all) => a && a.organizer && !a.burned && all.indexOf(a) === i);
@@ -330,7 +332,7 @@ function resolveTurnout({ entries, w, social, week, campaign, move }) {
   if (tier.burn > 0) {
     parts.forEach(p => {
       if (committeeOf(w).length <= 1) return;
-      if (random() < tier.burn * (infTrait(p).burnMult ?? 1)) { p.burned = true; p.organizer = false; out.burned.push(p); out.notes[p.id] = "walked out"; }
+      if (random() < tier.burn * (infTrait(p).burnMult ?? 1)) { p.burned = true; p.organizer = false; p.leak = false; p.leakKnown = false; out.burned.push(p); out.notes[p.id] = "walked out"; }
     });
   }
   out.lines.push(`${tier.label.toUpperCase()} — ${out.count} of the ${out.counted} people ${parts.map(p => p.name).join(", ")} could reach turned out. ` +
@@ -346,11 +348,15 @@ function resolveTurnout({ entries, w, social, week, campaign, move }) {
 // Debriefs: after the move lands, a committee member talks it over with a friend.
 function resolveDebriefs({ plan, w, social, week }) {
   const byId = (id) => w.find(x => x.id === id);
-  const out = { lines: [], notes: {}, pulses: [], repaired: [], count: 0 };
+  const out = { lines: [], notes: {}, pulses: [], repaired: [], count: 0, valid: [] };
+  const done = new Set();
   plan.filter(e => e.type === "debrief").forEach(e => {
     const a = byId(e.actorId), t = byId(e.targetId);
-    if (!a || !t || a.burned || t.burned || !a.organizer) return;
+    if (!a || !t || a.burned || t.burned || !a.organizer || done.has(t.id)) return;
+    // Once a week is enough: a second debrief of the same person does nothing more.
+    done.add(t.id);
     out.count++;
+    out.valid.push(e);
     const recent = t.hitWeek != null && week - t.hitWeek <= 1;
     t.fear = Math.max(0, (t.fear || 0) - 2);
     if (recent) t.trueSupport = clamp((t.trueSupport ?? t.support) + CAMPAIGN_TUNING.debriefTrue);
@@ -369,7 +375,11 @@ function visibleHit(move, workers, social) {
   if (!move) return [];
   const live = workers.filter(x => !x.burned && !x.organizer);
   if (move.kind === "meeting") return live.filter(x => x.team === move.team);
-  if (move.kind === "perk") return live.filter(x => seenCircle(x, social) === move.circle);
+  if (move.kind === "perk") {
+    // Everyone you have seen in that crowd, and anyone you know shares what it is buying.
+    const aff = CIRCLE_BY_ID[move.circle]?.affinity;
+    return live.filter(x => seenCircle(x, social) === move.circle || (x.knownAffinities || []).includes(aff));
+  }
   return live.filter(x => x.id === move.targetId);
 }
 function visibleReach(member, move, workers, social) {

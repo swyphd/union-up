@@ -4,7 +4,7 @@ import { clamp, rand } from "../rng.js";
 import { ACT1_WORKERS_SEED } from "../act1/constants.js";
 import { infOn } from "../act1/influence.js";
 import { friendsOf, generateSocial, influenceFrom, isKnownFriend, vouchFor } from "../act1/friends.js";
-import { cloneSocial } from "../act1/fallout.js";
+import { cloneSocial, seenCircle } from "../act1/fallout.js";
 
 const CONTRACT_MONTHS = 12;
 // Leverage is perishable. A sticker day three months ago doesn't frighten anybody today,
@@ -212,7 +212,8 @@ function teamTies(social, workers, w) {
   if (!social) return { friends: [], crowd: [] };
   const team = workers.filter(x => x.cat && x.id !== w.id);
   const friends = team.filter(x => isKnownFriend(w, x.id));
-  const crowd = team.filter(x => !friends.includes(x) && social.circleOf?.[x.id] && social.circleOf[x.id] === social.circleOf[w.id] && x.circleKnown && w.circleKnown);
+  const mine = seenCircle(w, social);
+  const crowd = team.filter(x => !friends.includes(x) && mine && seenCircle(x, social) === mine);
   return { friends, crowd };
 }
 // Bringing somebody onto the action team takes a way in, as Act One's committee did: a
@@ -221,7 +222,8 @@ function teamTies(social, workers, w) {
 // friendships has no map to check, so anybody may ask.
 function teamPath(actor, target, workers, social) {
   if (!social) return true;
-  const sameCrowd = actor.circleKnown && target.circleKnown && social.circleOf?.[actor.id] && social.circleOf[actor.id] === social.circleOf[target.id];
+  const mine = seenCircle(actor, social);
+  const sameCrowd = mine && seenCircle(target, social) === mine;
   return isKnownFriend(actor, target.id) || !!vouchFor(actor, target, workers) || !!sameCrowd;
 }
 

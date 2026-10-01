@@ -210,7 +210,7 @@ export function planWeekPhase2(G, opts = {}) {
   // Debrief the friends who sat through last week's move and no longer read solid.
   const last = G.campaign?.last;
   if (last && G.week - last.week <= 1) {
-    const victims = C.moveVictims(last, w, soc).filter(x => !x.organizer && !C.readOf(x, G.week).exact);
+    const victims = C.visibleHit(last, w, soc).filter(x => !x.organizer && !C.readOf(x, G.week).exact);
     victims.slice(0, opts.debriefs ?? 3).forEach(x => {
       const o = orgs.filter(o => C.isKnownFriend(o, x.id) && left(o) >= 1).sort((a, b) => left(b) - left(a))[0];
       if (o && !busy.has(x.id)) { take(o, 'debrief', { targetId: x.id }); busy.add(x.id); }
