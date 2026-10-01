@@ -116,6 +116,7 @@ const ACT1_ACTION = {
   medium: { label: "Medium public action", hours: 2, short: "medium action" },
   large: { label: "Big public action", hours: 3, short: "big action" },
   checkin: { label: "Check in with them", hours: 1, short: "check-in" },
+  drop: { label: "Take them off the committee", hours: 1, short: "step back" },
 };
 // A tie below this is too weak to draw, and too weak for a public action to carry along.
 const EDGE_MIN_DRAW = 20;
