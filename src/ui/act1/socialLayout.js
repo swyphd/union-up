@@ -8,6 +8,7 @@
 // leaving the tray rises out of their tray slot rather than appearing from nowhere.
 import { forceSimulation, forceLink, forceManyBody, forceCollide, forceX, forceY } from "d3-force";
 import { CIRCLES, CIRCLE_BY_ID, knownFriends, friendsOf } from "../../engine/act1/friends.js";
+import { seenCircle } from "../../engine/act1/fallout.js";
 
 const SOCIAL_SCALE = 0.8;
 const GRAPH_TOP = 8;
@@ -17,7 +18,8 @@ const TRAY_LABEL = 9;
 const MARGIN = 6;
 
 const isPlaced = (w) => !!(w.organizer || w.circleKnown || knownFriends(w).length > 0);
-const circleOf = (social, w) => (w.circleKnown ? social?.circleOf?.[w.id] || null : null);
+// The crowd you last saw them in, which a falling out you missed can make wrong.
+const circleOf = (social, w) => seenCircle(w, social) || null;
 
 function socialSignature(workers, social) {
   return workers.map(w => `${w.id}:${isPlaced(w) ? 1 : 0}${circleOf(social, w) || "-"}:${knownFriends(w).slice().sort((a, b) => a - b).join(".")}`).join("|");
@@ -44,7 +46,7 @@ function computeSocialLayout({ workers, social, width, cardW, cardH, prev = null
     blocks.push(blk); members.forEach(m => { blockOf[m.id] = blk; });
   });
   placed.filter(w => !blockOf[w.id]).forEach(w => {
-    const blk = { key: `w:${w.id}`, members: [w], cols: 1, w: cw, h: ch, loner: w.circleKnown && !social?.circleOf?.[w.id] };
+    const blk = { key: `w:${w.id}`, members: [w], cols: 1, w: cw, h: ch, loner: w.circleKnown && !seenCircle(w, social) };
     blocks.push(blk); blockOf[w.id] = blk;
   });
 

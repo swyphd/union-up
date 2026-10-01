@@ -13,3 +13,4 @@ export * from "./actions.js";
 export * from "./ladder.js";
 export * from "./resolveWeek.js";
 export * from "./coverage.js";
+export * from "./fallout.js";

@@ -60,6 +60,12 @@ function makeAct1Workers(social = null) {
     // talking to them. You know your own people's friends from day one.
     knownFriends: w.organizer ? [...friendsOf(soc, w.id)] : [],
     circleKnown: !!w.organizer,
+    // What the board shows is what you believe: the friend count anybody can see across
+    // the room, and the crowd you have seen them in. Falling outs can make either stale.
+    circleSeen: w.organizer ? (circleOfId(soc, w.id) ?? null) : undefined,
+    slotsSeen: friendsOf(soc, w.id).length,
+    brokenFriends: [],
+    unseenBreaks: [],
     // What they SAY is a signal the player can pick up for free. What they'd DO is the
     // card in front of them, and it starts lower for everyone but your own people.
     support: clamp(w.support + rand(9) - 4),

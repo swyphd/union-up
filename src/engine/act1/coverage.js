@@ -16,6 +16,7 @@
 import { CIRCLES } from "./friends.js";
 import { TEAM_LABEL } from "./constants.js";
 import { rating } from "./election.js";
+import { seenCircle } from "./fallout.js";
 
 const LEAK_CHANCE = { 5: 0, 4: 0.4, 3: 0.5, 2: 0.6, 1: 0.7 };
 const leakChance = (trueSupport) => LEAK_CHANCE[rating(trueSupport ?? 0)] ?? 0;
@@ -50,8 +51,8 @@ const sizeLeakChance = (workers) => Math.max(0, committeeOf(workers).length - CO
 function coverageGaps(workers, social) {
   const members = committeeOf(workers);
   const teams = Object.keys(TEAM_LABEL).filter(t => !members.some(m => m.team === t));
-  const found = CIRCLES.filter(c => workers.some(x => x.circleKnown && social?.circleOf?.[x.id] === c.id));
-  const crowds = found.filter(c => !members.some(m => social?.circleOf?.[m.id] === c.id));
+  const found = CIRCLES.filter(c => workers.some(x => seenCircle(x, social) === c.id));
+  const crowds = found.filter(c => !members.some(m => seenCircle(m, social) === c.id));
   return { teams, crowds, foundCrowds: found.length };
 }
 

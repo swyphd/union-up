@@ -12,6 +12,7 @@ import { AFFINITY_POOL, AFF_BY_ID, PERK_WEEKS, affList, poisonedAff, tieBonus, t
 import { infTrait, recvMult } from "./traits.js";
 import { outgoingTies } from "./influence.js";
 import { friendsOf, isKnownFriend, learnFriends, learnOneFriend, vouchFor } from "./friends.js";
+import { FALLOUT_TUNING, RUMOR_REPAIR_WEEKS, breakFriendship, catchUp, cloneSocial, pickFallout, pickRumor, repairFriendship, seeCircle } from "./fallout.js";
 import { COMMITTEE_TUNING, DROP_LEAK_TRUE, LEAK_TIP_TRUE, VET_MIN_XP, activeLeaks, committeeOf, leakChance, leakHeat, sizeHeat, sizeLeakChance } from "./coverage.js";
 import { ACT1_WORKERS_SEED, ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, ACT1_TOTAL_WORKERS, BURN_NARRATIVES, CARD_LIFESPAN, TEAM_LABEL } from "./constants.js";
 import { CONSULTANT_FIRM, CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_NAME_UC, CONSULTANT_ONE_ON_ONES, CONSULTANT_SETPIECE_GAP, CONSULTANT_TRIGGER_COMMITTEE, KIRKMAN_SIGHT, OUTSIDERS, holdsFast, orgChartResistance, signedBacking } from "./consultant.js";
@@ -19,7 +20,9 @@ import { rating, turnoutChance, voteProjection, yesChance } from "./election.js"
 
 export function resolveWeek(state, planEntries) {
   const { workers, influence, week, stage, heat, consultant, perks, outsiders, electionWeek } = state;
-  const social = state.social || { friends: {}, circleOf: {} };
+  // This week's own copy of who is friends with whom: a falling out changes it, and the
+  // changed copy is handed back with everything else.
+  const social = cloneSocial(state.social);
   const organizers = workers.filter(x => x.organizer && !x.burned);
   const totalHours = organizers.reduce((s, o) => s + committeeHours(o), 0);
   const totalUsed = planEntries.reduce((s, e) => s + ACT1_ACTION[e.type].hours, 0);
@@ -81,8 +84,21 @@ export function resolveWeek(state, planEntries) {
     // The map. A quick chat gets one name and whether they run in the same crowd as
     // whoever is asking; the long version gets all of it (below, once it lands).
     const mentioned = learnOneFriend(w, social, target.id);
-    if (social.circleOf?.[target.id] && social.circleOf[target.id] === social.circleOf[actor.id]) target.circleKnown = true;
-    const friendNote = mentioned != null ? ` They mention ${byId(mentioned)?.name}.` : "";
+    if (social.circleOf?.[target.id] && social.circleOf[target.id] === social.circleOf[actor.id]) seeCircle(target, social);
+    // Any conversation brings you up to date on who they still talk to.
+    const goneQuiet = catchUp(w, social, target);
+    let mapNews = goneQuiet.length ? ` ${target.name} and ${goneQuiet.map(y => y.name).join(" and ")} don't talk anymore.` : "";
+    // A rumor can be talked down while it is fresh.
+    social.rumors.filter(r => week - r.week <= RUMOR_REPAIR_WEEKS && (r.a === target.id || r.b === target.id)).forEach(r => {
+      const other = byId(r.a === target.id ? r.b : r.a);
+      if (other && repairFriendship(w, social, target, other, week)) {
+        r.repaired = true;
+        stats.repairs = (stats.repairs || 0) + 1;
+        mapNews += ` ${actor.name} gets the story straight: ${target.name} and ${other.name} are talking again.`;
+      }
+    });
+    social.rumors = social.rumors.filter(r => !r.repaired);
+    const friendNote = (mentioned != null ? ` They mention ${byId(mentioned)?.name}.` : "") + mapNews;
 
     // Surface what they have in common. This is the payload of the quick chat.
     const found = revealAffinities(target, revealCount(e.type, actor, target));
@@ -115,7 +131,7 @@ export function resolveWeek(state, planEntries) {
       // Everyone they are close to, which crowd they are part of, and their read on each
       // friend: words again, a ceiling, but it puts a digit on people nobody has met.
       const newly = learnFriends(w, social, target.id);
-      target.circleKnown = true;
+      seeCircle(target, social);
       const heardOf = [];
       friendsOf(social, target.id).forEach(fid => {
         const f = byId(fid);
@@ -297,7 +313,8 @@ export function resolveWeek(state, planEntries) {
     target.signedWeek = week; // joining the committee is itself a fresh commitment
     gainXp(actor, XP_PER_ACTION);
     target.knownAffinities = [...affList(target)]; // your own people hold nothing back
-    target.circleKnown = true;
+    seeCircle(target, social);
+    catchUp(w, social, target);
     learnFriends(w, social, target.id);
     recruitReveal(target);
     recruitNotes[target.id] = "joins the committee";
@@ -755,10 +772,29 @@ export function resolveWeek(state, planEntries) {
       if (canThreat && threatPool.length > 1) options.push("threat");
       if (canRaise && raisePool.length) options.push("raise");
       if (canPerk) options.push("perk");
+      const rumorPair = (consultantNext.rumors || 0) < CONSULTANT_MAX_EACH ? pickRumor(w, social) : null;
+      if (rumorPair) options.push("rumor");
       const chosen = options.length ? options[rand(options.length)] : null;
       const doThreat = chosen === "threat";
 
-      if (chosen === "perk") {
+      if (chosen === "rumor") {
+        // He does not need to turn anybody. He only needs two friends to stop trusting
+        // each other, and he picks the friendship your committee is travelling along.
+        const [ra, rb] = rumorPair;
+        consultantNext = { ...consultantNext, rumors: (consultantNext.rumors || 0) + 1, lastSetPiece: week };
+        const res = breakFriendship(w, social, ra, rb, week, { seen: true });
+        social.rumors.push({ a: ra.id, b: rb.id, week });
+        stats.rumors = (stats.rumors || 0) + 1;
+        consultantNotes[ra.id] = `stops talking to ${rb.name}`;
+        consultantNotes[rb.id] = `stops talking to ${ra.name}`;
+        consultantLines.push(
+          `RUMOR \u2014 ${CONSULTANT_NAME} lets it be known that ${ra.name} said something about ${rb.name}. Whether it is true does not matter. By Friday they are not speaking.` +
+          (res.movedTo !== res.movedFrom ? ` ${res.loser.name} drifts away from that crowd.` : "") +
+          ` Somebody on the committee talking to either of them this week or next can get the story straight.`
+        );
+        ra.history.push(`Week ${week}: fell out with ${rb.name} over a rumor.`);
+        rb.history.push(`Week ${week}: fell out with ${ra.name} over a rumor.`);
+      } else if (chosen === "perk") {
         const { a: aff, holders } = perkCandidates[0];
         consultantNext = { ...consultantNext, perks: (consultantNext.perks || 0) + 1, lastSetPiece: week };
         let trueTotal = 0, fullTotal = 0, held = 0;
@@ -872,6 +908,32 @@ export function resolveWeek(state, planEntries) {
     });
   }
 
+  // --- FRIENDSHIPS GIVE WAY ---
+  // About once a drive, and more often under the pressure of a petition, two friends stop
+  // talking. You see it only if you had mapped that friendship.
+  if (random() < (stage === "campaign" ? FALLOUT_TUNING.campaignChance : FALLOUT_TUNING.driveChance)) {
+    const pair = pickFallout(w, social);
+    if (pair) {
+      const [fa, fb] = pair;
+      const res = breakFriendship(w, social, fa, fb, week);
+      stats.fallouts = (stats.fallouts || 0) + 1;
+      if (res.visible) {
+        stats.falloutsSeen = (stats.falloutsSeen || 0) + 1;
+        steps.push({
+          label: "A FALLING OUT", sub: "Friendships do not hold still for a campaign.",
+          workers: w.map(x => ({ ...x })),
+          lines: [`${fa.name} and ${fb.name} have fallen out. Nobody will say over what.` +
+            (res.movedTo !== res.movedFrom && res.loser.circleKnown ? ` ${res.loser.name} drifts away from that crowd.` : "")],
+          notes: { [fa.id]: `stops talking to ${fb.name}`, [fb.id]: `stops talking to ${fa.name}` },
+        });
+        fa.history.push(`Week ${week}: fell out with ${fb.name}.`);
+        fb.history.push(`Week ${week}: fell out with ${fa.name}.`);
+      }
+    }
+  }
+  // A rumor nobody talked down within the window has set.
+  social.rumors = social.rumors.filter(r => week - r.week < RUMOR_REPAIR_WEEKS + 1);
+
   const signedNow = w.filter(x => x.signed).length;
 
   // --- ELECTION DAY ---
@@ -915,6 +977,7 @@ export function resolveWeek(state, planEntries) {
       ballot,
       outsidersNext,
       perksNext: [...perksNext, ...consultantPerks],
+      social,
       // Reaching 30% no longer ends the game — it unlocks the choice to file.
       reachedThreshold: stage === "drive" && signedNow >= ACT1_CARDS_NEEDED,
     },

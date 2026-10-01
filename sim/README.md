@@ -12,6 +12,7 @@ for byte. That is how a refactor of the engine is checked.
 node sim/verify-ballot.mjs   # win rate, margin and projection error by player skill (mapper, careful, sloppy, careless)
 node sim/mapper-tune.mjs     # mapper variants (recruiting for coverage / everybody / 5s, patience) against careful
 node sim/committee-sweep.mjs # leak and committee-size costs against recruiting strategies
+node sim/fallouts.mjs        # falling outs and rumors per game, and how stale the map goes if you stop mapping
 node sim/clarity.mjs         # how much of the floor a player can see, week by week
 node sim/sweep.mjs           # ballot-curve sweep: pivot and span against margin
 node sim/drive.mjs           # cost of public actions during the card drive

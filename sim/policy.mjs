@@ -147,6 +147,9 @@ export function planWeekMapper(G, opts = {}) {
     .sort((p, q) => q.r.mid - p.r.mid)
     .forEach(({ x }) => { const a = best(x, 2); if (a) { take(a, 'ask', x.id); busy.add(x.id); } });
 
+  // A player who stops mapping: after this week, only asks and committee business.
+  if (opts.stopMappingAt != null && G.week > opts.stopMappingAt) return plan;
+
   // 4. Sit down where there is a path. Unread hubs first (a hub's sit-down maps three
   //    people), then everyone below the ask bar, closest to it first: the sit-down is
   //    also the only thing that really moves somebody.

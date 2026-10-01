@@ -9,6 +9,7 @@ import { Act1WorkerModal } from "./WorkerPanel.jsx";
 import { makeAct1Workers } from "../../engine/act1/influence.js";
 import { CIRCLES, generateSocial, isKnownFriend, vouchFor } from "../../engine/act1/friends.js";
 import { activeLeaks, coverageGaps, recentlyTipped } from "../../engine/act1/coverage.js";
+import { seenCircle } from "../../engine/act1/fallout.js";
 import { TEAM_HEX, TEAM_LABEL, ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_PUBLIC_UNLOCK_WEEK, ACT1_RECRUIT_REQ, ACT1_SHIP_WEEK, ACT1_TOTAL_WORKERS, ACT1_WORKERS_SEED, act1Stars, cardStaleSoon } from "../../engine/act1/constants.js";
 import { committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { ACT1_ACTION } from "../../engine/act1/actions.js";
@@ -136,8 +137,10 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   }
 
   function commitWeek() {
-    const { workers: w, heat: h, consultant: c, ballot, outsidersNext, perksNext, reachedThreshold } = pendingRef.current;
+    const { workers: w, heat: h, consultant: c, ballot, outsidersNext, perksNext, reachedThreshold, social: socialNext } = pendingRef.current;
     setWorkers(w);
+    // Friendships can end in a week; the floor's structure moves on with everything else.
+    if (socialNext) setSocial(socialNext);
     setHeat(h);
     setConsultant(c);
     setOutsiders(outsidersNext);
@@ -287,8 +290,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
                     className="inline-block w-2 h-2 rounded-sm border" style={{ borderColor: TEAM_HEX[team], backgroundColor: covered ? TEAM_HEX[team] : "transparent" }} />;
                 })}
                 <span className="w-px h-2.5 bg-stone-700 mx-0.5" />
-                {CIRCLES.filter(c => workers.some(x => x.circleKnown && social.circleOf[x.id] === c.id)).map(c => {
-                  const covered = organizers.some(o => social.circleOf[o.id] === c.id);
+                {CIRCLES.filter(c => workers.some(x => seenCircle(x, social) === c.id)).map(c => {
+                  const covered = organizers.some(o => seenCircle(o, social) === c.id);
                   return <span key={c.id} title={`${c.label}: ${covered ? "somebody on the committee is in this crowd" : "nobody on the committee is in this crowd"}`}
                     className="inline-block w-2 h-2 rounded-full border" style={{ borderColor: c.hex, backgroundColor: covered ? c.hex : "transparent" }} />;
                 })}
@@ -437,6 +440,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
                       [CONSULTANT_MAX_EACH - (consultant.raises || 0), "raise", "raises"],
                       [CONSULTANT_MAX_EACH - (consultant.threats || 0), "job threat", "job threats"],
                       [CONSULTANT_MAX_EACH - (consultant.perks || 0), "company perk", "company perks"],
+                      [CONSULTANT_MAX_EACH - (consultant.rumors || 0), "rumor", "rumors"],
                     ].filter(([n]) => n > 0);
                     if (!left.length) return "Every set piece is spent — no raise, no job threat, no perk left to run.";
                     return `A set piece every ${CONSULTANT_SETPIECE_GAP} week${CONSULTANT_SETPIECE_GAP === 1 ? "" : "s"}: ${
