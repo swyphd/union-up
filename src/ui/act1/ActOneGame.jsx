@@ -1,13 +1,13 @@
 // Act One: the card drive and the election campaign, one shop.
 import React, { useState, useEffect, useRef } from "react";
-import { AlertTriangle, Eye, Vote, Megaphone, UsersRound } from "lucide-react";
+import { AlertTriangle, Eye, Vote, Megaphone, Network, UsersRound } from "lucide-react";
 import { GlobalStyle, IntroSequence, OutcomeRoster, OutcomeScreen, splitLinesByEntity } from "../shared.jsx";
 import { random } from "../../engine/rng.js";
 import { ACT1_INTRO_BEATS, IntroCommitteeVisual, IntroInfluenceVisual } from "./intro.jsx";
 import { Act1FloorMap, ORG_LAYOUT } from "./FloorMap.jsx";
 import { Act1WorkerModal } from "./WorkerPanel.jsx";
 import { makeAct1Workers } from "../../engine/act1/influence.js";
-import { CIRCLES, generateSocial, isKnownFriend, vouchFor } from "../../engine/act1/friends.js";
+import { CIRCLES, generateSocial, isKnownFriend, mapProgress, vouchFor } from "../../engine/act1/friends.js";
 import { activeLeaks, coverageGaps, recentlyTipped } from "../../engine/act1/coverage.js";
 import { seenCircle } from "../../engine/act1/fallout.js";
 import { TEAM_HEX, TEAM_LABEL, ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, ACT1_SHIP_WEEK, ACT1_TOTAL_WORKERS, ACT1_WORKERS_SEED, act1Stars, cardStaleSoon } from "../../engine/act1/constants.js";
@@ -20,6 +20,12 @@ import { CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_SETPIECE_GAP, KIRKMAN_
 import { AFF_BY_ID } from "../../engine/act1/affinities.js";
 import { COORDINATED_ORDER, newCampaign, openCampaign } from "../../engine/act1/campaign.js";
 import { ActionPicker, CalendarStrip, MovePanel } from "./Campaign.jsx";
+
+// A reminder for a player who has stopped mapping: after this many weeks in which the map
+// did not grow, while there is still something left to find, and again every few weeks
+// if they keep not mapping. Mapping is the skill the whole act turns on.
+const MAP_NAG_AFTER = 3;
+const MAP_NAG_REPEAT = 4;
 
 function ActOneGame({ onGraduate, onSkipToCompany }) {
   const [week, setWeek] = useState(1);
@@ -56,6 +62,10 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   const [electionWeek, setElectionWeek] = useState(null);
   const [voteResult, setVoteResult] = useState(null);
   const [showFilePrompt, setShowFilePrompt] = useState(false);
+  // The week the map last grew, and the week the reminder last showed.
+  const [mapGrewWeek, setMapGrewWeek] = useState(1);
+  const [mapNagWeek, setMapNagWeek] = useState(null);
+  const [showMapNag, setShowMapNag] = useState(false);
   const [sawFilePrompt, setSawFilePrompt] = useState(false);
   const pendingRef = useRef(null);
   const planKeyRef = useRef(0);
@@ -175,9 +185,22 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     }
     setWeek(wk => wk + 1);
     // The first time the petition threshold is crossed, stop and make the player choose.
-    if (reachedThreshold && !sawFilePrompt) {
+    const filePromptNow = reachedThreshold && !sawFilePrompt;
+    if (filePromptNow) {
       setSawFilePrompt(true);
       setShowFilePrompt(true);
+    }
+    // Has the map grown this week? If it has stalled for a while and there is still floor
+    // left to find, say so.
+    const nextWeek = week + 1;
+    const mapNow = mapProgress(w, socialNext || social);
+    if (mapNow.known > mapProgress(workers, social).known) {
+      setMapGrewWeek(nextWeek);
+      setMapNagWeek(null);
+    } else if (!mapNow.complete && !filePromptNow && nextWeek - mapGrewWeek >= MAP_NAG_AFTER
+      && (mapNagWeek == null || nextWeek - mapNagWeek >= MAP_NAG_REPEAT)) {
+      setMapNagWeek(nextWeek);
+      setShowMapNag(true);
     }
     setPhase("plan");
   }
@@ -201,6 +224,9 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     setVoteResult(null);
     setShowFilePrompt(false);
     setSawFilePrompt(false);
+    setMapGrewWeek(1);
+    setMapNagWeek(null);
+    setShowMapNag(false);
     setResolutionSteps([]);
     setStepIndex(0);
     setSelectedWorker(null);
@@ -752,6 +778,33 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           onClose={() => { setSelectedWorker(null); setPairActorId(null); }}
         />
       )}
+
+      {showMapNag && phase === "plan" && (() => {
+        const strangers = mapProgress(workers, social).strangers;
+        return (
+          <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto" onClick={() => setShowMapNag(false)}>
+            <div className="bg-stone-900 border-2 border-amber-600 max-w-md w-full p-5 my-auto text-center" onClick={e => e.stopPropagation()}>
+              <Network size={34} className="mx-auto text-amber-400 mb-2" />
+              <div className="font-stencil text-2xl text-amber-400 mb-2">DON'T FORGET TO MAP THE FLOOR</div>
+              <p className="text-base text-stone-200 mb-2">You can't organize people you don't know.</p>
+              <p className="text-sm text-stone-400 mb-4">
+                {strangers > 0 ? <>Nobody has talked to <span className="text-stone-100 font-bold">{strangers}</span> {strangers === 1 ? "person" : "people"} yet. </> : null}
+                A quick chat gets you a name. A sit-down maps all their friends and their crowd.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <button onClick={() => { setBoardView("social"); setShowMapNag(false); }}
+                  className="flex-1 font-stencil text-base bg-amber-500 hover:bg-amber-400 text-stone-950 px-4 py-2.5 tracking-wide transition-colors">
+                  SHOW ME THE MAP
+                </button>
+                <button onClick={() => setShowMapNag(false)}
+                  className="flex-1 font-stencil text-base border-2 border-stone-600 hover:border-stone-400 text-stone-300 px-4 py-2.5 tracking-wide transition-colors">
+                  GOT IT
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {showMove && move && phase === "plan" && (
         <MovePanel week={week} move={move} workers={workers} social={social} organizers={organizers}
