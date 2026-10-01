@@ -11,7 +11,7 @@ import { ACT1_ACTION, EDGE_MIN_DRAW, PUBLIC_TIERS, convoGain, misfireChance, pub
 import { AFFINITY_POOL, AFF_BY_ID, PERK_WEEKS, affList, poisonedAff, tieBonus, tieFrom, tieOn, visibleShared } from "./affinities.js";
 import { infTrait, recvMult } from "./traits.js";
 import { outgoingTies } from "./influence.js";
-import { learnFriends } from "./friends.js";
+import { friendsOf, learnFriends, learnOneFriend } from "./friends.js";
 import { ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, ACT1_TOTAL_WORKERS, BURN_NARRATIVES, CARD_LIFESPAN, TEAM_LABEL } from "./constants.js";
 import { CONSULTANT_FIRM, CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_NAME_UC, CONSULTANT_ONE_ON_ONES, CONSULTANT_SETPIECE_GAP, CONSULTANT_TRIGGER_COMMITTEE, KIRKMAN_SIGHT, OUTSIDERS, holdsFast, orgChartResistance, signedBacking } from "./consultant.js";
 import { rating, turnoutChance, voteProjection, yesChance } from "./election.js";
@@ -51,18 +51,22 @@ export function resolveWeek(state, planEntries) {
     const actor = byId(e.actorId);
     const target = byId(e.targetId);
     if (!actor || !target || actor.burned || target.burned) return;
-    const tie = tieOn(influence, actor, target);
+    const tie = tieOn(influence, actor, target, w);
     const g = convoGain(actor, target, tie);
     const before = target.support;
     target.revealed = true; // you learn who they listen to by sitting down with them
     target.spokenTo = true; // and you learn something about where they actually are
-    learnFriends(w, social, target.id); // and who their friends are
+    // The map. A quick chat gets one name and whether they run in the same crowd as
+    // whoever is asking; the long version gets all of it (below, once it lands).
+    const mentioned = learnOneFriend(w, social, target.id);
+    if (social.circleOf?.[target.id] && social.circleOf[target.id] === social.circleOf[actor.id]) target.circleKnown = true;
+    const friendNote = mentioned != null ? ` They mention ${byId(mentioned)?.name}.` : "";
 
     // Surface what they have in common. This is the payload of the quick chat.
     const found = revealAffinities(target, revealCount(e.type, actor, target));
     const foundNames = found.map(t => AFF_BY_ID[t].label.toLowerCase());
 
-    if (e.type === "deep" && random() < misfireChance(actor, target)) {
+    if (e.type === "deep" && random() < misfireChance(actor, target, w)) {
       // Cold deep talk. They hear a pitch, not a conversation.
       target.guarded = 3;
       stats.misfires++;
@@ -70,7 +74,7 @@ export function resolveWeek(state, planEntries) {
       bump(target, -2, -4);
       convoPulses.push({ from: actor.id, to: target.id, tone: "down" });
       convoNotes[target.id] = `${actor.name} misreads them`;
-      convoLines.push(`${target.name}: ${actor.name} sat down for the long version without knowing the first thing about them. It landed like a sales pitch — ${target.name} is guarded now, and will be for a while.${foundNames.length ? ` You did at least learn something: ${foundNames.join(", ")}.` : ""}`);
+      convoLines.push(`${target.name}: ${actor.name} sat down for the long version without knowing the first thing about them. It landed like a sales pitch — ${target.name} is guarded now, and will be for a while.${foundNames.length ? ` You did at least learn something: ${foundNames.join(", ")}.` : ""}${friendNote}`);
       target.history.push(`Week ${week}: a cold deep conversation with ${actor.name} backfired.`);
       return;
     }
@@ -81,7 +85,24 @@ export function resolveWeek(state, planEntries) {
     const trueGain = e.type === "deep" ? g.deepTrue : g.quickTrue;
     bump(target, e.type === "deep" ? g.deep : g.quick, trueGain);
     stats.convoGain += target.support - before;
-    if (e.type === "deep") target.trueReadValue = target.trueSupport;
+    let deepMap = "";
+    if (e.type === "deep") {
+      target.trueReadValue = target.trueSupport;
+      // Everyone they are close to, which crowd they are part of, and their read on each
+      // friend: words again, a ceiling, but it puts a digit on people nobody has met.
+      const newly = learnFriends(w, social, target.id);
+      target.circleKnown = true;
+      const heardOf = [];
+      friendsOf(social, target.id).forEach(fid => {
+        const f = byId(fid);
+        if (f && !f.spokenTo && !f.trueKnown && !f.signed && !f.heardAbout) { f.heardAbout = true; heardOf.push(f.name); }
+      });
+      const names = friendsOf(social, target.id).map(fid => byId(fid)?.name).filter(Boolean);
+      deepMap = names.length
+        ? ` Close with ${names.join(", ")}${heardOf.length ? `, and you hear how ${heardOf.length === 1 ? heardOf[0] + " is" : "they are"} doing` : ""}.`
+        : " Keeps to themselves.";
+      if (newly === 0 && !heardOf.length && names.length) deepMap = "";
+    }
     if (target.guarded > 0 && e.type === "deep" && visibleShared(actor, target).length) target.guarded = 0;
     convoPulses.push({ from: actor.id, to: target.id, tone: "up" });
     // Only common ground you have SURFACED does any work, so only that is worth
@@ -99,8 +120,8 @@ export function resolveWeek(state, planEntries) {
     // now know something. Lead with that, because that is what the player just bought.
     convoLines.push(
       e.type === "deep"
-        ? `${target.name}: a long, honest conversation with ${actor.name} — ${flavor}. You now know where ${target.name} actually stands: a ${rating(target.trueSupport)}${rating(target.trueSupport) < rating(target.support) ? `, against the ${rating(target.support)} they talk like` : ", and they talk like it"}. That read is good for a few weeks before people move again.${foundNames.length ? ` You also learn: ${foundNames.join(", ")}.` : ""}`
-        : `${target.name}: a quick word with ${actor.name} — ${flavor}. They talk ${rating(target.support) > rating(before) ? `warmer, like a ${rating(target.support)} now` : "warmer"}, which is a ceiling and not a read.${foundNames.length ? ` You learn: ${foundNames.join(", ")}.` : ""}`
+        ? `${target.name}: a long, honest conversation with ${actor.name} — ${flavor}. You now know where ${target.name} actually stands: a ${rating(target.trueSupport)}${rating(target.trueSupport) < rating(target.support) ? `, against the ${rating(target.support)} they talk like` : ", and they talk like it"}. That read is good for a few weeks before people move again.${deepMap}${foundNames.length ? ` You also learn: ${foundNames.join(", ")}.` : ""}`
+        : `${target.name}: a quick word with ${actor.name} — ${flavor}. They talk ${rating(target.support) > rating(before) ? `warmer, like a ${rating(target.support)} now` : "warmer"}, which is a ceiling and not a read.${friendNote}${foundNames.length ? ` You learn: ${foundNames.join(", ")}.` : ""}`
     );
     target.history.push(`Week ${week}: ${ACT1_ACTION[e.type].label.toLowerCase()} with ${actor.name}.`);
   });
@@ -182,7 +203,7 @@ export function resolveWeek(state, planEntries) {
     const actor = byId(e.actorId);
     const target = byId(e.targetId);
     if (!actor || !target || actor.burned || target.burned || target.signed) return;
-    const tie = tieOn(influence, actor, target);
+    const tie = tieOn(influence, actor, target, w);
     const chance = signChance(actor, target, tie);
     target.revealed = true;
     touched.add(target.id);

@@ -4,12 +4,13 @@ import { X } from "lucide-react";
 import { AffinityMarks, InfluenceTraitChip } from "./marks.jsx";
 import { CostPips, HourPie } from "../shared.jsx";
 import { infOn, outgoingTies } from "../../engine/act1/influence.js";
-import { ACT1_ACTION, EDGE_MIN_DRAW, PUBLIC_TIERS, convoGain, influenceKnown, misfireChance, publicGain, shownInfluence } from "../../engine/act1/actions.js";
-import { affList, knownAff, tieBonus, tieFrom } from "../../engine/act1/affinities.js";
+import { ACT1_ACTION, EDGE_MIN_DRAW, PUBLIC_TIERS, pathTo, convoGain, influenceKnown, misfireChance, publicGain, shownInfluence } from "../../engine/act1/actions.js";
+import { affList, knownAff, tieBonus, tieFrom, tieOn } from "../../engine/act1/affinities.js";
 import { ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, TEAM_HEX, TEAM_LABEL } from "../../engine/act1/constants.js";
 import { RATING_WORD, deltaMarks, ratingGlyph } from "../../engine/act1/election.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
+import { FRIEND_TIE, VOUCH_TIE, vouchFor } from "../../engine/act1/friends.js";
 
 function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, unlockPublic, onPlan, onClose }) {
   const others = organizers.filter(o => o.id !== worker.id);
@@ -32,15 +33,17 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
   // of a panel that says "pick someone else" with the picker hidden.
   const preferred = others.find(o => o.id === preferActorId);
   const locked = !isSelfPanel && !!preferred && hoursLeftFor(preferred) > 0;
-  const rankedOthers = [...others].sort((a, b) =>
-    tieFrom(influenceKnown(b, worker) ? infOn(influence, b.id, worker.id) : 0, b, worker)
-    - tieFrom(influenceKnown(a, worker) ? infOn(influence, a.id, worker.id) : 0, a, worker));
+  // Your own people's relationships are known to you, so the ranking is the real tie,
+  // including any signed mutual friend who can vouch.
+  const rankedOthers = [...others].sort((a, b) => tieOn(influence, b, worker, allWorkers) - tieOn(influence, a, worker, allWorkers));
 
 
   const weight = actor && !isSelfPanel ? shownInfluence(influence, actor, worker) : 0;
   // What the relationship is actually worth, once the common ground you have surfaced
   // is counted. This is the number every formula below runs on.
-  const tie = actor && !isSelfPanel ? tieFrom(weight, actor, worker) : 0;
+  const via = actor && !isSelfPanel ? vouchFor(actor, worker, allWorkers) : null;
+  const tie = actor && !isSelfPanel ? tieFrom(via && weight < FRIEND_TIE ? weight + VOUCH_TIE : weight, actor, worker) : 0;
+  const path = actor && !isSelfPanel ? pathTo(actor, worker, allWorkers) : null;
   const weightKnown = influenceKnown(actor, worker);
   const gains = actor && !isSelfPanel ? convoGain(actor, worker, tie) : null;
 
@@ -207,7 +210,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
             <div className={locked ? "hidden" : "flex flex-wrap gap-1.5 mb-2"}>
               {rankedOthers.map(o => {
                 const wgtKnown = influenceKnown(o, worker);
-                const oTie = wgtKnown ? tieFrom(infOn(influence, o.id, worker.id), o, worker) : null;
+                const oTie = wgtKnown ? tieOn(influence, o, worker, allWorkers) : null;
                 const tieHex = oTie == null ? "#57534e" : oTie >= 55 ? "#2dd4bf" : oTie >= 25 ? "#fbbf24" : "#78716c";
                 const tieWord = oTie == null ? "you don't know how these two get on" : oTie >= 55 ? "close: this is who should be doing it" : oTie >= 25 ? "they know each other" : "barely know each other";
                 const selected = o.id === actorId;
@@ -244,6 +247,8 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                         : tie >= 25 ? "it'll land, but not hard"
                         : "whatever they say bounces off"}
                     </span>
+                    {path?.kind === "friend" && <span className="text-teal-300"> · friends</span>}
+                    {path?.kind === "vouch" && <span className="text-teal-300"> · {path.via.name} vouches for them</span>}
                     {tieBonus(actor, worker) > 0 && (
                       <span className="text-teal-300"> · what they share does some of the work</span>
                     )}
@@ -294,14 +299,14 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                   </div>
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">
                     {type === "deep"
-                      ? <><span className="text-teal-400 font-bold">{deltaMarks(gains.deepTrue)}</span> where they stand, and the digit turns solid. Surfaces most of what they care about, and who their friends are.</>
-                      : <><span className="text-teal-400">{gains.quickTrue > 0 ? deltaMarks(gains.quickTrue) : "\u25B3"}</span> where they stand, and you hear what they say. Surfaces a thing or two, and who their friends are.</>}
+                      ? <><span className="text-teal-400 font-bold">{deltaMarks(gains.deepTrue)}</span> where they stand, and the digit turns solid. Maps all their friends and their crowd, and how their friends are doing.</>
+                      : <><span className="text-teal-400">{gains.quickTrue > 0 ? deltaMarks(gains.quickTrue) : "\u25B3"}</span> where they stand, and you hear what they say. Surfaces a thing or two, and one friend's name.</>}
                   </div>
-                  {type === "deep" && misfireChance(actor, worker) > 0 && (
+                  {type === "deep" && misfireChance(actor, worker, allWorkers) > 0 && (
                     <div className="text-xs text-red-400 leading-snug mt-0.5">
                       <span className="font-bold">!</span> {affList(worker).some(t => !knownAff(worker).includes(t))
-                        ? "Nothing found in common yet, so this can land as a pitch and put them on guard. Quick chat first."
-                        : "These two have nothing to build on, so this can land as a pitch and put them on guard."}
+                        ? "No way in: not friends, nobody signed to vouch, nothing found in common yet. This can land as a pitch and put them on guard. Quick chat first."
+                        : "No way in: not friends, nobody signed to vouch, nothing in common. This can land as a pitch and put them on guard."}
                     </div>
                   )}
                 </button>
