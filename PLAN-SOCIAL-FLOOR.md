@@ -289,6 +289,13 @@ The misfire rule stays but its trigger changes: a sit-down with someone you have
 (not a friend, not vouched, no surfaced common ground) lands as a pitch. The panel shows it
 as a red mark on the sit-down icon, no number.
 
+*Added after M6:* a reminder. After three weeks in which the map did not grow (no new
+friendship and no new crowd found), while there is still floor left to map, a popup says
+"Don't forget to map the floor. You can't organize people you don't know," with how many
+people nobody has talked to yet and a button that opens the social view. It comes back
+every four weeks the map stays stalled, and never once the floor is fully mapped
+(`mapProgress` in `friends.js`).
+
 Public actions in Phase 1: **one**, late, optional: the open-letter sign-on, a structure test
 you can run once the filing line is in sight. Everyone who signs it turns solid; everyone you
 expected who does not turns hollow. It costs heat. Nothing else public before filing, which

@@ -161,5 +161,17 @@ function knownEdges(workers) {
   return out;
 }
 
-export { learnOneFriend, VOUCH_TIE, vouchFor, CIRCLES, CIRCLE_BY_ID, MAX_FRIENDS, FRIEND_TIE, CIRCLE_TIE, generateSocial, influenceFrom,
+// How much of the floor you have mapped: friendships you know about plus people whose
+// crowd you have found, against what there is to find. The game nudges a player whose map
+// has stopped growing while there is still something left to learn.
+function mapProgress(workers, social) {
+  const live = workers.filter(x => !x.burned);
+  const known = knownEdges(workers).length + live.filter(x => x.circleKnown).length;
+  const missingEdge = allEdges(social).some(([a, b]) => !isKnownFriend(workers.find(x => x.id === a), b));
+  const missingCrowd = live.some(x => social?.circleOf?.[x.id] && !x.circleKnown);
+  const strangers = live.filter(x => !x.organizer && !x.spokenTo && !x.signed).length;
+  return { known, complete: !missingEdge && !missingCrowd, strangers };
+}
+
+export { mapProgress, learnOneFriend, VOUCH_TIE, vouchFor, CIRCLES, CIRCLE_BY_ID, MAX_FRIENDS, FRIEND_TIE, CIRCLE_TIE, generateSocial, influenceFrom,
   friendsOf, circleOfId, knownFriends, isKnownFriend, learnFriendship, learnFriends, allEdges, knownEdges };
