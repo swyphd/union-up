@@ -7,8 +7,8 @@ import { ACT1_INTRO_BEATS, IntroCommitteeVisual, IntroInfluenceVisual } from "./
 import { Act1FloorMap, ORG_LAYOUT } from "./FloorMap.jsx";
 import { Act1WorkerModal } from "./WorkerPanel.jsx";
 import { makeAct1Workers } from "../../engine/act1/influence.js";
-import { generateSocial } from "../../engine/act1/friends.js";
-import { ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_PUBLIC_UNLOCK_WEEK, ACT1_RECRUIT_REQ, ACT1_SHIP_WEEK, ACT1_TOTAL_WORKERS, ACT1_WORKERS_SEED, act1Stars, cardStaleSoon } from "../../engine/act1/constants.js";
+import { CIRCLES, generateSocial } from "../../engine/act1/friends.js";
+import { TEAM_HEX, TEAM_LABEL, ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_PUBLIC_UNLOCK_WEEK, ACT1_RECRUIT_REQ, ACT1_SHIP_WEEK, ACT1_TOTAL_WORKERS, ACT1_WORKERS_SEED, act1Stars, cardStaleSoon } from "../../engine/act1/constants.js";
 import { committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { ACT1_ACTION } from "../../engine/act1/actions.js";
 import { resolveWeek as runWeek } from "../../engine/act1/resolveWeek.js";
@@ -37,6 +37,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   // Target-first: click anyone and the panel opens with the best organizer picked. Dragging
   // a committee card onto somebody opens the same panel with that pair locked.
   const [pairActorId, setPairActorId] = useState(null);
+  // Org chart or social map. One choice for both the planning board and the playback.
+  const [boardView, setBoardView] = useState("org");
   const [confirmStartOver, setConfirmStartOver] = useState(false);
   const [wonOnWeek, setWonOnWeek] = useState(null);
   // "drive" = collecting cards toward the 30% petition threshold. "campaign" = petition
@@ -269,7 +271,21 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
             <div className="text-center">
               <div className="text-stone-500 text-xs">COMMITTEE</div>
               <div className="text-lg font-bold text-stone-100">{organizers.length}</div>
-              <div className="text-[11px] text-stone-600">{totalHours} hrs/week</div>
+              {/* Coverage: one dot per team and per crowd you have found, filled when
+                  somebody on the committee is inside it. */}
+              <div className="flex items-center justify-center gap-1 mt-0.5">
+                {Object.keys(TEAM_LABEL).map(team => {
+                  const covered = organizers.some(o => o.team === team);
+                  return <span key={team} title={`${TEAM_LABEL[team]}: ${covered ? "somebody on the committee is here" : "nobody on the committee is here"}`}
+                    className="inline-block w-2 h-2 rounded-sm border" style={{ borderColor: TEAM_HEX[team], backgroundColor: covered ? TEAM_HEX[team] : "transparent" }} />;
+                })}
+                <span className="w-px h-2.5 bg-stone-700 mx-0.5" />
+                {CIRCLES.filter(c => workers.some(x => x.circleKnown && social.circleOf[x.id] === c.id)).map(c => {
+                  const covered = organizers.some(o => social.circleOf[o.id] === c.id);
+                  return <span key={c.id} title={`${c.label}: ${covered ? "somebody on the committee is in this crowd" : "nobody on the committee is in this crowd"}`}
+                    className="inline-block w-2 h-2 rounded-full border" style={{ borderColor: c.hex, backgroundColor: covered ? c.hex : "transparent" }} />;
+                })}
+              </div>
             </div>
             <div className="text-center">
               <div className="text-stone-500 text-xs flex items-center gap-1"><Eye size={11} /> HEAT</div>
@@ -437,6 +453,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           )}
           <Act1FloorMap
             workers={workers}
+            view={boardView}
+            onView={setBoardView}
             weekNow={week}
             influence={influence}
             layout={ORG_LAYOUT}
@@ -474,6 +492,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           <Act1FloorMap
             workers={resStep.workers}
             social={social}
+            view={boardView}
+            onView={setBoardView}
             weekNow={resStep.week ?? week}
             influence={influence}
             layout={ORG_LAYOUT}

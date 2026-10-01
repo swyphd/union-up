@@ -1,12 +1,14 @@
 // The floor board: the company's org chart, with the campaign drawn on top of it.
 import React, { useState, useRef, useEffect } from "react";
+import { LayoutGrid, Network } from "lucide-react";
 import { HourPieShapes, Pips, truncateNote } from "../shared.jsx";
-import { AffIcon } from "./marks.jsx";
+import { socialLayoutFor } from "./socialLayout.js";
+import { AFF_ICON, AffIcon } from "./marks.jsx";
 import { ACT1_WORKERS_SEED, TEAM_HEX, TEAM_LABEL, cardStaleSoon } from "../../engine/act1/constants.js";
 import { ACT1_ACTION } from "../../engine/act1/actions.js";
 import { AFF_BY_ID, isPoisoned, knownAff } from "../../engine/act1/affinities.js";
 import { RATING_HEX, deltaMarks, ratingGlyph } from "../../engine/act1/election.js";
-import { allEdges, friendsOf, isKnownFriend, knownEdges, knownFriends } from "../../engine/act1/friends.js";
+import { CIRCLE_BY_ID, allEdges, friendsOf, isKnownFriend, knownEdges, knownFriends } from "../../engine/act1/friends.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
 
@@ -66,6 +68,8 @@ function computeOrgLayout(seed) {
 }
 
 const ORG_LAYOUT = computeOrgLayout(ACT1_WORKERS_SEED);
+// A card in its own coordinates. Each view positions and scales the whole group.
+const CARD_FRAME = { x: 0, y: 0, w: ORG_CARD_W, h: ORG_CARD_H, cx: ORG_CARD_W / 2, cy: ORG_CARD_H / 2 };
 
 // Where a line from a card's centre crosses that card's border, so arrows start and end
 // at the box edge instead of disappearing underneath it.
@@ -104,7 +108,7 @@ const GLYPH_TIP = {
   blank: "Nobody has talked to them yet.",
 };
 
-function Act1FloorMap({ workers, influence, social = null, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onPair = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, labels = FLOOR_LABELS, ladder = null, rungOf = null, hoursLeft = null, tierOf = null, glyphOf = ratingGlyph, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
+function Act1FloorMap({ workers, influence, social = null, view = "org", onView = null, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onPair = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, labels = FLOOR_LABELS, ladder = null, rungOf = null, hoursLeft = null, tierOf = null, glyphOf = ratingGlyph, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type }) {
   const [hoverId, setHoverId] = useState(null);
   const svgRef = useRef(null);
   // A committee card being dragged onto somebody. `over` is the card under the pointer;
@@ -128,6 +132,13 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
   const mappedEdges = knownEdges(workers);
   const totalEdges = social ? allEdges(social).length : null;
   const crossMapped = mappedEdges.filter(([a, b]) => byId(a)?.team !== byId(b)?.team).length;
+
+  // Where each card sits on whichever view is showing. Both views draw the same card;
+  // only this map changes, and the card glides between the two.
+  const socialView = view === "social" && !!social;
+  const sl = socialView ? socialLayoutFor(workers, social, layout.width, ORG_CARD_W, ORG_CARD_H) : null;
+  const rects = socialView ? sl.pos : Object.fromEntries(Object.entries(layout.cards).map(([id, c]) => [id, { ...c, scale: 1 }]));
+  const boardH = socialView ? sl.height : layout.height;
 
   const hovered = byId(active);
   // Hovering anyone lights the friendships you know about; everyone else steps back.
@@ -155,7 +166,7 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
     return { x: p.x, y: p.y };
   };
   const cardAt = (p) => {
-    const hit = Object.entries(layout.cards).find(([, c]) => p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h);
+    const hit = Object.entries(rects).find(([, c]) => p.x >= c.x && p.x <= c.x + c.w && p.y >= c.y && p.y <= c.y + c.h);
     return hit ? Number(hit[0]) : null;
   };
   const onCardPointerDown = (w, evt) => {
@@ -200,7 +211,19 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
   return (
     <div className="border-2 border-stone-800 bg-stone-900 card-perf mb-6">
       <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-wrap gap-y-1">
-        <div className="font-stencil text-lg tracking-wide text-stone-200">THE FLOOR</div>
+        <div className="flex items-center gap-3">
+          <div className="font-stencil text-lg tracking-wide text-stone-200">THE FLOOR</div>
+          {onView && social && (
+            <div className="flex items-center border border-stone-700" role="group" aria-label="Board view">
+              {[["org", LayoutGrid, "The org chart: the company's map of the floor."], ["social", Network, "Who is friends with whom: the map you are drawing."]].map(([id, Icon, tip]) => (
+                <button key={id} type="button" onClick={() => onView(id)} title={tip} aria-label={id === "org" ? "Org chart view" : "Social view"} aria-pressed={view === id}
+                  className={`px-2 py-1 transition-colors ${view === id ? "bg-stone-700 text-amber-300" : "text-stone-500 hover:text-stone-200"}`}>
+                  <Icon size={14} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-3 flex-wrap text-[10px]">
           <span className="flex items-center gap-1.5" title="You can spend this person's hours. Drag their card onto somebody to send them.">
             <span className="w-2.5 h-2 shrink-0 border" style={{ borderColor: "#f59e0b" }} />
@@ -230,7 +253,7 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
       </div>
 
       <div className="relative">
-      <svg ref={svgRef} viewBox={`0 0 ${layout.width} ${layout.height}`} className="w-full block select-none"
+      <svg ref={svgRef} viewBox={`0 0 ${layout.width} ${boardH}`} className="w-full block select-none"
         onPointerMove={onSvgPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag} onPointerLeave={() => { if (drag && !drag.started) endDrag(); }}>
         <defs>
           <marker id="org-arrow-hot" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
@@ -238,6 +261,7 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
           </marker>
         </defs>
 
+        {!socialView && (<>
         {/* ---- the company's own chart: reporting lines, drawn underneath everything ---- */}
         <g stroke="#3a3330" strokeWidth="0.5" fill="none">
           <line x1={layout.root.cx} y1={layout.root.y + layout.root.h} x2={layout.root.cx} y2={layout.headerY - 5.5} />
@@ -273,10 +297,44 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
             <text x={tb.cx} y={tb.y + 7.6} textAnchor="middle" fontSize="4.5" fill="#d6d3d1" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.25">{TEAM_LABEL[team]}</text>
           </g>
         ))}
+        </>)}
+
+        {socialView && (<>
+          {/* ---- the crowds you have found ---- */}
+          {sl.bubbles.map(bb => (
+            <g key={`bubble-${bb.id}`}>
+              <rect x={bb.x} y={bb.y} width={bb.w} height={bb.h} rx="6" fill={bb.hex} fillOpacity="0.06" stroke={bb.hex} strokeOpacity="0.45" strokeWidth="0.45" />
+              <text x={bb.x + 3} y={bb.y + 4.6} fontSize="3" fill={bb.hex} fillOpacity="0.9" fontFamily="Impact, 'Arial Black', sans-serif" letterSpacing="0.2">{bb.label}</text>
+              {AFF_ICON[bb.affinity] && (
+                <g transform={`translate(${bb.x + bb.w - 6.2} ${bb.y + 1}) scale(0.42)`} style={{ color: bb.hex }} opacity="0.85">{AFF_ICON[bb.affinity]}</g>
+              )}
+            </g>
+          ))}
+          {/* ---- friendships you have mapped ---- */}
+          <g fill="none">
+            {sl.links.map(({ source, target }) => {
+              const a = rects[source.id ?? source], b = rects[target.id ?? target];
+              if (!a || !b) return null;
+              const aid = source.id ?? source, bid = target.id ?? target;
+              const lit = active != null && (aid === active || bid === active);
+              const both = byId(aid)?.signed && byId(bid)?.signed;
+              // While somebody is hovered, every other line steps back with the cards it joins.
+              const faded = active != null && !lit;
+              return <line key={`f-${aid}-${bid}`} x1={a.cx} y1={a.cy} x2={b.cx} y2={b.cy}
+                stroke={lit ? "#fcd34d" : both ? "#2dd4bf" : "#57534e"} strokeOpacity={lit ? 0.95 : faded ? 0.12 : 0.7} strokeWidth={lit ? 0.7 : 0.45} />;
+            })}
+          </g>
+          {sl.trayY != null && (
+            <g>
+              <line x1="4" x2={layout.width - 4} y1={sl.trayY - 6.5} y2={sl.trayY - 6.5} stroke="#292524" strokeWidth="0.4" />
+              <text x="6" y={sl.trayY - 2} fontSize="2.8" fill="#57534e" fontFamily="'Courier New', monospace" letterSpacing="0.2">NOT ON THE MAP YET</text>
+            </g>
+          )}
+        </>)}
 
         {planArrows.map((e, i) => {
-          const a = layout.cards[e.actorId];
-          const b = layout.cards[e.targetId];
+          const a = rects[e.actorId];
+          const b = rects[e.targetId];
           if (!a || !b) return null;
           const dx = b.cx - a.cx, dy = b.cy - a.cy;
           const p1 = cardEdgePoint(a, dx, dy, 0.8);
@@ -288,8 +346,8 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
         })}
 
         {edgePulses.map((ev, i) => {
-          const a = layout.cards[ev.from];
-          const b = layout.cards[ev.to];
+          const a = rects[ev.from];
+          const b = rects[ev.to];
           if (!a || !b) return null;
           const dx = b.cx - a.cx, dy = b.cy - a.cy;
           const p1 = cardEdgePoint(a, dx, dy, 0.4);
@@ -302,8 +360,10 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
 
         {/* ---- people ---- */}
         {workers.map(w => {
-          const c = layout.cards[w.id];
-          if (!c) return null;
+          const r = rects[w.id];
+          if (!r) return null;
+          // The card's own frame. Every coordinate below is relative to its corner.
+          const c = CARD_FRAME;
           const hl = highlights ? highlights[w.id] : null;
           const planLabels = plannedByWorker[w.id];
           const dim = (active != null && !connectedToActive(w.id)) || (drag?.started && drag.over != null && drag.over !== w.id && drag.actorId !== w.id);
@@ -317,8 +377,8 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
           const isOver = drag?.started && drag.over === w.id;
           const isDragging = drag?.actorId === w.id && drag.started;
           return (
+            <g key={w.id} style={{ transform: `translate(${r.x}px, ${r.y}px) scale(${r.scale})`, transition: "transform 600ms ease" }}>
             <g
-              key={w.id}
               opacity={w.burned ? 0.4 : dim ? 0.35 : 1}
               className={w.burned ? "" : onPair && w.organizer ? "cursor-grab" : "cursor-pointer"}
               // A finger on one of your people is a drag, not a scroll (see the touchstart
@@ -442,6 +502,7 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
                 </g>
               )}
             </g>
+            </g>
           );
         })}
 
@@ -492,6 +553,7 @@ function Act1FloorMap({ workers, influence, social = null, staleWeek = null, wee
         ) : (
           <div className="text-xs text-stone-500 leading-snug">
             {onPair && <div>Click anyone to plan. Drag one of your people onto somebody to send them.</div>}
+            {socialView && sl.unplacedCount > 0 && <div className="text-stone-600">Talking to people puts them on the map. A sit-down maps all their friends and their crowd.</div>}
             {mappedEdges.length > 0 && (
               <div className="text-stone-500 mt-0.5">
                 {mappedEdges.length}{totalEdges != null ? ` of ${totalEdges}` : ""} friendships mapped, <span className="text-stone-200 font-bold">{crossMapped}</span> across team lines.

@@ -13,15 +13,15 @@ import { rand, random } from "../rng.js";
 import { ACT1_WORKERS_SEED } from "./constants.js";
 
 const CIRCLES = [
-  { id: "oldguard", label: "THE OLD GUARD", affinity: "ttrpg", members: [4, 12, 15, 19],
+  { id: "oldguard", hex: "#f59e0b", label: "THE OLD GUARD", affinity: "ttrpg", members: [4, 12, 15, 19],
     blurb: "Here before the acquisition. Still run the Thursday game, still remember profit-sharing." },
-  { id: "dock", label: "THE DOCK", affinity: "smoker", members: [5, 8, 18, 17],
+  { id: "dock", hex: "#f87171", label: "THE DOCK", affinity: "smoker", members: [5, 8, 18, 17],
     blurb: "The loading-dock break: the one place on the lot with no manager in earshot." },
-  { id: "parents", label: "THE PARENTS", affinity: "parent", members: [1, 9, 3, 20],
+  { id: "parents", hex: "#a3e635", label: "THE PARENTS", affinity: "parent", members: [1, 9, 3, 20],
     blurb: "Pickup at five thirty, and a group chat about whose kid is sick this week." },
-  { id: "raid", label: "THE RAID", affinity: "modder", members: [10, 2, 14, 7],
+  { id: "raid", hex: "#818cf8", label: "THE RAID", affinity: "modder", members: [10, 2, 14, 7],
     blurb: "Came up through mods. Friday night Discord, and they play what they ship." },
-  { id: "lunch", label: "THE LUNCH TABLE", affinity: "commute", members: [11, 16, 6],
+  { id: "lunch", hex: "#22d3ee", label: "THE LUNCH TABLE", affinity: "commute", members: [11, 16, 6],
     blurb: "Long commutes, same train, same table at twelve fifteen." },
 ];
 const CIRCLE_BY_ID = Object.fromEntries(CIRCLES.map(c => [c.id, c]));

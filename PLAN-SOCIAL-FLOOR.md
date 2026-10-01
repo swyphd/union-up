@@ -221,6 +221,14 @@ circle graph. Two rules keep it from feeling like soup:
 The falling-out animation (§7.4) is a link snapping and the two nodes drifting apart, which
 the sticky rule handles because the edge set changed.
 
+*As built in M2:* free-floating cards with box-shaped bubbles oscillated on a full map
+(outsiders ended up inside other crowds' bubbles in about a quarter of full-map states). Each
+discovered crowd is now a rigid block of cards in its bubble, and d3-force lays out the
+blocks and the lone cards. Over 1,200 random floor states: no overlapping cards or bubbles,
+no outsider inside a bubble. Blocks already on the map are held near their last position;
+mapping one more person moves everyone else a median of a seventh of a card. The map grows
+downward as it fills, and the tray sits below it.
+
 The HUD's representation row (§6.2) reads off the same data: one dot per discovered circle,
 one per team, filled when a committee member is inside.
 
@@ -441,7 +449,7 @@ Each one is playable in the browser and measurable in the sim before the next st
 |---|---|---|---|
 | M0 | engine split, seeded RNG, sim imports engine | M | **done**, branch `plan/social-floor`: seeded output identical at every step; the real `resolveWeek` runs in the sim |
 | M1 | titles; friends + circles replace influence; rating glyph; new card; percentages gone; target-first + drag; armed mode removed | L | **done**: careful 60.6 / sloppy 42.6 / careless 14.5 at SEED=7, n=1500, with no retune needed (the gap widened; careful held). Three deferrals noted under §2.2 and §7 |
-| M2 | social view + toggle; sticky layout; conversation map payloads; coverage dots | M | a `mapper` sim policy that recruits for coverage exists and beats the current `careful` |
+| M2 | social view + toggle; sticky layout; conversation map payloads; coverage dots | M | **done**: mapper 73.2 / careful 59.7 / sloppy 41.7 / careless 15.9 at SEED=7, n=1500. Vouch shipped here. Layout as built: each crowd is a rigid block in its bubble, blocks laid out by d3-force (see §4 note) |
 | M3 | committee redesign: recruit as judgment, leaks, size heat, coverage in the filing prompt and the unwinnable detector | M | a policy that recruits everyone loses to one that recruits for coverage |
 | M4 | falling out + rumor set-piece; cracked slots; social-view snap | S | about one per Phase 1 campaign; the map is measurably wrong for players who stop mapping |
 | M5 | Phase 2 as its own screen: calendar, inoculate/debrief/stand-with, coordinated actions, six weeks, drive-phase public actions cut to the open letter | L | a policy that counters beats one that keeps having conversations; coverage predicts the ballot margin |
