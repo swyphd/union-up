@@ -60,7 +60,8 @@ export default function PermadeathOrganizing() {
 
   // Act One is done. The floor it built goes straight into the contract fight.
   function handleGraduate(payload, save = true) {
-    setAct1(payload);
+    // A playtest skip into the contract is never saved, not now and not when it ends.
+    setAct1({ ...payload, playtest: !save });
     setContract(null);
     // The weight map is derived from the friendships; there is no reason to write it twice.
     if (save) persist({ act1: { ...payload, influence: undefined }, contract: null });
@@ -70,7 +71,7 @@ export default function PermadeathOrganizing() {
   // The contract fight is done. Whoever is left on the action team goes company-wide.
   function handleContractDone(result) {
     setContract(result);
-    if (act1) persist({ act1: { ...act1, influence: undefined }, contract: result });
+    if (act1 && !act1.playtest) persist({ act1: { ...act1, influence: undefined }, contract: result });
     setAct("company");
   }
 
@@ -84,7 +85,8 @@ export default function PermadeathOrganizing() {
 
   // Leaders reaching the company campaign come off the contract action team when there
   // was one, and off the Act One committee when the save predates the contract act.
-  const companyLeaders = contract?.leaders?.length ? contract.leaders : (act1?.leaders || []);
+  // A contract act that ended with nobody on the team sends nobody forward.
+  const companyLeaders = contract ? (contract.leaders || []) : (act1?.leaders || []);
 
   let content;
   if (act === "loading") {
@@ -92,7 +94,7 @@ export default function PermadeathOrganizing() {
   } else if (act === "choice") {
     const hasContract = !!savedRun.contract;
     const hasFloor = Array.isArray(savedRun.act1?.workers) && !!savedRun.act1?.social;
-    const names = (savedRun.contract?.leaders || savedRun.act1.leaders).map(l => l.name).join(", ");
+    const names = (savedRun.contract ? (savedRun.contract.leaders || []) : savedRun.act1.leaders).map(l => l.name).join(", ");
     content = (
       <div className="min-h-screen bg-stone-950 text-stone-200 font-mono flex items-center justify-center px-6">
         <GlobalStyle />
@@ -100,7 +102,7 @@ export default function PermadeathOrganizing() {
           <div className="font-stencil text-4xl text-amber-400 mb-4">WELCOME BACK</div>
           <p className="text-stone-400 text-base leading-relaxed mb-6">
             {hasContract
-              ? <>You organized the shop and bargained its first contract — <span className="text-stone-200 font-bold">{savedRun.contract.tiers} of {savedRun.contract.max}</span> tiers{savedRun.contract.ratified ? ", ratified" : ", never signed"}. {names} came through it with you.</>
+              ? <>You organized the shop and bargained its first contract — <span className="text-stone-200 font-bold">{savedRun.contract.tiers} of {savedRun.contract.max}</span> tiers{savedRun.contract.ratified ? ", ratified" : ", never signed"}. {names ? <>{names} came through it with you.</> : "Nobody from the action team was left at the end of it."}</>
               : <>You've already organized this shop, with {savedRun.act1.leaders.length} leader{savedRun.act1.leaders.length === 1 ? "" : "s"} who stepped up: {names}.</>}
           </p>
           <button

@@ -520,6 +520,13 @@ deciding later whether it stays. Nothing in this plan touches it.
 - **Save v3** stores the floor with its friendships and drops the derived weight map. A v2
   save that already has friendships (anything written since M1) loads as v3; one without
   them, and any v1 save, keeps its leaders and resumes at the company campaign.
+- **Contract rules tightened in the second bug pass:** one ratification vote a month (a
+  vote that fails cannot be re-rolled the same month); a vote that fails in month 12 goes
+  to decertification instead of ending the act; the last month's leverage can be put to a
+  vote from the result screen; thin turnouts wear only on the team members who stood
+  there, a strong one clears it, and at most one person quits the team over it a month;
+  direct dealing keeps somebody home for three months as it says; the turnout preview
+  counts the chosen lead; an empty team ends the act instead of locking it.
 - **Carry** (`node sim/carry.mjs`, SEED=7, n=300): how Act One was won now decides the
   contract. The countering mapper hands forward commitment 52 and a team of 4.6; the
   careful player, who never mapped and never countered, commitment 35 and 3.4, and its

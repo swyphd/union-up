@@ -45,7 +45,7 @@ function filingGates(loc, turn) {
     { id: "morale", label: "MORALE", val: loc.morale, pass: loc.morale >= 70, req: "\u2265 70" },
     { id: "recruited", label: "RECRUITED", val: `${Math.round(recruitedPct * 100)}%`, pass: recruitedPct >= 0.3, req: "\u2265 30%" },
     { id: "legal", label: "LEGAL RISK", val: loc.legalRisk, pass: loc.legalRisk < 75, req: "< 75" },
-    { id: "clock", label: "WEEK", val: turn, pass: turn <= ACT2_LAST_FILING_TURN, req: `\u2264 ${ACT2_LAST_FILING_TURN}` },
+    { id: "clock", label: "MONTH", val: turn, pass: turn <= ACT2_LAST_FILING_TURN, req: `\u2264 ${ACT2_LAST_FILING_TURN}` },
     // The gate the campaign research is loudest about. A representative committee of
     // the workers themselves, before the petition, is the strongest single predictor of
     // winning the vote — and mechanically it is the only thing that lets anyone in this
@@ -60,8 +60,9 @@ function act2Winnability(locations, turn) {
   const needed = ACT2_SITES_NEEDED - won;
   if (needed <= 0) return { alive: true, won, needed: 0, salvageable: [], reason: null };
   // A site can still deliver if it's already at the vote, or has room to file and vote.
+  // A shop you pivoted away from is set aside for good.
   const salvageable = locations.filter(l => {
-    if (l.status === "won" || l.status === "lost") return false;
+    if (l.status === "won" || l.status === "lost" || l.status === "abandoned") return false;
     if (l.status === "campaign") return l.electionTurn <= TOTAL_TURNS;
     return turn <= ACT2_LAST_FILING_TURN;
   });
@@ -69,13 +70,16 @@ function act2Winnability(locations, turn) {
     const dead = locations.filter(l => l.status === "lost").length;
     // Name the actual cause: shops you lost, or a clock that ran out on the ones left.
     const blockedByClock = locations.filter(
-      l => l.status !== "won" && l.status !== "lost" && !salvageable.includes(l)
+      l => l.status !== "won" && l.status !== "lost" && l.status !== "abandoned" && !salvageable.includes(l)
     ).length;
+    const setAside = locations.filter(l => l.status === "abandoned").length;
     return {
       alive: false, won, needed, salvageable,
       reason: blockedByClock > 0
         ? `${blockedByClock} shop${blockedByClock === 1 ? " is" : "s are"} still organizing, but none can file and reach a vote before month ${TOTAL_TURNS} — the last month to file was ${ACT2_LAST_FILING_TURN}. You needed ${needed} more.`
-        : `${dead} election${dead === 1 ? " has" : "s have"} already come back NO. There aren't enough shops left standing to reach ${ACT2_SITES_NEEDED}.`,
+        : dead === 0 && setAside > 0
+          ? `You set aside ${setAside} shop${setAside === 1 ? "" : "s"}, and there aren't enough left to reach ${ACT2_SITES_NEEDED}.`
+          : `${dead} election${dead === 1 ? " has" : "s have"} already come back NO${setAside ? `, and ${setAside} shop${setAside === 1 ? " was" : "s were"} set aside` : ""}. There aren't enough shops left standing to reach ${ACT2_SITES_NEEDED}.`,
     };
   }
   return { alive: true, won, needed, salvageable, reason: null };

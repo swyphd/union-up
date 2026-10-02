@@ -46,6 +46,9 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
   // Months of "not yet" the company has banked, priced into everything you still want.
   const [stall, setStall] = useState(0);
   const [dead, setDead] = useState(null);
+  // One ratification vote a month: a deal voted down cannot be re-rolled until the floor
+  // has had another month of bargaining.
+  const [lastVoteMonth, setLastVoteMonth] = useState(0);
   const [selected, setSelected] = useState(null);
   const planKey = useRef(0);
 
@@ -65,7 +68,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
   const tier = actionPlan ? ACTION_LADDER.find(t => t.key === actionPlan.tierKey) : null;
   // The player gets the range, never the number. The exact one is only ever used to
   // resolve the action itself.
-  const projection = tier ? projectedTurnoutBand(workers, influence, tier, turn) : { lo: 0, hi: 0, exact: true };
+  const projection = tier ? projectedTurnoutBand(workers, influence, tier, turn, actionPlan?.leadId) : { lo: 0, hi: 0, exact: true };
   const unread = workers.filter(x => !contractRead(x, turn).exact).length;
   const issueDef = (id) => CONTRACT_ISSUES.find(i => i.id === id);
   const ratifyProjection = workers.reduce((n, w) => n + ratifyYesChance(w, issues), 0);
@@ -112,7 +115,11 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
 
     planEntries.filter(e => e.type === "recruit").forEach(e => {
       const t = byId(e.targetId), a = byId(e.actorId);
-      if (!t || t.cat || t.commitment < CAT_JOIN_REQ || (a && !teamPath(a, t, w, social))) return;
+      if (!t || t.cat) return;
+      if (t.commitment < CAT_JOIN_REQ || (a && !teamPath(a, t, w, social))) {
+        lines.push(`${t.name} isn't ready to join the action team after all. ${a?.name ?? "The team"} spent the hours finding that out.`);
+        return;
+      }
       t.cat = true;
       t.monthsIdle = 0;
       notes[t.id] = "JOINS THE CAT";
@@ -147,11 +154,14 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
         // Fatigue is what the COMPANY stops noticing. It is not what standing next to
         // each other does for the people who turned up, so the floor still builds.
         const bump = 4;
-        showed.forEach(x => { x.commitment = clamp(x.commitment + bump); x.thinRuns = 0; });
+        showed.forEach(x => { x.commitment = clamp(x.commitment + bump); });
+        // The team saw one work. Whatever the thin ones did to them, it is behind them.
+        w.forEach(x => { if (x.cat) x.thinRuns = 0; });
         stallNext = Math.max(0, stall - 1);
         lines.push(`${showed.length} of ${w.length} took part. The company's negotiator noticed, and the room changed. +${payout} leverage, +${bump} commitment to everyone who turned up, and a month comes off what they have banked.`);
       } else {
-        w.forEach(x => { x.commitment = clamp(x.commitment - 3); if (x.cat) x.thinRuns = (x.thinRuns || 0) + 1; });
+        // It wears on the people who stood there with their name on it.
+        w.forEach(x => { x.commitment = clamp(x.commitment - 3); if (x.cat && x.participated) x.thinRuns = (x.thinRuns || 0) + 1; });
         stallNext = Math.min(STALL_MAX, stall + 1);
         lines.push(`Only ${showed.length} of ${w.length} took part, against the ${Math.round(tier.threshold * w.length)} this needed. A thin turnout is worse than none \u2014 it shows them exactly how little you can move. +${payout} leverage, \u22123 commitment across the floor.`);
       }
@@ -186,11 +196,11 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
       const takeChance = Math.min(0.75, Math.max(0.1, (100 - before) / 90));
       if (random() < takeChance) {
         mark.commitment = clamp(before - 26);
-        mark.bought = 3;
+        mark.bought = 4; // counted down at the end of this month, so three months to come
         notes[mark.id] = "TAKES THE OFFER";
         lines.push(
           `DIRECT DEALING \u2014 ${mark.name} is offered a raise and a title one to one, outside the contract. At ${before} commitment that was a ` +
-          `${Math.round(takeChance * 100)}% chance of landing, and it landed: ${before} \u2192 ${mark.commitment}, and they sit out the next 3 actions. ` +
+          `${Math.round(takeChance * 100)}% chance of landing, and it landed: ${before} \u2192 ${mark.commitment}, and for three months they mostly stay home. ` +
           `Going around the union like this is unlawful. Proving it takes longer than the certification year, which is the point.`
         );
       } else {
@@ -222,6 +232,8 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
     }
 
     // --- A TEAM IS A SET OF PEOPLE WHO ARE ASKED TO DO THINGS ---
+    // Thin turnouts cost the team one person a month at most: the one with least left in them.
+    const fedUp = w.filter(x => x.cat && (x.thinRuns || 0) >= 2).sort((a, b) => a.commitment - b.commitment)[0]?.id;
     w.forEach(x => {
       if (!x.cat) { x.monthsIdle = 0; return; }
       // Turning out for the action is doing something. Only somebody nobody asked for
@@ -234,7 +246,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
         x.commitment = clamp(x.commitment - 8);
         notes[x.id] = "STEPS OFF THE TEAM";
         lines.push(`${x.name} stops coming to the meetings. Nobody has asked them to do anything in ${CAT_IDLE_QUIT} months, and they got the message.`);
-      } else if ((x.thinRuns || 0) >= 2) {
+      } else if (x.id === fedUp) {
         x.cat = false;
         x.thinRuns = 0;
         x.commitment = clamp(x.commitment - 6);
@@ -257,6 +269,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
     const no = [];
     workers.forEach(w => (random() < ratifyYesChance(w, issues) ? yes : no).push(w.name));
     setRatification({ yes: yes.length, no: no.length, passed: yes.length > no.length, month: turn });
+    setLastVoteMonth(turn);
     setPhase("ratify");
   }
 
@@ -289,7 +302,11 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
 
   function backToTable() {
     // A deal voted down isn't the end — you go back, with a floor that trusts you less.
-    setWorkers(ws => ws.map(w => ({ ...w, commitment: clamp(w.commitment - 6) })));
+    const after = workers.map(w => ({ ...w, commitment: clamp(w.commitment - 6) }));
+    setWorkers(after);
+    // A recruit planned on somebody that loss just pushed under the bar would cost the hours
+    // and do nothing.
+    setPlanEntries(p => p.filter(e => e.type !== "recruit" || (after.find(x => x.id === e.targetId)?.commitment ?? 0) >= CAT_JOIN_REQ));
     setRatification(null);
     setPhase("plan");
   }
@@ -325,6 +342,9 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
   const labels = { organizerLegend: "ON THE ACTION TEAM", signedLegend: "TURNED OUT LAST TIME", numberLegend: "COMMITMENT",
     hollowTip: "Nobody has sat down with them or seen them turn out lately. This is an old read." };
   const canResolve = planEntries.length > 0 || actionPlan;
+  // Nobody on the team at all, from the start or by the end of a month: there is no act left.
+  const noTeam = cat.length === 0 && phase === "plan";
+  const deadReason = dead || (noTeam ? `There is nobody on the contract action team. The company does not have to agree with an empty room \u2014 it only has to keep booking the meeting.` : null);
   const overBudget = cat.some(o => hoursLeft(o) < 0) || totalUsed > totalHours;
   const poolLeft = totalHours - totalUsed;
 
@@ -389,9 +409,14 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
             ]},
             { lines: [`Play-Eye: ${issueDef("ai").tiers[issues.find(i => i.id === "ai").tier]}.`], quiet: true },
           ]}
-          actions={ratification.passed || turn >= CONTRACT_MONTHS ? (
-            <button onClick={() => finish({ ratified: ratification.passed, survived: true })} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
+          actions={ratification.passed ? (
+            <button onClick={() => finish({ ratified: true, survived: true })} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
               {onComplete ? "TAKE IT TO THE OTHER STUDIOS" : "BACK TO THE GAME"}
+            </button>
+          ) : turn >= CONTRACT_MONTHS ? (
+            // The year is gone with no contract: the company petitions to decertify.
+            <button onClick={runDecert} className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors">
+              THE DECERTIFICATION VOTE
             </button>
           ) : (
             <>
@@ -426,11 +451,11 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
         />
       )}
 
-      {dead && (
+      {deadReason && (
         <div className="fixed inset-0 bg-stone-950/95 z-50 flex items-center justify-center px-6">
           <div className="max-w-lg text-center anim-rise">
             <div className="font-stencil text-5xl mb-4 text-red-500">NOBODY LEFT TO ASK</div>
-            <p className="text-stone-400 mb-4 leading-relaxed">{dead}</p>
+            <p className="text-stone-400 mb-4 leading-relaxed">{deadReason}</p>
             <p className="text-red-400/80 text-sm mb-6 leading-relaxed border border-red-900/60 bg-red-950/20 px-4 py-3">
               Called at month {turn} of {CONTRACT_MONTHS}, with {contractTierSum(issues)} of {CONTRACT_MAX_TIERS} tiers won. There is
               still calendar left, but no campaign to run on it — so the rest of the year would not have changed the ending.
@@ -498,7 +523,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
             </div>
           </div>
 
-          {phase === "plan" && turn >= 2 && (
+          {phase === "plan" && turn >= 2 && turn > lastVoteMonth && (
             <div className={`mb-6 border-2 px-3 py-3 ${monthsLeft <= 3 ? "border-red-700 bg-red-950/20" : "border-teal-800 bg-teal-950/10"}`}>
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="flex-1 min-w-[17rem]">
@@ -563,6 +588,12 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
               <div className="bg-stone-950/60 border border-stone-800 p-2 space-y-0.5 max-h-40 overflow-y-auto mb-3">
                 {result.lines.map((l, i) => <div key={i} className="text-xs text-stone-400">▸ {l}</div>)}
               </div>
+              {/* The last month's leverage can still be spent and put to a vote before the year runs out. */}
+              {turn >= CONTRACT_MONTHS && turn > lastVoteMonth && (
+                <button onClick={callRatification} className="w-full font-stencil text-lg bg-teal-600 hover:bg-teal-500 text-stone-950 py-2.5 tracking-wide transition-colors mb-2">
+                  PUT IT TO A VOTE
+                </button>
+              )}
               <button onClick={nextTurn} className="w-full font-stencil text-lg bg-amber-500 hover:bg-amber-400 text-stone-950 py-2.5 tracking-wide transition-colors">
                 {turn >= CONTRACT_MONTHS ? "THE CERTIFICATION YEAR IS UP" : "NEXT MONTH"}
               </button>
@@ -582,7 +613,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
                 <div className="grid gap-2 sm:grid-cols-2 mb-3">
                   {ACTION_LADDER.map(t => {
                     const chosen = actionPlan?.tierKey === t.key;
-                    const proj = projectedTurnoutBand(workers, influence, t, turn);
+                    const proj = projectedTurnoutBand(workers, influence, t, turn, actionPlan?.leadId ?? cat[0]?.id);
                     // Green only when even the pessimistic end of the range clears it.
                     const need = t.threshold * workers.length;
                     const lands = proj.lo >= need;
@@ -772,7 +803,9 @@ function ContractPrototype({ carry = null, onComplete = null, onExit }) {
                         ? "Not committed enough yet. A one-on-one first."
                         : !actors.some(x => teamPath(x, w, workers, social))
                           ? "Nobody on the team can ask. It takes a friend on the team, or a friend in common who signed to vouch."
-                          : `+${CAT_HOURS} hours a month, and everyone they can turn out becomes yours.`}
+                          : !recruiter || poolLeft < 3
+                            ? "Whoever could ask has no 3 hours left this month."
+                            : `+${CAT_HOURS} hours a month, and everyone they can turn out becomes yours.`}
                     </div>
                   </button>
                 </div>
