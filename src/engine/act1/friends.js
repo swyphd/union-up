@@ -161,16 +161,20 @@ function knownEdges(workers) {
   return out;
 }
 
-// How much of the floor you have mapped: friendships you know about plus people whose
-// crowd you have found, against what there is to find. The game nudges a player whose map
-// has stopped growing while there is still something left to learn.
+// How much of the floor you have mapped, and the gaps the board can show you: people
+// nobody has talked to, people spoken to but not yet placed on the map, and cards with a
+// friend slot you have not met. The game nudges a player whose map has stopped growing
+// while any of those are left, and tells them which. Gaps the board cannot show (a
+// friendship nobody has mentioned) are not held against the player.
 function mapProgress(workers, social) {
   const live = workers.filter(x => !x.burned);
   const known = knownEdges(workers).length + live.filter(x => x.circleKnown).length;
-  const missingEdge = allEdges(social).some(([a, b]) => !isKnownFriend(workers.find(x => x.id === a), b));
-  const missingCrowd = live.some(x => social?.circleOf?.[x.id] && !x.circleKnown);
-  const strangers = live.filter(x => !x.organizer && !x.spokenTo && !x.signed).length;
-  return { known, complete: !missingEdge && !missingCrowd, strangers };
+  const strangers = live.filter(x => !x.organizer && !x.spokenTo && !x.signed && !x.trueKnown);
+  const placed = (x) => !!(x.organizer || x.circleKnown || knownFriends(x).length > 0);
+  const unplaced = live.filter(x => !strangers.includes(x) && !placed(x));
+  const unmet = live.map(x => ({ x, n: Math.max(0, (x.slotsSeen ?? friendsOf(social, x.id).length) - knownFriends(x).length) }))
+    .filter(e => e.n > 0 && !strangers.includes(e.x));
+  return { known, complete: !strangers.length && !unplaced.length && !unmet.length, strangers, unplaced, unmet };
 }
 
 export { mapProgress, learnOneFriend, VOUCH_TIE, vouchFor, CIRCLES, CIRCLE_BY_ID, MAX_FRIENDS, FRIEND_TIE, CIRCLE_TIE, generateSocial, influenceFrom,

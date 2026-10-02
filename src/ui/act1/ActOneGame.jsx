@@ -1,6 +1,6 @@
 // Act One: the card drive and the election campaign, one shop.
 import React, { useState, useEffect, useRef } from "react";
-import { AlertTriangle, Eye, Vote, Megaphone, Network, UsersRound } from "lucide-react";
+import { AlertTriangle, Eye, Info, Vote, Megaphone, Network, UsersRound, X } from "lucide-react";
 import { GlobalStyle, IntroSequence, OutcomeRoster, OutcomeScreen, splitLinesByEntity } from "../shared.jsx";
 import { random } from "../../engine/rng.js";
 import { ACT1_INTRO_BEATS, IntroCommitteeVisual, IntroInfluenceVisual } from "./intro.jsx";
@@ -16,6 +16,20 @@ import { ACT1_ACTION } from "../../engine/act1/actions.js";
 import { resolveWeek as runWeek } from "../../engine/act1/resolveWeek.js";
 import { ACT1_SAVE_KEY } from "../../save.js";
 import { ELECTION_WEEKS, readOf, recognitionChance, voteProjection } from "../../engine/act1/election.js";
+
+// What each HUD tile means, in the sentence a player needs the week it first shows up. A
+// tile appears when it first matters and opens its sentence once; clicking any tile reopens
+// it. Nothing here depends on hovering, so it reads the same on a phone.
+const HUD_TIPS = {
+  week: `The studio ships its game in week ${ACT1_SHIP_WEEK}. After that the floor changes shape and the campaign is over, so everything has to happen before then.`,
+  cards: `${ACT1_CARDS_NEEDED} of the ${ACT1_TOTAL_WORKERS} people here have to sign a union card before you can file for an election. That gets you a vote; it does not win one.`,
+  reads: "A solid number on a card means somebody sat down with that person lately, so you know where they stand. A hollow number is only what they said. This counts the solid ones.",
+  committee: "The people whose hours you spend. Each small square is a team and each circle is a crowd you have found; it fills in when somebody on the committee belongs to it. Management's campaign lands hardest where you have nobody.",
+  heat: "How much attention the campaign is drawing from management. It cools on quiet weeks. Past a point, the company brings in help.",
+  ballot: "The secret ballot. Every week until then is a week management campaigns against you.",
+  against: "Who the company has brought in against you. Each one fights differently.",
+};
+const HUD_TIP_ORDER = ["week", "cards", "reads", "committee", "heat", "ballot", "against"];
 import { CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_SETPIECE_GAP, KIRKMAN_SIGHT, OUTSIDERS, act1Winnability } from "../../engine/act1/consultant.js";
 import { AFF_BY_ID } from "../../engine/act1/affinities.js";
 import { COORDINATED_ORDER, newCampaign, openCampaign } from "../../engine/act1/campaign.js";
@@ -66,6 +80,9 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   const [mapGrewWeek, setMapGrewWeek] = useState(1);
   const [mapNagWeek, setMapNagWeek] = useState(null);
   const [showMapNag, setShowMapNag] = useState(false);
+  // Which HUD tiles have introduced themselves, and which explanation is open right now.
+  const [tipsSeen, setTipsSeen] = useState({});
+  const [openTip, setOpenTip] = useState(null);
   const [sawFilePrompt, setSawFilePrompt] = useState(false);
   const pendingRef = useRef(null);
   const planKeyRef = useRef(0);
@@ -227,6 +244,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     setMapGrewWeek(1);
     setMapNagWeek(null);
     setShowMapNag(false);
+    setTipsSeen({});
+    setOpenTip(null);
     setResolutionSteps([]);
     setStepIndex(0);
     setSelectedWorker(null);
@@ -277,6 +296,27 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     }
   }
 
+  // Which tiles are on. A tile that has introduced itself stays on, so nothing flickers.
+  const tileOn = {
+    week: true,
+    cards: true,
+    reads: !!tipsSeen.reads || workers.some(x => !x.organizer && !x.burned && readOf(x, week).exact),
+    committee: !!tipsSeen.committee || anyRecruitable || organizers.length > 2,
+    heat: !!tipsSeen.heat || heat > 0 || consultant.active,
+    ballot: stage === "campaign",
+    against: consultant.active || outsiders.length > 0,
+  };
+  const tilesOnKey = HUD_TIP_ORDER.filter(k => tileOn[k]).join(",");
+  useEffect(() => {
+    if (phase !== "plan") return;
+    const fresh = HUD_TIP_ORDER.filter(k => tileOn[k] && !tipsSeen[k]);
+    if (!fresh.length) return;
+    setTipsSeen(seen => ({ ...seen, ...Object.fromEntries(fresh.map(k => [k, true])) }));
+    // A tile introducing itself takes the line, even over an explanation somebody left open.
+    // The first week, only the week needs explaining; the card count speaks for itself.
+    setOpenTip(fresh[0]);
+  }, [phase, tilesOnKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const act1Win = act1Winnability(workers, stage, week);
   const organizerHours = Object.fromEntries(organizers.map(o => [o.id, hoursLeftFor(o)]));
   const canResolve = planEntries.length > 0 && organizers.every(o => hoursLeftFor(o) >= 0);
@@ -290,101 +330,89 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           <div className="font-stencil text-2xl sm:text-3xl tracking-wide text-amber-400">ONE SHOP</div>
           <div className="text-xs sm:text-sm tracking-[0.2em] text-stone-500">{stage === "campaign" ? "ACT ONE — THEIR CAMPAIGN" : "ACT ONE — CARDS ON THE TABLE"}</div>
         </div>
-        {phase !== "intro" && (
-          <div className="flex items-center gap-4 sm:gap-6 text-sm sm:text-base">
-            <div className="text-center">
-              <div className="text-stone-500 text-xs">WEEK / SHIP</div>
-              <div className={`text-lg font-bold ${ACT1_SHIP_WEEK - week <= 4 ? "text-red-500" : ACT1_SHIP_WEEK - week <= 8 ? "text-amber-400" : "text-stone-100"}`}>
-                {week} <span className="text-stone-600">/</span> {ACT1_SHIP_WEEK}
-              </div>
-              {(() => {
-                const soon = workers.filter(x => x.signed && cardStaleSoon(x, week)).length;
-                return soon > 0
-                  ? <div className="text-[10px] text-amber-400 font-bold">{soon} card{soon === 1 ? "" : "s"} going stale</div>
-                  : <div className="text-[10px] text-stone-600">{ACT1_SHIP_WEEK - week} weeks to launch</div>;
-              })()}
-            </div>
-            <div className="text-center">
-              <div className="text-stone-500 text-xs">MARGIN LEFT</div>
-              <div className={`text-lg font-bold ${(() => {
-                const spare = workers.filter(w => !w.burned && !w.signed).length + workers.filter(w => w.signed).length - ACT1_CARDS_NEEDED;
-                return spare <= 1 ? "text-red-500" : spare <= 3 ? "text-amber-400" : "text-stone-100";
-              })()}`}>
-                +{Math.max(0, workers.filter(w => !w.burned).length - ACT1_CARDS_NEEDED)}
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-stone-500 text-xs">CARDS SIGNED</div>
-              <div className={`text-lg font-bold ${signedCount >= ACT1_CARDS_NEEDED ? "text-teal-400" : "text-amber-400"}`}>{signedCount} / {ACT1_CARDS_NEEDED}</div>
-              <div className="text-[11px] text-stone-600">of {ACT1_TOTAL_WORKERS} on the floor</div>
-            </div>
-            {stage === "campaign" && (
-              <div className="text-center">
-                <div className="text-stone-500 text-xs flex items-center gap-1"><Vote size={11} /> BALLOT IN</div>
-                <div className={`text-lg font-bold ${weeksToVote <= 1 ? "text-red-500" : "text-amber-400"}`}>{Math.max(0, weeksToVote)} wk</div>
-                <div className="text-[11px] text-stone-600">filed week {filedWeek}</div>
-              </div>
-            )}
-            {/* How much of this floor you can honestly see. Nothing else on the HUD says
-                whether the numbers you are steering by are worth anything. */}
-            <div className="text-center">
-              <div className="text-stone-500 text-xs">SOLID READS</div>
-              <div className={`text-lg font-bold ${readCounts.exact >= readCounts.live * 0.65 ? "text-teal-400" : readCounts.exact >= readCounts.live * 0.35 ? "text-amber-400" : "text-red-400"}`}>{readCounts.exact} / {readCounts.live}</div>
-              <div className="text-[11px] text-stone-600">sat down with, recently</div>
-            </div>
-            <div className="text-center">
-              <div className="text-stone-500 text-xs">COMMITTEE</div>
-              <div className="text-lg font-bold text-stone-100">{organizers.length}</div>
-              {/* Coverage: one dot per team and per crowd you have found, filled when
-                  somebody on the committee is inside it. */}
-              <div className="flex items-center justify-center gap-1 mt-0.5">
-                {Object.keys(TEAM_LABEL).map(team => {
-                  const covered = organizers.some(o => o.team === team);
-                  return <span key={team} title={`${TEAM_LABEL[team]}: ${covered ? "somebody on the committee is here" : "nobody on the committee is here"}`}
-                    className="inline-block w-2 h-2 rounded-sm border" style={{ borderColor: TEAM_HEX[team], backgroundColor: covered ? TEAM_HEX[team] : "transparent" }} />;
-                })}
-                <span className="w-px h-2.5 bg-stone-700 mx-0.5" />
-                {CIRCLES.filter(c => workers.some(x => seenCircle(x, social) === c.id)).map(c => {
-                  const covered = organizers.some(o => seenCircle(o, social) === c.id);
-                  return <span key={c.id} title={`${c.label}: ${covered ? "somebody on the committee is in this crowd" : "nobody on the committee is in this crowd"}`}
-                    className="inline-block w-2 h-2 rounded-full border" style={{ borderColor: c.hex, backgroundColor: covered ? c.hex : "transparent" }} />;
-                })}
-              </div>
-            </div>
-            <div className="text-center">
-              <div className="text-stone-500 text-xs flex items-center gap-1"><Eye size={11} /> HEAT</div>
-              <div className={`text-lg font-bold ${heat >= 60 ? "text-red-500" : heat >= 35 ? "text-amber-400" : "text-teal-400"}`}>{heat}</div>
-              {consultant.active && (
-                <div className={`text-[10px] ${heat >= KIRKMAN_SIGHT || leakFeedsHim ? "text-red-400 font-bold" : "text-stone-600"}`}>
-                  {heat >= KIRKMAN_SIGHT || leakFeedsHim ? "HE SEES THE NETWORK" : `${KIRKMAN_SIGHT - heat} from being seen`}
+        {phase !== "intro" && (() => {
+          const Tile = ({ id, label, icon: Icon, children }) => (
+            <button type="button" onClick={() => setOpenTip(t => (t === id ? null : id))} title={HUD_TIPS[id]}
+              className={`text-center px-1.5 py-0.5 -my-0.5 rounded transition-colors hover:bg-stone-800/60 ${openTip === id ? "bg-stone-800/80" : ""}`}>
+              <div className="text-stone-500 text-xs flex items-center justify-center gap-1">{Icon && <Icon size={11} />}{label}</div>
+              {children}
+            </button>
+          );
+          const staleSoon = workers.filter(x => x.signed && cardStaleSoon(x, week)).length;
+          const weeksLeft = ACT1_SHIP_WEEK - week;
+          return (
+            <div className="flex items-center gap-3 sm:gap-5 text-sm sm:text-base">
+              <Tile id="week" label="WEEK">
+                <div className={`text-lg font-bold ${weeksLeft <= 4 ? "text-red-500" : weeksLeft <= 8 ? "text-amber-400" : "text-stone-100"}`}>
+                  {week} <span className="text-stone-600 text-sm">of</span> {ACT1_SHIP_WEEK}
                 </div>
+                {staleSoon > 0
+                  ? <div className="text-[10px] text-amber-400 font-bold">{staleSoon} card{staleSoon === 1 ? "" : "s"} going stale</div>
+                  : <div className="text-[10px] text-stone-600">{weeksLeft} week{weeksLeft === 1 ? "" : "s"} until the game ships</div>}
+              </Tile>
+              <Tile id="cards" label="CARDS SIGNED">
+                <div className={`text-lg font-bold ${signedCount >= ACT1_CARDS_NEEDED ? "text-teal-400" : "text-amber-400"}`}>{signedCount} / {ACT1_CARDS_NEEDED}</div>
+                <div className="text-[10px] text-stone-600">of {ACT1_TOTAL_WORKERS} on the floor</div>
+              </Tile>
+              {tileOn.ballot && (
+                <Tile id="ballot" label="BALLOT IN" icon={Vote}>
+                  <div className={`text-lg font-bold ${weeksToVote <= 1 ? "text-red-500" : "text-amber-400"}`}>{Math.max(0, weeksToVote)} wk</div>
+                  <div className="text-[10px] text-stone-600">filed week {filedWeek}</div>
+                </Tile>
+              )}
+              {tileOn.reads && (
+                <Tile id="reads" label="SOLID READS">
+                  <div className={`text-lg font-bold ${readCounts.exact >= readCounts.live * 0.65 ? "text-teal-400" : readCounts.exact >= readCounts.live * 0.35 ? "text-amber-400" : "text-red-400"}`}>{readCounts.exact} / {readCounts.live}</div>
+                  <div className="text-[10px] text-stone-600">know where they stand</div>
+                </Tile>
+              )}
+              <Tile id="committee" label="COMMITTEE">
+                <div className="text-lg font-bold text-stone-100">{organizers.length}</div>
+                {/* Coverage, once there is anyone to recruit: one square per team and one circle
+                    per crowd you have found, filled when somebody on the committee is inside. */}
+                {tileOn.committee ? (
+                  <div className="flex items-center justify-center gap-1 mt-0.5">
+                    {Object.keys(TEAM_LABEL).map(team => {
+                      const covered = organizers.some(o => o.team === team);
+                      return <span key={team} title={`${TEAM_LABEL[team]}: ${covered ? "somebody on the committee is here" : "nobody on the committee is here"}`}
+                        className="inline-block w-2 h-2 rounded-sm border" style={{ borderColor: TEAM_HEX[team], backgroundColor: covered ? TEAM_HEX[team] : "transparent" }} />;
+                    })}
+                    {CIRCLES.some(c => workers.some(x => seenCircle(x, social) === c.id)) && <span className="w-px h-2.5 bg-stone-700 mx-0.5" />}
+                    {CIRCLES.filter(c => workers.some(x => seenCircle(x, social) === c.id)).map(c => {
+                      const covered = organizers.some(o => seenCircle(o, social) === c.id);
+                      return <span key={c.id} title={`${c.label}: ${covered ? "somebody on the committee is in this crowd" : "nobody on the committee is in this crowd"}`}
+                        className="inline-block w-2 h-2 rounded-full border" style={{ borderColor: c.hex, backgroundColor: covered ? c.hex : "transparent" }} />;
+                    })}
+                  </div>
+                ) : <div className="text-[10px] text-stone-600">yours to direct</div>}
+              </Tile>
+              {tileOn.heat && (
+                <Tile id="heat" label="HEAT" icon={Eye}>
+                  <div className={`text-lg font-bold ${heat >= 60 ? "text-red-500" : heat >= 35 ? "text-amber-400" : "text-teal-400"}`}>{heat}</div>
+                  {consultant.active && (
+                    <div className={`text-[10px] ${heat >= KIRKMAN_SIGHT || leakFeedsHim ? "text-red-400 font-bold" : "text-stone-600"}`}>
+                      {heat >= KIRKMAN_SIGHT || leakFeedsHim ? "HE SEES THE NETWORK" : `${KIRKMAN_SIGHT - heat} from being seen`}
+                    </div>
+                  )}
+                </Tile>
+              )}
+              {tileOn.against && (
+                <Tile id="against" label="AGAINST YOU" icon={AlertTriangle}>
+                  <div className="flex flex-col items-center leading-tight mt-0.5">
+                    {OUTSIDERS.filter(o => (o.id === "consultant" ? consultant.active : outsiders.includes(o.id))).map(o => (
+                      <span key={o.id} title={o.role} className="text-[10px] font-bold text-red-400">{o.name}</span>
+                    ))}
+                  </div>
+                </Tile>
               )}
             </div>
-            {(consultant.active || outsiders.length > 0) && (
-              <div className="text-center">
-                <div className="text-stone-500 text-xs flex items-center gap-1"><AlertTriangle size={11} /> AGAINST YOU</div>
-                <div className="flex items-center gap-1.5 justify-center mt-1">
-                  {OUTSIDERS.map(o => {
-                    const here = o.id === "consultant" ? consultant.active : outsiders.includes(o.id);
-                    return (
-                      <span
-                        key={o.id}
-                        title={here ? `${o.name} — ${o.role}` : "not here yet"}
-                        className="text-[10px] font-bold px-1 py-0.5 border"
-                        style={{
-                          borderColor: here ? "#f87171" : "#44403c",
-                          color: here ? "#f87171" : "#44403c",
-                          backgroundColor: here ? "rgba(248,113,113,0.12)" : "transparent",
-                        }}
-                      >{o.name[0]}</span>
-                    );
-                  })}
-                </div>
-                <div className="text-[10px] text-stone-600 mt-0.5">
-                  {(outsiders.length + (consultant.active ? 1 : 0))} of {OUTSIDERS.length} escalations
-                </div>
-              </div>
-            )}
+          );
+        })()}
+        {phase !== "intro" && openTip && (
+          <div className="w-full flex items-start gap-2 text-xs text-amber-100 border-t border-stone-800 pt-2 mt-1">
+            <Info size={13} className="shrink-0 mt-0.5 text-amber-400" />
+            <span className="flex-1 leading-snug">{HUD_TIPS[openTip]}</span>
+            <button type="button" onClick={() => setOpenTip(null)} aria-label="Dismiss" className="text-stone-500 hover:text-stone-200"><X size={13} /></button>
           </div>
         )}
       </div>
@@ -780,17 +808,21 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
       )}
 
       {showMapNag && phase === "plan" && (() => {
-        const strangers = mapProgress(workers, social).strangers;
+        const gaps = mapProgress(workers, social);
+        const names = (list, n = 4) => list.slice(0, n).map(x => x.name).join(", ") + (list.length > n ? ` and ${list.length - n} more` : "");
+        const rows = [];
+        if (gaps.strangers.length) rows.push(<>Nobody has talked to <span className="text-stone-100">{names(gaps.strangers)}</span>. <span className="text-stone-500">A quick chat puts them on the map.</span></>);
+        if (gaps.unplaced.length) rows.push(<><span className="text-stone-100">{names(gaps.unplaced)}</span> {gaps.unplaced.length === 1 ? "is" : "are"} not on the map yet. <span className="text-stone-500">A sit-down places them with their crowd.</span></>);
+        if (gaps.unmet.length) rows.push(<><span className="text-stone-100">{gaps.unmet.slice(0, 3).map(e => `${e.x.name} has ${e.n}`).join(", ")}</span>{gaps.unmet.length > 3 ? ` and ${gaps.unmet.length - 3} more have` : ""} friend{gaps.unmet.length === 1 && gaps.unmet[0].n === 1 ? "" : "s"} you haven't met. <span className="text-stone-500">A sit-down with them names everyone.</span></>);
         return (
           <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50 px-4 py-6 overflow-y-auto" onClick={() => setShowMapNag(false)}>
-            <div className="bg-stone-900 border-2 border-amber-600 max-w-md w-full p-5 my-auto text-center" onClick={e => e.stopPropagation()}>
+            <div className="bg-stone-900 border-2 border-amber-600 max-w-md w-full p-5 my-auto" onClick={e => e.stopPropagation()}>
               <Network size={34} className="mx-auto text-amber-400 mb-2" />
-              <div className="font-stencil text-2xl text-amber-400 mb-2">DON'T FORGET TO MAP THE FLOOR</div>
-              <p className="text-base text-stone-200 mb-2">You can't organize people you don't know.</p>
-              <p className="text-sm text-stone-400 mb-4">
-                {strangers > 0 ? <>Nobody has talked to <span className="text-stone-100 font-bold">{strangers}</span> {strangers === 1 ? "person" : "people"} yet. </> : null}
-                A quick chat gets you a name. A sit-down maps all their friends and their crowd.
-              </p>
+              <div className="font-stencil text-2xl text-amber-400 mb-2 text-center">{gaps.strangers.length ? "DON'T FORGET TO MAP THE FLOOR" : "THE MAP STILL HAS GAPS"}</div>
+              <p className="text-base text-stone-200 mb-3 text-center">You can't organize people you don't know.</p>
+              <div className="text-sm text-stone-400 leading-relaxed mb-4 space-y-1.5">
+                {rows.map((r, i) => <div key={i}>▸ {r}</div>)}
+              </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <button onClick={() => { setBoardView("social"); setShowMapNag(false); }}
                   className="flex-1 font-stencil text-base bg-amber-500 hover:bg-amber-400 text-stone-950 px-4 py-2.5 tracking-wide transition-colors">
