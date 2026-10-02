@@ -7,7 +7,9 @@ import { infOn } from "../../engine/act1/influence.js";
 import { ACT1_ACTION, pathTo, convoGain, influenceKnown, misfireChance, shownInfluence } from "../../engine/act1/actions.js";
 import { affList, knownAff, tieBonus, tieFrom, tieOn } from "../../engine/act1/affinities.js";
 import { ACT1_HOURS_PER_ORGANIZER, ACT1_WORKERS_SEED, TEAM_HEX, TEAM_LABEL } from "../../engine/act1/constants.js";
-import { RATING_WORD, deltaMarks, rating, ratingGlyph } from "../../engine/act1/election.js";
+import { RATING_HEX, RATING_WORD, deltaMarks, rating, ratingGlyph } from "../../engine/act1/election.js";
+// The whole scale, so the digit never has to be decoded from memory.
+const SCALE_WORD = { 1: "no", 2: "leaning no", 3: "undecided", 4: "with you", 5: "ready to sign" };
 import { COMMITTEE_COMFORT, VET_MIN_XP } from "../../engine/act1/coverage.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
@@ -33,6 +35,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
   // A committee member's own panel is what they can do. "Somebody checks in on them" turns
   // it round: another organizer becomes the actor and this member the one being seen to.
   const [asTarget, setAsTarget] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const isSelfPanel = worker.organizer && !asTarget && (!preferActorId || preferActorId === worker.id);
   const turnRound = () => {
     const best = [...others].filter(o => hoursLeftFor(o) >= 1).sort((a, b) => (b.experience || 0) - (a.experience || 0))[0] || others[0];
@@ -92,18 +95,32 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
           const g = ratingGlyph(worker, week);
           const word = g.digit ? RATING_WORD[g.digit] : "";
           return (
-            <div className="flex items-center gap-3 mb-3">
-              <span className="font-mono font-bold text-3xl leading-none" style={g.state === "hollow"
-                ? { color: g.hex, WebkitTextStroke: `1px ${g.hex}`, WebkitTextFillColor: "transparent" }
-                : { color: g.hex }}>{g.digit ?? "\u2014"}</span>
-              <span className="text-xs text-stone-400 leading-snug">
-                {worker.signed ? <>Signed. <span className="text-stone-500">A signature is an act, not an estimate.</span></>
-                  : g.state === "solid" ? <>{word[0].toUpperCase() + word.slice(1)}. <span className="text-stone-500">Somebody sat down with them recently.</span></>
-                  : g.state === "hollow" ? (g.age != null
-                    ? <>Was {word}. <span className="text-stone-500">That read is {g.age} weeks old, and people move.</span></>
-                    : <>Says {word}. <span className="text-stone-500">Their words, and words run warm: most people are this or lower.</span></>)
-                  : <span className="text-stone-500">Nobody has talked to them.</span>}
-              </span>
+            <div className="mb-3">
+              <div className="flex items-center gap-3 mb-1.5">
+                <span className="font-mono font-bold text-3xl leading-none" style={g.state === "hollow"
+                  ? { color: g.hex, WebkitTextStroke: `1px ${g.hex}`, WebkitTextFillColor: "transparent" }
+                  : { color: g.hex }}>{g.digit ?? "\u2014"}</span>
+                <span className="text-xs text-stone-400 leading-snug">
+                  {worker.signed ? <>Signed. <span className="text-stone-500">A signature is an act, not an estimate.</span></>
+                    : g.state === "solid" ? <>{word[0].toUpperCase() + word.slice(1)}. <span className="text-stone-500">Somebody sat down with them recently, so this is a real read.</span></>
+                    : g.state === "hollow" ? (g.age != null
+                      ? <>Was {word}. <span className="text-stone-500">That read is {g.age} weeks old, and people move.</span></>
+                      : <>Says {word}. <span className="text-stone-500">Their words only. Most people are this or lower.</span></>)
+                    : <span className="text-stone-500">Nobody has talked to them yet, so there is no number.</span>}
+                </span>
+              </div>
+              {/* The scale itself, with where they sit on it. One to five, five is strongest. */}
+              <div className="grid grid-cols-5 gap-0.5 text-[10px] leading-tight">
+                {[1, 2, 3, 4, 5].map(d => {
+                  const here = g.digit === d;
+                  return (
+                    <div key={d} className={`border px-1 py-0.5 text-center ${here ? "border-stone-500 bg-stone-800" : "border-stone-800"}`}>
+                      <span className="font-mono font-bold text-xs" style={{ color: here ? RATING_HEX[d] : "#57534e" }}>{d}</span>
+                      <div className={here ? "text-stone-200" : "text-stone-600"}>{SCALE_WORD[d]}</div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           );
         })()}
@@ -139,10 +156,14 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
 
         {worker.history.length > 0 && (
           <div className="mb-4">
-            <div className="text-xs text-stone-500 font-bold mb-1 tracking-wide">HISTORY</div>
-            <div className="bg-stone-950 border border-stone-800 p-2 max-h-28 overflow-y-auto space-y-1">
-              {worker.history.map((h, i) => (<div key={i} className="text-xs text-stone-400">▸ {h}</div>))}
-            </div>
+            <button type="button" onClick={() => setShowHistory(v => !v)} className="text-xs text-stone-500 font-bold tracking-wide hover:text-stone-300 transition-colors">
+              {showHistory ? "\u25BE" : "\u25B8"} HISTORY <span className="font-normal text-stone-600">({worker.history.length})</span>
+            </button>
+            {showHistory && (
+              <div className="bg-stone-950 border border-stone-800 p-2 mt-1 max-h-28 overflow-y-auto space-y-1">
+                {worker.history.map((h, i) => (<div key={i} className="text-xs text-stone-400">▸ {h}</div>))}
+              </div>
+            )}
           </div>
         )}
 

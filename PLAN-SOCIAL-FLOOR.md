@@ -269,6 +269,24 @@ and hover tooltips for anyone who wants the sentence.
 
 ---
 
+*As built after M6 (first playtest notes):*
+- **The HUD rolls out in phases.** Week one shows the week (of 26) and cards signed, and
+  nothing else. SOLID READS appears after the first sit-down lands; the coverage dots under
+  COMMITTEE when somebody first becomes recruitable; HEAT when it first rises or Kirkman
+  arrives; BALLOT IN on filing; AGAINST YOU when the first outsider arrives, by name. When
+  a tile appears it opens a one-line explanation under the HUD, once; clicking any tile
+  reopens its line. Nothing depends on hover. "Margin left" is gone from the HUD.
+- **Friend slots are dots, not initials.** A filled dot in the friend's team colour is a
+  friend you have met; a dashed ring is one you know about but have not; a cracked ring is a
+  friendship you saw end. Initials were ambiguous (three names start with M) and the
+  names are in the hover line and the panel anyway. The legend says so.
+- **The panel shows the whole 1-5 scale** under the digit, with the person's place on it,
+  and folds HISTORY away by default.
+- **The map reminder names its gaps**, and only fires on gaps the board can show: people
+  nobody has talked to, people not yet placed on the map, cards with unmet friend rings.
+  A player who has mapped everything visible is not nagged about friendships nobody has
+  mentioned.
+
 ## 6. Phase 1: map the floor, build the right committee
 
 ### 6.1 Conversations are how the map gets drawn

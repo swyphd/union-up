@@ -253,6 +253,14 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
             <span className="w-2.5 h-2 shrink-0 border" style={{ borderColor: "#2dd4bf" }} />
             <span className="text-stone-400">{labels.signedLegend}</span>
           </span>
+          {/* The friend slots: a dot for a friend you have met, a ring for one you have not. */}
+          {social && (
+            <span className="flex items-center gap-1.5 border-l border-stone-800 pl-3" title="Each person has up to three friends. A filled dot is a friend you have met, in their team's colour; a dashed ring is a friend you know about but have not met.">
+              <span className="inline-block w-2 h-2 rounded-full bg-stone-400" />
+              <span className="inline-block w-2 h-2 rounded-full border border-dashed border-stone-500" />
+              <span className="text-stone-400">FRIENDS</span>
+            </span>
+          )}
           {/* The three states of the digit, as the digit itself. Hover for the sentence. */}
           <span className="flex items-center gap-2 border-l border-stone-800 pl-3 font-mono font-bold text-sm leading-none">
             <span title={GLYPH_TIP.solid} style={{ color: RATING_HEX[4] }}>4</span>
@@ -505,16 +513,16 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
                   return (
                     <g key={slot.id}>
                       {slot.kind === "met" && f ? (
-                        <>
-                          <circle cx={cx} cy={cy} r="1.9" fill={TEAM_HEX[f.team]} fillOpacity="0.9" />
-                          <text x={cx} y={cy + 0.95} textAnchor="middle" fontSize="2.4" fontWeight="bold" fill="#0c0a09" fontFamily="'Courier New', monospace">{f.name[0]}</text>
-                        </>
+                        // A friend you have met: a dot in their team's colour. Their name is in the
+                        // hover line and the panel; an initial on the dot was never readable.
+                        <circle cx={cx} cy={cy} r="1.7" fill={TEAM_HEX[f.team]} fillOpacity="0.9">
+                          <title>{f.name}</title>
+                        </circle>
                       ) : slot.kind === "cracked" ? (
                         // A friendship you saw end: the slot breaks, and goes in a couple of weeks.
                         <>
                           <circle cx={cx} cy={cy} r="1.8" fill="none" stroke="#f87171" strokeWidth="0.4" strokeDasharray="0.9 0.7" />
                           <line x1={cx - 1.6} y1={cy + 1.6} x2={cx + 1.6} y2={cy - 1.6} stroke="#f87171" strokeWidth="0.45" />
-                          {f && <text x={cx} y={cy + 0.95} textAnchor="middle" fontSize="2.2" fontWeight="bold" fill="#f87171" fillOpacity="0.8" fontFamily="'Courier New', monospace">{f.name[0]}</text>}
                         </>
                       ) : (
                         <circle cx={cx} cy={cy} r="1.8" fill="none" stroke="#57534e" strokeWidth="0.35" strokeDasharray="1 0.8" />
