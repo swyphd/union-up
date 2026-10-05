@@ -14,8 +14,9 @@ import { COMMITTEE_COMFORT, VET_MIN_XP } from "../../engine/act1/coverage.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
 import { FRIEND_TIE, VOUCH_TIE, isKnownFriend, knownFriends, vouchFor } from "../../engine/act1/friends.js";
+import { believedSlots } from "../../engine/act1/fallout.js";
 
-function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, move = null, stage = "drive", allowed = null, onOpenMove = null, onPlan, onClose }) {
+function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, move = null, stage = "drive", allowed = null, social = null, onOpenMove = null, onPlan, onClose }) {
   // The lessons open actions one at a time. `allowed` is the set that is open, or null
   // for everything; an action that is not open yet is not shown, rather than greyed.
   const open = (type) => !allowed || allowed.has(type);
@@ -152,6 +153,35 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
             left, what the company has bought — is already on their card on the board, and
             saying it twice made this panel longer than the decision it exists to serve. */}
         <p className="text-sm text-stone-400 leading-relaxed mb-3">{worker.hook}</p>
+
+        {/* The friends by name. The dots on the card are these people; the card has no room
+            for names, so this is where they are read. */}
+        {!worker.burned && (() => {
+          const met = knownFriends(worker).map(id => allWorkers.find(x => x.id === id)).filter(f => f && !f.burned);
+          const unmet = Math.max(0, believedSlots(worker, social) - met.length);
+          if (!met.length && !unmet) return null;
+          return (
+            <div className="text-xs mb-3 leading-snug">
+              <span className="text-stone-500">Friends: </span>
+              {met.map(f => (
+                <span key={f.id} className="inline-flex items-center gap-1 mr-2.5 text-stone-200">
+                  <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: TEAM_HEX[f.team] }} title={TEAM_LABEL[f.team]} />
+                  {f.name}
+                  {f.organizer ? <span className="text-amber-400"> · on the committee</span> : f.signed ? <span className="text-teal-400"> · signed</span> : null}
+                </span>
+              ))}
+              {unmet > 0 && (
+                <span className="inline-flex items-center gap-1 text-stone-500 italic">
+                  <span className="inline-block w-2 h-2 rounded-full border border-dashed border-stone-500 shrink-0" />
+                  {unmet} not yet met
+                </span>
+              )}
+              {allowed && (
+                <div className="text-stone-600 mt-0.5">These are the dots on their card: one per friend, in that friend's team colour. A dashed ring is a friend nobody has named yet; a sit-down names them all.</div>
+              )}
+            </div>
+          );
+        })()}
 
         <div className="flex items-center gap-2 flex-wrap mb-4">
           <AffinityMarks worker={worker} actor={isSelfPanel ? null : actor} />

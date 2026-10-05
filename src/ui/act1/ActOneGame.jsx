@@ -830,6 +830,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           move={move}
           stage={stage}
           allowed={allowedActions}
+          social={social}
           onOpenMove={() => { setSelectedWorker(null); setPairActorId(null); setShowMove(true); }}
           onPlan={(actorId, type, targetId) => { addPlan(actorId, type, targetId); setSelectedWorker(null); setPairActorId(null); }}
           onClose={() => { setSelectedWorker(null); setPairActorId(null); }}

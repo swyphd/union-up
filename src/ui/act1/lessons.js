@@ -24,7 +24,7 @@ const LESSONS = [
     title: "THE SIT-DOWN",
     opens: ["deep"],
     unlocked: "The sit-down is open. The board now shows the map you are drawing: a line is a friendship you know about.",
-    body: "Two hours. A hollow digit is only their words; a sit-down turns it solid, and maps all their friends and their crowd. Pick somebody with a way in: a friend, or something in common. On a stranger it lands as a pitch.",
+    body: "Two hours. A hollow digit is only their words; a sit-down turns it solid, and maps all their friends and their crowd. The dots on a card are that person's friends, one per friend in the friend's team colour; a dashed ring is a friend nobody has named yet. Open a card for the names. Pick somebody with a way in: a friend, or something in common. On a stranger it lands as a pitch.",
     goal: "Get one solid read.",
     need: 1,
     progress: (workers, week) => workers.filter(x => !x.organizer && !x.burned && readOf(x, week).exact).length,
