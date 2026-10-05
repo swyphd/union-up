@@ -13,7 +13,7 @@ const SCALE_WORD = { 1: "no", 2: "leaning no", 3: "undecided", 4: "with you", 5:
 import { COMMITTEE_COMFORT, VET_MIN_XP } from "../../engine/act1/coverage.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
-import { FRIEND_TIE, VOUCH_TIE, isKnownFriend, vouchFor } from "../../engine/act1/friends.js";
+import { FRIEND_TIE, VOUCH_TIE, isKnownFriend, knownFriends, vouchFor } from "../../engine/act1/friends.js";
 
 function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, move = null, stage = "drive", onOpenMove = null, onPlan, onClose }) {
   const others = organizers.filter(o => o.id !== worker.id);
@@ -411,7 +411,8 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                   </div>
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">
                     {!recruitPath
-                      ? <span className="text-amber-400">{actor.name} has no way to ask this. It takes a friend on the committee, or a signed friend in common to vouch.</span>
+                      ? <span className="text-amber-400">{actor.name} has no way to ask this. It takes a friend on the committee, or a signed friend in common to vouch.{" "}
+                          <span className="text-stone-300">{recruitRoute(worker, organizers, allWorkers)}</span></span>
                       : (() => {
                           const d = rating(worker.trueSupport ?? 0);
                           return d >= 5
@@ -434,5 +435,23 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
 
 // The two people the campaign started with never leak and are never vetted.
 const isFounder = (w) => !!ACT1_WORKERS_SEED.find(s => s.id === w.id)?.organizer;
+
+// The rule says what a recruit needs; this says what to do about it for this person. It
+// reads only the map the player has drawn, so it never names a friendship nobody found.
+function recruitRoute(worker, organizers, allWorkers) {
+  const byId = (id) => allWorkers.find(x => x.id === id);
+  const friendOrg = organizers.find(o => isKnownFriend(o, worker.id));
+  if (friendOrg) return `${friendOrg.name} is their friend: have ${friendOrg.name} do the asking.`;
+  const known = knownFriends(worker).map(byId).filter(f => f && !f.burned && !f.organizer);
+  if (!known.length) return `Nobody on the committee knows who ${worker.name} is friends with yet. A sit-down with them names everyone.`;
+  // A friend who could vouch once they sign: a mapped friend who also has a friend on the committee.
+  const bridge = known.find(f => organizers.some(o => isKnownFriend(o, f.id)));
+  if (bridge) return bridge.signed
+    ? `${bridge.name} is their friend and has signed: have ${organizers.find(o => isKnownFriend(o, bridge.id)).name}, who knows ${bridge.name}, do the asking.`
+    : `${bridge.name} is their friend and knows somebody on the committee. Once ${bridge.name} signs, ${bridge.name} can vouch.`;
+  const signedFriend = known.find(f => f.signed);
+  if (signedFriend) return `${signedFriend.name} is their friend and has signed, but nobody on the committee knows ${signedFriend.name} yet. A sit-down with ${signedFriend.name} would map that.`;
+  return `Their friends are ${known.map(f => f.name).join(" and ")}. Sign one of them, or bring one onto the committee, and the door opens.`;
+}
 
 export { Act1WorkerModal };
