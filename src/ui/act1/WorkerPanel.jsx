@@ -15,7 +15,10 @@ import { IDLE_GRACE, IDLE_QUIT, committeeHours, orgTier } from "../../engine/act
 import { infTrait } from "../../engine/act1/traits.js";
 import { FRIEND_TIE, VOUCH_TIE, isKnownFriend, knownFriends, vouchFor } from "../../engine/act1/friends.js";
 
-function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, move = null, stage = "drive", onOpenMove = null, onPlan, onClose }) {
+function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, move = null, stage = "drive", allowed = null, onOpenMove = null, onPlan, onClose }) {
+  // The lessons open actions one at a time. `allowed` is the set that is open, or null
+  // for everything; an action that is not open yet is not shown, rather than greyed.
+  const open = (type) => !allowed || allowed.has(type);
   const others = organizers.filter(o => o.id !== worker.id);
   const [actorId, setActorId] = useState(() => {
     // A dragged-in organizer, unless their week is already spent.
@@ -350,7 +353,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                   </div>
                 </button>
               )}
-              {["quick", "deep"].map(type => (
+              {["quick", "deep"].filter(open).map(type => (
                 <button
                   key={type}
                   disabled={!canAfford(type)}
@@ -376,7 +379,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                 </button>
               ))}
 
-              {!worker.signed && (
+              {!worker.signed && open("ask") && (
                 <button
                   disabled={!canAfford("ask")}
                   onClick={() => onPlan(actor.id, "ask", worker.id)}
@@ -399,7 +402,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                 </button>
               )}
 
-              {worker.signed && !worker.organizer && (
+              {worker.signed && !worker.organizer && open("recruit") && (
                 <button
                   disabled={!canAfford("recruit") || !recruitPath}
                   onClick={() => onPlan(actor.id, "recruit", worker.id)}

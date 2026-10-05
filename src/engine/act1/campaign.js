@@ -80,9 +80,16 @@ function planMove({ workers, social, consultant, campaign, heat }) {
   if ((consultant.threats || 0) < CONSULTANT_MAX_EACH && threatPool.length > 1) options.push({ kind: "threat", wt: 1 });
   const raisePool = live.filter(x => !x.organizer && (x.signed || x.support >= 55));
   if ((consultant.raises || 0) < CONSULTANT_MAX_EACH && raisePool.length) options.push({ kind: "raise", wt: 1 });
-  const total = options.reduce((t, o) => t + o.wt, 0);
-  let r = random() * total, kind = "meeting";
-  for (const o of options) { r -= o.wt; if (r <= 0) { kind = o.kind; break; } }
+  // A scripted opening (the lessons book the first moves in a fixed order) takes the
+  // kind straight off the script when it is possible this week; otherwise the draw.
+  const forced = campaign.script?.[0];
+  let kind = "meeting";
+  if (forced && options.some(o => o.kind === forced)) kind = forced;
+  else {
+    const total = options.reduce((t, o) => t + o.wt, 0);
+    let r = random() * total;
+    for (const o of options) { r -= o.wt; if (r <= 0) { kind = o.kind; break; } }
+  }
 
   if (kind === "perk") {
     const score = (c) => {
@@ -106,10 +113,19 @@ function planMove({ workers, social, consultant, campaign, heat }) {
   return meeting();
 }
 
+// Book next week's move onto the calendar. A script, if the campaign carries one, is
+// consumed one move at a time; a campaign without one comes back without one.
+function bookNext(campaign, { workers, social, consultant, heat }) {
+  const next = planMove({ workers, social, consultant, campaign, heat });
+  const out = { ...campaign, next };
+  if (campaign.script?.length) out.script = campaign.script.slice(1);
+  return out;
+}
+
 // Filing: the consultant is on site full time and the first move is already booked.
 function openCampaign({ workers, social, consultant, heat, campaign }) {
   const c = { ...newCampaign(), ...(campaign || {}) };
-  return { ...c, next: planMove({ workers, social, consultant, campaign: c, heat }) };
+  return bookNext(c, { workers, social, consultant, heat });
 }
 
 // Who a committee member covers when they get somewhere first: themselves, their friends,
@@ -410,4 +426,4 @@ const describeMove = (move, workers) => {
   return move.kind === "threat" ? `A job threat: ${t?.name}` : `A raise for ${t?.name}`;
 };
 
-export { CAMPAIGN_TUNING, COORDINATED, COORDINATED_ORDER, actionFatigue, newCampaign, planMove, openCampaign, reachOf, moveVictims, aims, resolveMove, resolveTurnout, resolveDebriefs, describeMove, addFear, visibleHit, visibleReach, visiblePool };
+export { CAMPAIGN_TUNING, COORDINATED, COORDINATED_ORDER, actionFatigue, newCampaign, planMove, bookNext, openCampaign, reachOf, moveVictims, aims, resolveMove, resolveTurnout, resolveDebriefs, describeMove, addFear, visibleHit, visibleReach, visiblePool };

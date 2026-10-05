@@ -34,6 +34,8 @@ import { CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_SETPIECE_GAP, KIRKMAN_
 import { AFF_BY_ID } from "../../engine/act1/affinities.js";
 import { COORDINATED_ORDER, newCampaign, openCampaign } from "../../engine/act1/campaign.js";
 import { ActionPicker, CalendarStrip, MovePanel } from "./Campaign.jsx";
+import { CAMPAIGN_SCRIPT, LESSONS_DONE, campaignLesson, lessonFrom, openActions } from "./lessons.js";
+import { CampaignLessonBanner, LessonBanner } from "./LessonBanner.jsx";
 
 // A reminder for a player who has stopped mapping: after this many weeks in which the map
 // did not grow, while there is still something left to find, and again every few weeks
@@ -84,6 +86,11 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   const [tipsSeen, setTipsSeen] = useState({});
   const [openTip, setOpenTip] = useState(null);
   const [sawFilePrompt, setSawFilePrompt] = useState(false);
+  // The staircase: which lesson the floor has reached, the week it got there, and whether
+  // the player has turned the lessons off. Nothing in the engine reads any of it.
+  const [lesson, setLesson] = useState(0);
+  const [lessonWeek, setLessonWeek] = useState(1);
+  const [lessonsOff, setLessonsOff] = useState(false);
   const pendingRef = useRef(null);
   const planKeyRef = useRef(0);
 
@@ -207,14 +214,22 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
       setSawFilePrompt(true);
       setShowFilePrompt(true);
     }
+    const nextWeek = week + 1;
+    // The lesson the floor has earned. It only ever goes up. The sit-down opening is the
+    // moment the social map starts meaning something, so the board switches to it once.
+    const earned = lessonFrom(w, nextWeek);
+    if (earned > lesson) {
+      setLesson(earned);
+      setLessonWeek(nextWeek);
+      if (lesson < 1 && earned >= 1 && !lessonsOff) setBoardView("social");
+    }
     // Has the map grown this week? If it has stalled for a while and there is still floor
     // left to find, say so.
-    const nextWeek = week + 1;
     const mapNow = mapProgress(w, socialNext || social);
     if (mapNow.known > mapProgress(workers, social).known) {
       setMapGrewWeek(nextWeek);
       setMapNagWeek(null);
-    } else if (!mapNow.complete && !filePromptNow && nextWeek - mapGrewWeek >= MAP_NAG_AFTER
+    } else if (!mapNow.complete && !filePromptNow && (lessonsOff || earned >= LESSONS_DONE) && nextWeek - mapGrewWeek >= MAP_NAG_AFTER
       && (mapNagWeek == null || nextWeek - mapNagWeek >= MAP_NAG_REPEAT)) {
       setMapNagWeek(nextWeek);
       setShowMapNag(true);
@@ -246,6 +261,9 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     setShowMapNag(false);
     setTipsSeen({});
     setOpenTip(null);
+    setLesson(0);
+    setLessonWeek(1);
+    setLessonsOff(false);
     setResolutionSteps([]);
     setStepIndex(0);
     setSelectedWorker(null);
@@ -286,7 +304,9 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
     const onSite = consultant.active ? consultant : { ...consultant, active: true, arrivedWeek: week };
     setConsultant(onSite);
     // His first move goes on the calendar the day the petition lands.
-    setCampaign(openCampaign({ workers, social, consultant: onSite, heat, campaign }));
+    // On the lessons, his first two moves come in a fixed order: the meeting, then the perk.
+    const opening = lessonsOff ? campaign : { ...campaign, script: CAMPAIGN_SCRIPT };
+    setCampaign(openCampaign({ workers, social, consultant: onSite, heat, campaign: opening }));
     const share = signedCount / ACT1_TOTAL_WORKERS;
     if (random() < recognitionChance(share, consultant.active, heat)) {
       setPhase("recognized");
@@ -318,6 +338,8 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   }, [phase, tilesOnKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const act1Win = act1Winnability(workers, stage, week);
+  const lessonsOn = !lessonsOff;
+  const allowedActions = lessonsOn ? openActions(lesson) : null;
   const organizerHours = Object.fromEntries(organizers.map(o => [o.id, hoursLeftFor(o)]));
   const canResolve = planEntries.length > 0 && organizers.every(o => hoursLeftFor(o) >= 0);
   const overBudget = organizers.some(o => hoursLeftFor(o) < 0);
@@ -428,13 +450,19 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
 
       {phase === "plan" && (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
+          {lessonsOn && stage === "drive" && (
+            <LessonBanner lesson={lesson} workers={workers} week={week} justUnlocked={lessonWeek === week && lesson > 0} onOff={() => setLessonsOff(true)} />
+          )}
+          {lessonsOn && stage === "campaign" && (
+            <CampaignLessonBanner lesson={campaignLesson(move, week, filedWeek)} />
+          )}
           {letterOpen && (
             <div className="mb-4 flex items-start gap-2 text-teal-300 text-sm border border-teal-700 bg-teal-950/30 px-3 py-2">
               <Megaphone size={14} className="shrink-0 mt-0.5" />
               <span><span className="font-bold text-teal-400">THE OPEN LETTER.</span> Once, before you file: who signs it reads solid, who doesn't reads hollow. The megaphone, below the board.</span>
             </div>
           )}
-          {anyRecruitable && (
+          {anyRecruitable && !(lessonsOn && lesson < LESSONS_DONE) && (
             <div className="mb-4 flex items-start gap-2 text-teal-300 text-sm border border-teal-700 bg-teal-950/30 px-3 py-2">
               <UsersRound size={14} className="shrink-0 mt-0.5" />
               <span><span className="font-bold text-teal-400">SOMEBODY CAN JOIN THE COMMITTEE.</span> Anyone who signed can be asked by a friend on the committee, or through a signed friend in common. A solid 5 is safe; a 4 might talk.</span>
@@ -801,6 +829,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
           onCancelPlans={(key) => setPlanEntries(es => es.filter(e => e.key !== key))}
           move={move}
           stage={stage}
+          allowed={allowedActions}
           onOpenMove={() => { setSelectedWorker(null); setPairActorId(null); setShowMove(true); }}
           onPlan={(actorId, type, targetId) => { addPlan(actorId, type, targetId); setSelectedWorker(null); setPairActorId(null); }}
           onClose={() => { setSelectedWorker(null); setPairActorId(null); }}
