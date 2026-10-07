@@ -11,7 +11,7 @@ import { CIRCLES, generateSocial, isKnownFriend, mapProgress, vouchFor } from ".
 import { activeLeaks, coverageGaps, recentlyTipped } from "../../engine/act1/coverage.js";
 import { seenCircle } from "../../engine/act1/fallout.js";
 import { TEAM_HEX, TEAM_LABEL, ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, ACT1_SHIP_WEEK, ACT1_TOTAL_WORKERS, ACT1_WORKERS_SEED, act1Stars, cardStaleSoon } from "../../engine/act1/constants.js";
-import { committeeHours, orgTier } from "../../engine/act1/committee.js";
+import { committeeHours } from "../../engine/act1/committee.js";
 import { ACT1_ACTION } from "../../engine/act1/actions.js";
 import { resolveWeek as runWeek } from "../../engine/act1/resolveWeek.js";
 import { ACT1_SAVE_KEY } from "../../save.js";
@@ -588,7 +588,6 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
             layout={ORG_LAYOUT}
             planEntries={planEntries}
             hoursLeft={organizerHours}
-            tierOf={orgTier}
             social={social}
             onSelect={(w) => { setPairActorId(null); setSelectedWorker(w); }}
             onPair={(actor, target) => { setPairActorId(actor.id); setSelectedWorker(target); }}

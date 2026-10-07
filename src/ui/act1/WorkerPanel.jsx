@@ -154,8 +154,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
             saying it twice made this panel longer than the decision it exists to serve. */}
         <p className="text-sm text-stone-400 leading-relaxed mb-3">{worker.hook}</p>
 
-        {/* The friends by name. The dots on the card are these people; the card has no room
-            for names, so this is where they are read. */}
+        {/* The friends by name. The dots on the card are these people; hover a dot for the name. */}
         {!worker.burned && (() => {
           const met = knownFriends(worker).map(id => allWorkers.find(x => x.id === id)).filter(f => f && !f.burned);
           const unmet = Math.max(0, believedSlots(worker, social) - met.length);
@@ -165,19 +164,16 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
               <span className="text-stone-500">Friends: </span>
               {met.map(f => (
                 <span key={f.id} className="inline-flex items-center gap-1 mr-2.5 text-stone-200">
-                  <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: TEAM_HEX[f.team] }} title={TEAM_LABEL[f.team]} />
+                  <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: TEAM_HEX[f.team] }} title={`Friends with ${f.name}`} />
                   {f.name}
                   {f.organizer ? <span className="text-amber-400"> · on the committee</span> : f.signed ? <span className="text-teal-400"> · signed</span> : null}
                 </span>
               ))}
               {unmet > 0 && (
                 <span className="inline-flex items-center gap-1 text-stone-500 italic">
-                  <span className="inline-block w-2 h-2 rounded-full border border-dashed border-stone-500 shrink-0" />
+                  <span className="inline-block w-2 h-2 rounded-full border border-dashed border-stone-500 shrink-0" title="A friend you have not met yet" />
                   {unmet} not yet met
                 </span>
-              )}
-              {allowed && (
-                <div className="text-stone-600 mt-0.5">These are the dots on their card: one per friend, in that friend's team colour. A dashed ring is a friend nobody has named yet; a sit-down names them all.</div>
               )}
             </div>
           );
@@ -211,12 +207,6 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
               {worker.shaken > 0 && <span className="text-red-400"> — under a manager's eye this week</span>}
             </div>
             <div className="border border-stone-800 bg-stone-950/50 px-3 py-2 text-xs">
-              <div className="flex items-center justify-between mb-1">
-                <span className="font-bold" style={{ color: orgTier(worker).hex }}>{orgTier(worker).label}</span>
-              </div>
-              <div className="h-1 w-full bg-stone-800 mb-1.5">
-                <div className="h-1" style={{ width: `${worker.experience || 0}%`, backgroundColor: orgTier(worker).hex }} />
-              </div>
               <div className="text-stone-400 leading-snug">{orgTier(worker).blurb}</div>
               {!isFounder(worker) && (
                 <div className={`mt-1 ${worker.leakKnown ? "text-red-400 font-bold" : "text-stone-500"}`}>
