@@ -255,10 +255,12 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
           </span>
           {/* The friend slots: a dot for a friend you have met, a ring for one you have not. */}
           {social && (
-            <span className="flex items-center gap-1.5 border-l border-stone-800 pl-3" title="Each person has up to three friends. A filled dot is a friend you have met, in their team's colour; a dashed ring is a friend you know about but have not met.">
+            <span className="flex items-center gap-1.5 border-l border-stone-800 pl-3" title="Each person has up to three friends. A filled dot is a friend you have met, in that friend's team colour; a dashed ring is a friend you know about but have not met. Hover or open a card for the names.">
+              <span className="text-stone-400">FRIENDS:</span>
               <span className="inline-block w-2 h-2 rounded-full bg-stone-400" />
-              <span className="inline-block w-2 h-2 rounded-full border border-dashed border-stone-500" />
-              <span className="text-stone-400">FRIENDS</span>
+              <span className="text-stone-400">MET, IN THEIR TEAM'S COLOUR</span>
+              <span className="inline-block w-2 h-2 rounded-full border border-dashed border-stone-500 ml-1" />
+              <span className="text-stone-400">NOT MET</span>
             </span>
           )}
           {/* The three states of the digit, as the digit itself. Hover for the sentence. */}

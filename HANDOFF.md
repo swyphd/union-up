@@ -165,6 +165,18 @@ not a decider.
   workers with `makeContractWorkers(workers, social)`; recruiting to the action team needs
   `teamPath` (friend, vouch, or a found crowd-mate). Saves are v3 (`src/save.js`): the floor
   and its friendships, no weight map. The company campaign reads only leaders.
+- **The lessons (the staircase).** `src/ui/act1/lessons.js` opens Act One's actions one at
+  a time: quick chat, then the sit-down (after three people are spoken to; the board
+  switches to the social view once here), then the card ask (after one solid read), then
+  recruiting (after one signature), and everything once somebody has joined the committee.
+  `LessonBanner.jsx` is the strip; "I KNOW THIS" turns the whole thing off. The worker
+  panel takes `allowed` and simply does not show an action that is not open yet. After
+  filing, a player still on the lessons gets management's first two moves in a fixed
+  order (`campaign.script`, consumed by `bookNext` in `campaign.js`) with a beat per move
+  kind for three weeks. The engine never reads any lesson state, and a campaign without
+  a `script` books exactly as before, so `SEED=7 node sim/verify-ballot.mjs` is unchanged.
+  Verified in a headless browser through the first two lessons; the Phase 2 beats compile
+  and follow the same gate but have not been played through by hand.
 - `SEED=7 node sim/fuzz.mjs` throws random and adversarial plans at the real week and
   checks invariants every week, including that `resolveWeek` never mutates the state it
   was handed. Run it after any engine change; it prints "no problems" when clean.

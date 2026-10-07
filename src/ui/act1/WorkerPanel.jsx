@@ -13,9 +13,13 @@ const SCALE_WORD = { 1: "no", 2: "leaning no", 3: "undecided", 4: "with you", 5:
 import { COMMITTEE_COMFORT, VET_MIN_XP } from "../../engine/act1/coverage.js";
 import { IDLE_GRACE, IDLE_QUIT, committeeHours, orgTier } from "../../engine/act1/committee.js";
 import { infTrait } from "../../engine/act1/traits.js";
-import { FRIEND_TIE, VOUCH_TIE, isKnownFriend, vouchFor } from "../../engine/act1/friends.js";
+import { FRIEND_TIE, VOUCH_TIE, isKnownFriend, knownFriends, vouchFor } from "../../engine/act1/friends.js";
+import { believedSlots } from "../../engine/act1/fallout.js";
 
-function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, move = null, stage = "drive", onOpenMove = null, onPlan, onClose }) {
+function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, hoursLeftFor, hoursFor, preferActorId = null, plannedFor = [], onCancelPlans = null, move = null, stage = "drive", allowed = null, social = null, onOpenMove = null, onPlan, onClose }) {
+  // The lessons open actions one at a time. `allowed` is the set that is open, or null
+  // for everything; an action that is not open yet is not shown, rather than greyed.
+  const open = (type) => !allowed || allowed.has(type);
   const others = organizers.filter(o => o.id !== worker.id);
   const [actorId, setActorId] = useState(() => {
     // A dragged-in organizer, unless their week is already spent.
@@ -149,6 +153,35 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
             left, what the company has bought — is already on their card on the board, and
             saying it twice made this panel longer than the decision it exists to serve. */}
         <p className="text-sm text-stone-400 leading-relaxed mb-3">{worker.hook}</p>
+
+        {/* The friends by name. The dots on the card are these people; the card has no room
+            for names, so this is where they are read. */}
+        {!worker.burned && (() => {
+          const met = knownFriends(worker).map(id => allWorkers.find(x => x.id === id)).filter(f => f && !f.burned);
+          const unmet = Math.max(0, believedSlots(worker, social) - met.length);
+          if (!met.length && !unmet) return null;
+          return (
+            <div className="text-xs mb-3 leading-snug">
+              <span className="text-stone-500">Friends: </span>
+              {met.map(f => (
+                <span key={f.id} className="inline-flex items-center gap-1 mr-2.5 text-stone-200">
+                  <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: TEAM_HEX[f.team] }} title={TEAM_LABEL[f.team]} />
+                  {f.name}
+                  {f.organizer ? <span className="text-amber-400"> · on the committee</span> : f.signed ? <span className="text-teal-400"> · signed</span> : null}
+                </span>
+              ))}
+              {unmet > 0 && (
+                <span className="inline-flex items-center gap-1 text-stone-500 italic">
+                  <span className="inline-block w-2 h-2 rounded-full border border-dashed border-stone-500 shrink-0" />
+                  {unmet} not yet met
+                </span>
+              )}
+              {allowed && (
+                <div className="text-stone-600 mt-0.5">These are the dots on their card: one per friend, in that friend's team colour. A dashed ring is a friend nobody has named yet; a sit-down names them all.</div>
+              )}
+            </div>
+          );
+        })()}
 
         <div className="flex items-center gap-2 flex-wrap mb-4">
           <AffinityMarks worker={worker} actor={isSelfPanel ? null : actor} />
@@ -350,7 +383,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                   </div>
                 </button>
               )}
-              {["quick", "deep"].map(type => (
+              {["quick", "deep"].filter(open).map(type => (
                 <button
                   key={type}
                   disabled={!canAfford(type)}
@@ -376,7 +409,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                 </button>
               ))}
 
-              {!worker.signed && (
+              {!worker.signed && open("ask") && (
                 <button
                   disabled={!canAfford("ask")}
                   onClick={() => onPlan(actor.id, "ask", worker.id)}
@@ -399,7 +432,7 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                 </button>
               )}
 
-              {worker.signed && !worker.organizer && (
+              {worker.signed && !worker.organizer && open("recruit") && (
                 <button
                   disabled={!canAfford("recruit") || !recruitPath}
                   onClick={() => onPlan(actor.id, "recruit", worker.id)}
@@ -411,7 +444,8 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
                   </div>
                   <div className="text-xs text-stone-400 leading-snug mt-0.5">
                     {!recruitPath
-                      ? <span className="text-amber-400">{actor.name} has no way to ask this. It takes a friend on the committee, or a signed friend in common to vouch.</span>
+                      ? <span className="text-amber-400">{actor.name} has no way to ask this. It takes a friend on the committee, or a signed friend in common to vouch.{" "}
+                          <span className="text-stone-300">{recruitRoute(worker, organizers, allWorkers)}</span></span>
                       : (() => {
                           const d = rating(worker.trueSupport ?? 0);
                           return d >= 5
@@ -434,5 +468,23 @@ function Act1WorkerModal({ worker, allWorkers, influence, week = 1, organizers, 
 
 // The two people the campaign started with never leak and are never vetted.
 const isFounder = (w) => !!ACT1_WORKERS_SEED.find(s => s.id === w.id)?.organizer;
+
+// The rule says what a recruit needs; this says what to do about it for this person. It
+// reads only the map the player has drawn, so it never names a friendship nobody found.
+function recruitRoute(worker, organizers, allWorkers) {
+  const byId = (id) => allWorkers.find(x => x.id === id);
+  const friendOrg = organizers.find(o => isKnownFriend(o, worker.id));
+  if (friendOrg) return `${friendOrg.name} is their friend: have ${friendOrg.name} do the asking.`;
+  const known = knownFriends(worker).map(byId).filter(f => f && !f.burned && !f.organizer);
+  if (!known.length) return `Nobody on the committee knows who ${worker.name} is friends with yet. A sit-down with them names everyone.`;
+  // A friend who could vouch once they sign: a mapped friend who also has a friend on the committee.
+  const bridge = known.find(f => organizers.some(o => isKnownFriend(o, f.id)));
+  if (bridge) return bridge.signed
+    ? `${bridge.name} is their friend and has signed: have ${organizers.find(o => isKnownFriend(o, bridge.id)).name}, who knows ${bridge.name}, do the asking.`
+    : `${bridge.name} is their friend and knows somebody on the committee. Once ${bridge.name} signs, ${bridge.name} can vouch.`;
+  const signedFriend = known.find(f => f.signed);
+  if (signedFriend) return `${signedFriend.name} is their friend and has signed, but nobody on the committee knows ${signedFriend.name} yet. A sit-down with ${signedFriend.name} would map that.`;
+  return `Their friends are ${known.map(f => f.name).join(" and ")}. Sign one of them, or bring one onto the committee, and the door opens.`;
+}
 
 export { Act1WorkerModal };

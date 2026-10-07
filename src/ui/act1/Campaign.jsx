@@ -6,7 +6,7 @@ import { CostPips, HourPie } from "../shared.jsx";
 import { TEAM_HEX, TEAM_LABEL } from "../../engine/act1/constants.js";
 import { CIRCLE_BY_ID } from "../../engine/act1/friends.js";
 import { ratingGlyph } from "../../engine/act1/election.js";
-import { COORDINATED, COORDINATED_ORDER, visibleHit, visiblePool, visibleReach } from "../../engine/act1/campaign.js";
+import { CAMPAIGN_TUNING, COORDINATED, COORDINATED_ORDER, visibleHit, visiblePool, visibleReach } from "../../engine/act1/campaign.js";
 
 const MOVE_RED = "#f87171";
 // One picture per move. The board draws the same mark on whatever it lands on.
@@ -81,12 +81,36 @@ function MovePanel({ week, move, workers, social, organizers, hoursLeftFor, hour
           </div>
           <button onClick={onClose} aria-label="Close"><X size={18} className="text-stone-500 hover:text-stone-200" /></button>
         </div>
-        <p className="text-sm text-stone-400 leading-relaxed mb-3">
+        <p className="text-sm text-stone-400 leading-relaxed mb-2">
           {move.kind === "meeting" && "Everyone in the department, paid time, nobody allowed to answer back. Whoever sits through it cold is unreadable afterwards."}
           {move.kind === "perk" && "Bought for the thing that crowd has in common. Unless somebody gets there first, their friendships stop doing any work for you."}
           {move.kind === "threat" && "A room with Kirkman and their manager. Alone, people fold."}
           {move.kind === "raise" && "A quiet offer. Alone, people take it."}
         </p>
+        {/* What the hour actually does, in the numbers the engine uses, so the player can
+            tell a counter that matters from one that is wasted. */}
+        <div className="text-xs leading-snug border border-stone-800 bg-stone-950/50 px-2.5 py-2 mb-3 space-y-0.5">
+          {person ? (
+            <>
+              <div><span className="text-teal-300 font-bold">With somebody beside them:</span> <span className="text-stone-400">{move.kind === "raise"
+                ? "they turn it down and repeat the offer out loud, and their friends move toward you."
+                : "it backfires: they hold, write down who was in the room, and their friends move toward you."}</span></div>
+              <div><span className="text-red-300 font-bold">Alone:</span> <span className="text-stone-400">{move.kind === "raise"
+                ? "they may take it and pull their card. The less sure they are, the likelier."
+                : "up to a coin flip that they step off the committee, and their friends take fright."}</span></div>
+            </>
+          ) : (
+            <>
+              <div><span className="text-teal-300 font-bold">Reached first:</span> <span className="text-stone-400">{move.kind === "meeting"
+                ? `the meeting lands at ${Math.round(CAMPAIGN_TUNING.inoculated * 100)}% strength, about ${Math.round(CAMPAIGN_TUNING.meetingTrue * CAMPAIGN_TUNING.inoculated)} off where they stand instead of ${CAMPAIGN_TUNING.meetingTrue}. No fear, and your read on them survives.`
+                : `the perk lands at ${Math.round(CAMPAIGN_TUNING.inoculated * 100)}% strength, and the crowd's friendships keep working for you.`}</span></div>
+              <div><span className="text-red-300 font-bold">Not reached:</span> <span className="text-stone-400">{move.kind === "meeting"
+                ? "full hit, fear goes up, and unless they have signed their digit goes back to a guess."
+                : "full hit, fear goes up, and friendships inside that crowd count for nothing until the perk lapses."}</span></div>
+              <div className="text-stone-500">Reaches stack. Once everyone is covered, another hour here is wasted.</div>
+            </>
+          )}
+        </div>
         {!person && hit.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
             {hit.map(x => {

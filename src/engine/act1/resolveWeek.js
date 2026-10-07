@@ -19,7 +19,7 @@ import { COMMITTEE_TUNING, DROP_LEAK_TRUE, LEAK_TIP_TRUE, VET_MIN_XP, activeLeak
 import { ACT1_WORKERS_SEED, ACT1_CARDS_NEEDED, ACT1_CARD_THRESHOLD, ACT1_HOURS_PER_ORGANIZER, ACT1_RECRUIT_REQ, ACT1_TOTAL_WORKERS, BURN_NARRATIVES, CARD_LIFESPAN, TEAM_LABEL } from "./constants.js";
 import { CONSULTANT_FIRM, CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_NAME_UC, CONSULTANT_ONE_ON_ONES, CONSULTANT_SETPIECE_GAP, CONSULTANT_TRIGGER_COMMITTEE, KIRKMAN_SIGHT, OUTSIDERS, holdsFast, orgChartResistance, signedBacking } from "./consultant.js";
 import { rating, turnoutChance, voteProjection, yesChance } from "./election.js";
-import { CAMPAIGN_TUNING, addFear, newCampaign, planMove, resolveDebriefs, resolveMove, resolveTurnout } from "./campaign.js";
+import { CAMPAIGN_TUNING, addFear, bookNext, newCampaign, resolveDebriefs, resolveMove, resolveTurnout } from "./campaign.js";
 
 export function resolveWeek(state, planEntries) {
   const { workers, week, stage, heat, consultant, perks, outsiders, electionWeek } = state;
@@ -945,7 +945,7 @@ export function resolveWeek(state, planEntries) {
       lastMeeting: campaignNext.next?.kind === "meeting" ? campaignNext.next.team : campaignNext.lastMeeting,
       last: campaignNext.next ? { ...campaignNext.next, week } : campaignNext.last,
     };
-    campaignNext = { ...done, next: planMove({ workers: w, social, consultant: consultantNext, campaign: done, heat: heatNext }) };
+    campaignNext = bookNext(done, { workers: w, social, consultant: consultantNext, heat: heatNext });
   }
 
   // --- ELECTION DAY ---
