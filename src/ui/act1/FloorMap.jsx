@@ -111,7 +111,7 @@ const GLYPH_TIP = {
   blank: "Nobody has talked to them yet.",
 };
 
-function Act1FloorMap({ workers, influence, social = null, view = "org", onView = null, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onPair = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, labels = FLOOR_LABELS, ladder = null, rungOf = null, hoursLeft = null, tierOf = null, glyphOf = ratingGlyph, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type, move = null, onMoveTarget = null, onInoculate = null }) {
+function Act1FloorMap({ workers, influence, social = null, view = "org", onView = null, staleWeek = null, weekNow = 1, layout = ORG_LAYOUT, planEntries = [], onSelect, onPair = null, highlights = null, edgePulses = [], stepKey = 0, notes = null, labels = FLOOR_LABELS, ladder = null, rungOf = null, hoursLeft = null, glyphOf = ratingGlyph, planLabel = (e) => ACT1_ACTION[e.type]?.short ?? e.type, move = null, onMoveTarget = null, onInoculate = null }) {
   const [hoverId, setHoverId] = useState(null);
   const svgRef = useRef(null);
   // A committee card being dragged onto somebody. `over` is the card under the pointer;
@@ -255,7 +255,7 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
           </span>
           {/* The friend slots: a dot for a friend you have met, a ring for one you have not. */}
           {social && (
-            <span className="flex items-center gap-1.5 border-l border-stone-800 pl-3" title="Each person has up to three friends. A filled dot is a friend you have met, in that friend's team colour; a dashed ring is a friend you know about but have not met. Hover or open a card for the names.">
+            <span className="flex items-center gap-1.5 border-l border-stone-800 pl-3" title="A filled dot is a friend you have met; a dashed ring is one you have not. Hover a dot for the name.">
               <span className="text-stone-400">FRIENDS:</span>
               <span className="inline-block w-2 h-2 rounded-full bg-stone-400" />
               <span className="text-stone-400">MET, IN THEIR TEAM'S COLOUR</span>
@@ -518,7 +518,7 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
                         // A friend you have met: a dot in their team's colour. Their name is in the
                         // hover line and the panel; an initial on the dot was never readable.
                         <circle cx={cx} cy={cy} r="1.7" fill={TEAM_HEX[f.team]} fillOpacity="0.9">
-                          <title>{f.name}</title>
+                          <title>{`Friends with ${f.name}`}</title>
                         </circle>
                       ) : slot.kind === "cracked" ? (
                         // A friendship you saw end: the slot breaks, and goes in a couple of weeks.
@@ -527,7 +527,9 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
                           <line x1={cx - 1.6} y1={cy + 1.6} x2={cx + 1.6} y2={cy - 1.6} stroke="#f87171" strokeWidth="0.45" />
                         </>
                       ) : (
-                        <circle cx={cx} cy={cy} r="1.8" fill="none" stroke="#57534e" strokeWidth="0.35" strokeDasharray="1 0.8" />
+                        <circle cx={cx} cy={cy} r="1.8" fill="none" stroke="#57534e" strokeWidth="0.35" strokeDasharray="1 0.8">
+                          <title>A friend you have not met yet</title>
+                        </circle>
                       )}
                     </g>
                   );
@@ -541,25 +543,17 @@ function Act1FloorMap({ workers, influence, social = null, view = "org", onView 
                 <text x={c.x + c.w - 3.4} y={c.y + 18.6} textAnchor="end" fontSize="3.6" fill="#78716c" fontFamily="'Courier New', monospace">{"✕"}</text>
               )}
 
-              {/* ---- committee only: experience as a hairline, trouble as one mark ---- */}
-              {w.organizer && !w.burned && tierOf && (() => {
-                const t = tierOf(w);
-                const xp = Math.max(0, Math.min(100, w.experience || 0));
+              {/* ---- committee only: trouble as one mark ---- */}
+              {w.organizer && !w.burned && (() => {
                 const idle = w.weeksIdle || 0;
                 const flag = w.shaken > 0 ? { mark: "◉", hex: "#f87171" }
                   : idle >= IDLE_QUIT - 1 ? { mark: "▲", hex: "#f87171" }
                   : idle > IDLE_GRACE ? { mark: "▲", hex: "#fbbf24" }
                   : idle > 0 ? { mark: "△", hex: "#78716c" }
                   : null;
-                return (
-                  <g>
-                    {flag && (
-                      <text x={c.x + c.w - 9.2} y={c.y + 18.4} textAnchor="end" fontSize="3.2" fill={flag.hex} fontFamily="'Courier New', monospace">{flag.mark}</text>
-                    )}
-                    <rect x={c.x + 3.6} y={c.y + 20.2} width={c.w - 7.2} height="0.8" rx="0.4" fill="#292524" />
-                    <rect x={c.x + 3.6} y={c.y + 20.2} width={(c.w - 7.2) * (xp / 100)} height="0.8" rx="0.4" fill={t.hex} fillOpacity="0.9" />
-                  </g>
-                );
+                return flag ? (
+                  <text x={c.x + c.w - 9.2} y={c.y + 18.4} textAnchor="end" fontSize="3.2" fill={flag.hex} fontFamily="'Courier New', monospace">{flag.mark}</text>
+                ) : null;
               })()}
 
               {budget != null && (() => {
