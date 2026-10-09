@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/union-up/(.*)", "destination": "/$1" }
+  ]
+}
