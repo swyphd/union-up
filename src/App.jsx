@@ -2,6 +2,7 @@
 // its own component under src/ui; every number they run on lives under src/engine.
 import React, { useState, useEffect } from "react";
 import { GlobalStyle } from "./ui/shared.jsx";
+import { NewsletterSignup } from "./ui/Newsletter.jsx";
 import { ActOneGame } from "./ui/act1/ActOneGame.jsx";
 import { ContractPrototype } from "./ui/contract/ContractPrototype.jsx";
 import { ActTwoGame } from "./ui/company/ActTwoGame.jsx";
@@ -152,6 +153,7 @@ export default function PermadeathOrganizing() {
   return (
     <div>
       {content}
+      {act !== "loading" && <NewsletterSignup />}
       <div className="text-center text-sm text-stone-600 py-4">
         A <a href="https://permadeathmedia.com" target="_blank" rel="noopener noreferrer" className="hover:text-stone-400 transition-colors">Permadeath Studio</a> game
       </div>
