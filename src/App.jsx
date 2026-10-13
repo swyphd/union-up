@@ -7,6 +7,10 @@ import { ActOneGame } from "./ui/act1/ActOneGame.jsx";
 import { ContractPrototype } from "./ui/contract/ContractPrototype.jsx";
 import { ActTwoGame } from "./ui/company/ActTwoGame.jsx";
 import { ACT1_SAVE_KEY, SAVE_VERSION } from "./save.js";
+import { createRunSave, describeRun, validRun } from "./runSave.js";
+
+// The mid-act save (src/runSave.js): where the run stood inside whichever act it was in.
+const runSave = createRunSave();
 
 // =====================================================================================
 // TOP-LEVEL WRAPPER — Act 1 (one shop) graduates into Act 2 (the citywide campaign)
@@ -25,8 +29,15 @@ export default function PermadeathOrganizing() {
   const [act1, setAct1] = useState(null);       // { leaders, workers, influence, week }
   const [contract, setContract] = useState(null); // { leaders, tiers, max, ratified, survived }
   const [savedRun, setSavedRun] = useState(null);
+  // A run left mid-act, the state the act being entered should pick up from (null for a
+  // fresh start), and whether this run came in through a playtest skip, which never saves.
+  const [midRun, setMidRun] = useState(null);
+  const [resume, setResume] = useState(null);
+  const [playtest, setPlaytest] = useState(false);
 
   useEffect(() => {
+    const mid = runSave.load();
+    if (validRun(mid)) setMidRun(mid);
     try {
       const raw = localStorage.getItem(ACT1_SAVE_KEY);
       if (raw) {
@@ -48,7 +59,7 @@ export default function PermadeathOrganizing() {
     } catch (e) {
       // no prior save, or storage unavailable — just start fresh
     }
-    setAct("shop");
+    setAct(validRun(mid) ? "choice" : "shop");
   }, []);
 
   function persist(next) {
@@ -59,11 +70,36 @@ export default function PermadeathOrganizing() {
     }
   }
 
+  // What each act writes to the mid-act save as it goes: its own state, plus what App
+  // handed it. A playtest run writes nothing; null clears the slot (the act started over).
+  function snapshotFor(which) {
+    if (playtest) return null;
+    return (state) => {
+      if (state === null) { runSave.clear(); return; }
+      const ctx = which === "shop" ? null : { act1: act1 ? { ...act1, influence: undefined, playtest: undefined } : null, contract };
+      runSave.write({ act: which, ctx, state });
+    };
+  }
+
+  // Picks the run up inside the act it was left in.
+  function resumeMidRun() {
+    const { act: which, ctx, state } = midRun;
+    setAct1(ctx?.act1 ?? null);
+    setContract(ctx?.contract ?? null);
+    setPlaytest(false);
+    setResume(state);
+    setAct(which);
+  }
+
   // Act One is done. The floor it built goes straight into the contract fight.
   function handleGraduate(payload, save = true) {
     // A playtest skip into the contract is never saved, not now and not when it ends.
     setAct1({ ...payload, playtest: !save });
     setContract(null);
+    setResume(null);
+    setPlaytest(!save);
+    // The shop is finished; the contract act writes its own mid-act save from here.
+    if (save) runSave.clear();
     // The weight map is derived from the friendships; there is no reason to write it twice.
     if (save) persist({ act1: { ...payload, influence: undefined }, contract: null });
     setAct("contract");
@@ -72,7 +108,11 @@ export default function PermadeathOrganizing() {
   // The contract fight is done. Whoever is left on the action team goes company-wide.
   function handleContractDone(result) {
     setContract(result);
-    if (act1 && !act1.playtest) persist({ act1: { ...act1, influence: undefined }, contract: result });
+    setResume(null);
+    if (act1 && !act1.playtest && !playtest) {
+      persist({ act1: { ...act1, influence: undefined }, contract: result });
+      runSave.clear();
+    }
     setAct("company");
   }
 
@@ -80,7 +120,11 @@ export default function PermadeathOrganizing() {
     setAct1(null);
     setContract(null);
     try { localStorage.removeItem(ACT1_SAVE_KEY); } catch (e) { /* nothing saved, or storage unavailable */ }
+    runSave.clear();
     setSavedRun(null);
+    setMidRun(null);
+    setResume(null);
+    setPlaytest(false);
     setAct("shop");
   }
 
@@ -93,37 +137,63 @@ export default function PermadeathOrganizing() {
   if (act === "loading") {
     content = <div className="min-h-screen bg-stone-950" />;
   } else if (act === "choice") {
-    const hasContract = !!savedRun.contract;
-    const hasFloor = Array.isArray(savedRun.act1?.workers) && !!savedRun.act1?.social;
-    const names = (savedRun.contract ? (savedRun.contract.leaders || []) : savedRun.act1.leaders).map(l => l.name).join(", ");
+    const hasContract = !!savedRun?.contract;
+    const hasFloor = Array.isArray(savedRun?.act1?.workers) && !!savedRun?.act1?.social;
+    const names = savedRun ? (savedRun.contract ? (savedRun.contract.leaders || []) : savedRun.act1.leaders).map(l => l.name).join(", ") : "";
+    // With a run left mid-act, picking it up is the main button and the act-boundary
+    // choices drop to links under it.
+    const boundaryClass = midRun
+      ? "text-sm text-stone-500 hover:text-stone-300 underline block w-full mb-2"
+      : "font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors block w-full mb-3";
     content = (
       <div className="min-h-screen bg-stone-950 text-stone-200 font-mono flex items-center justify-center px-6">
         <GlobalStyle />
         <div className="max-w-md text-center anim-rise">
           <div className="font-stencil text-4xl text-amber-400 mb-4">WELCOME BACK</div>
-          <p className="text-stone-400 text-base leading-relaxed mb-6">
-            {hasContract
-              ? <>You organized the shop and bargained its first contract — <span className="text-stone-200 font-bold">{savedRun.contract.tiers} of {savedRun.contract.max}</span> tiers{savedRun.contract.ratified ? ", ratified" : ", never signed"}. {names ? <>{names} came through it with you.</> : "Nobody from the action team was left at the end of it."}</>
-              : <>You've already organized this shop, with {savedRun.act1.leaders.length} leader{savedRun.act1.leaders.length === 1 ? "" : "s"} who stepped up: {names}.</>}
-          </p>
-          <button
-            onClick={() => {
-              setAct1(savedRun.act1);
-              setContract(savedRun.contract || null);
-              // A v1 save has no floor to bargain on, so it can only rejoin at the company.
-              setAct(hasContract || !hasFloor ? "company" : "contract");
-            }}
-            className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors block w-full mb-3"
-          >
-            {hasContract || !hasFloor ? "SKIP TO THE COMPANY CAMPAIGN" : "GO BARGAIN THE CONTRACT"}
-          </button>
-          {hasContract && hasFloor && (
-            <button
-              onClick={() => { setAct1(savedRun.act1); setContract(null); setAct("contract"); }}
-              className="text-sm text-stone-500 hover:text-stone-300 underline block w-full mb-2"
-            >
-              Bargain that first contract again instead
-            </button>
+          {midRun && (
+            <>
+              <p className="text-stone-400 text-base leading-relaxed mb-6">
+                You left off in {describeRun(midRun)}. Everything you'd done is still where you left it.
+              </p>
+              <button
+                onClick={resumeMidRun}
+                className="font-stencil text-xl bg-amber-500 hover:bg-amber-400 text-stone-950 px-8 py-3 tracking-wide transition-colors block w-full mb-3"
+              >
+                PICK UP WHERE YOU LEFT OFF
+              </button>
+            </>
+          )}
+          {savedRun && (
+            <>
+              <p className={midRun ? "text-stone-500 text-sm leading-relaxed mt-4 mb-3" : "text-stone-400 text-base leading-relaxed mb-6"}>
+                {hasContract
+                  ? <>You organized the shop and bargained its first contract — <span className="text-stone-200 font-bold">{savedRun.contract.tiers} of {savedRun.contract.max}</span> tiers{savedRun.contract.ratified ? ", ratified" : ", never signed"}. {names ? <>{names} came through it with you.</> : "Nobody from the action team was left at the end of it."}</>
+                  : <>You've already organized this shop, with {savedRun.act1.leaders.length} leader{savedRun.act1.leaders.length === 1 ? "" : "s"} who stepped up: {names}.</>}
+              </p>
+              <button
+                onClick={() => {
+                  setAct1(savedRun.act1);
+                  setContract(savedRun.contract || null);
+                  setResume(null);
+                  setPlaytest(false);
+                  // A v1 save has no floor to bargain on, so it can only rejoin at the company.
+                  setAct(hasContract || !hasFloor ? "company" : "contract");
+                }}
+                className={boundaryClass}
+              >
+                {midRun
+                  ? (hasContract || !hasFloor ? "Start the company campaign over instead" : "Start bargaining the contract over instead")
+                  : (hasContract || !hasFloor ? "SKIP TO THE COMPANY CAMPAIGN" : "GO BARGAIN THE CONTRACT")}
+              </button>
+              {hasContract && hasFloor && (
+                <button
+                  onClick={() => { setAct1(savedRun.act1); setContract(null); setResume(null); setPlaytest(false); setAct("contract"); }}
+                  className="text-sm text-stone-500 hover:text-stone-300 underline block w-full mb-2"
+                >
+                  Bargain that first contract again instead
+                </button>
+              )}
+            </>
           )}
           <button onClick={handleFullRestart} className="text-sm text-stone-500 hover:text-stone-300 underline">
             Replay One Shop from the start instead
@@ -137,17 +207,22 @@ export default function PermadeathOrganizing() {
         carry={act1 && act1.workers ? { workers: act1.workers, social: act1.social || null, influence: act1.influence || null } : null}
         onComplete={handleContractDone}
         onExit={handleFullRestart}
+        resume={resume}
+        onSnapshot={snapshotFor("contract")}
       />
     );
   } else if (act === "shop") {
     content = (
       <ActOneGame
         onGraduate={handleGraduate}
-        onSkipToCompany={() => { setContract(null); setAct("company"); }}
+        // The playtest skips stay: they jump ahead without touching the real run's saves.
+        onSkipToCompany={() => { setContract(null); setResume(null); setPlaytest(true); setAct("company"); }}
+        resume={resume}
+        onSnapshot={snapshotFor("shop")}
       />
     );
   } else {
-    content = <ActTwoGame recruitedLeaders={companyLeaders} contract={contract} onFullRestart={handleFullRestart} />;
+    content = <ActTwoGame recruitedLeaders={companyLeaders} contract={contract} onFullRestart={handleFullRestart} resume={resume} onSnapshot={snapshotFor("company")} />;
   }
 
   return (

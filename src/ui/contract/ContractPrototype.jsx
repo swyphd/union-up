@@ -1,5 +1,5 @@
 // The first contract: twelve months from certification to a signed agreement, or not.
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { X, Megaphone } from "lucide-react";
 import { clamp, rand, random } from "../../engine/rng.js";
 import { GlobalStyle, OutcomeScreen, StatRow } from "../shared.jsx";
@@ -10,6 +10,7 @@ import { ACTION_LADDER, CAT_HOURS, CAT_IDLE_QUIT, CAT_JOIN_REQ, CONTRACT_ISSUES,
 import { orgTier } from "../../engine/act1/committee.js";
 import { tieOn } from "../../engine/act1/affinities.js";
 import { RATING_HEX, RATING_WORD, rating } from "../../engine/act1/election.js";
+import { nextPlanKey, snapshotOf } from "../../runSave.js";
 
 // =====================================================================================
 // PROTOTYPE — THE FIRST CONTRACT
@@ -25,32 +26,42 @@ import { RATING_HEX, RATING_WORD, rating } from "../../engine/act1/election.js";
 // which the employer must bargain and cannot be challenged. Run it out without a contract
 // and the union you won in Act One goes to a decertification vote.
 
-function ContractPrototype({ carry = null, onComplete = null, onExit }) {
+function ContractPrototype({ carry = null, onComplete = null, onExit, resume = null, onSnapshot = null }) {
   // The friendships are not regenerated. Who listens to whom did not change because an
   // election happened, and re-rolling it would throw away the one thing the player spent
   // the whole of Act One learning. The playtest (no carry) rolls a floor and keeps it.
-  const [floor] = useState(() => contractFloor(carry));
+  // A month picked up from the mid-act save (src/runSave.js) starts from what it saved.
+  const r = resume || {};
+  const [floor] = useState(() => r.floor ?? contractFloor(carry));
   const { social, influence } = floor;
-  const [workers, setWorkers] = useState(() => makeContractWorkers(carry?.workers, floor.social));
-  const [turn, setTurn] = useState(1);
-  const [phase, setPhase] = useState("plan"); // plan, result, ratify
-  const [leverage, setLeverage] = useState(0);
-  const [issues, setIssues] = useState(CONTRACT_ISSUES.map(i => ({ id: i.id, tier: 0 })));
-  const [planEntries, setPlanEntries] = useState([]);
-  const [actionPlan, setActionPlan] = useState(null); // { tierKey, leadId }
-  const [result, setResult] = useState(null);
-  const [ratification, setRatification] = useState(null);
-  const [decert, setDecert] = useState(null);
+  const [workers, setWorkers] = useState(() => r.workers ?? makeContractWorkers(carry?.workers, floor.social));
+  const [turn, setTurn] = useState(r.turn ?? 1);
+  const [phase, setPhase] = useState(r.phase ?? "plan"); // plan, result, ratify
+  const [leverage, setLeverage] = useState(r.leverage ?? 0);
+  const [issues, setIssues] = useState(() => r.issues ?? CONTRACT_ISSUES.map(i => ({ id: i.id, tier: 0 })));
+  const [planEntries, setPlanEntries] = useState(r.planEntries ?? []);
+  const [actionPlan, setActionPlan] = useState(r.actionPlan ?? null); // { tierKey, leadId }
+  const [result, setResult] = useState(r.result ?? null);
+  const [ratification, setRatification] = useState(r.ratification ?? null);
+  const [decert, setDecert] = useState(r.decert ?? null);
   // How many times each rung has been run, so repeating one pays what repeating is worth.
-  const [rungUses, setRungUses] = useState({});
+  const [rungUses, setRungUses] = useState(r.rungUses ?? {});
   // Months of "not yet" the company has banked, priced into everything you still want.
-  const [stall, setStall] = useState(0);
-  const [dead, setDead] = useState(null);
+  const [stall, setStall] = useState(r.stall ?? 0);
+  const [dead, setDead] = useState(r.dead ?? null);
   // One ratification vote a month: a deal voted down cannot be re-rolled until the floor
   // has had another month of bargaining.
-  const [lastVoteMonth, setLastVoteMonth] = useState(0);
+  const [lastVoteMonth, setLastVoteMonth] = useState(r.lastVoteMonth ?? 0);
   const [selected, setSelected] = useState(null);
-  const planKey = useRef(0);
+  const planKey = useRef(nextPlanKey(r.planEntries));
+
+  // The mid-act save. A month's result is applied the moment it's rolled, so saving on
+  // every change is enough to keep a reload from rolling it again.
+  const snapshot = snapshotOf("contract", {
+    floor, workers, turn, phase, leverage, issues, planEntries, actionPlan, result, ratification,
+    decert, rungUses, stall, dead, lastVoteMonth,
+  });
+  useEffect(() => { if (onSnapshot) onSnapshot(snapshot); }, Object.values(snapshot));
 
   const cat = workers.filter(w => w.cat);
   // One-on-ones and recruiting come out of one person's three hours. A collective action

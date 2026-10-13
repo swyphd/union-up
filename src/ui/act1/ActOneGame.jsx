@@ -15,6 +15,7 @@ import { committeeHours } from "../../engine/act1/committee.js";
 import { ACT1_ACTION } from "../../engine/act1/actions.js";
 import { resolveWeek as runWeek } from "../../engine/act1/resolveWeek.js";
 import { ACT1_SAVE_KEY } from "../../save.js";
+import { nextPlanKey, resumePhase, snapshotOf } from "../../runSave.js";
 import { ELECTION_WEEKS, readOf, recognitionChance, voteProjection } from "../../engine/act1/election.js";
 
 // What each HUD tile means, in the sentence a player needs the week it first shows up. A
@@ -43,22 +44,25 @@ import { CampaignLessonBanner, LessonBanner } from "./LessonBanner.jsx";
 const MAP_NAG_AFTER = 3;
 const MAP_NAG_REPEAT = 4;
 
-function ActOneGame({ onGraduate, onSkipToCompany }) {
-  const [week, setWeek] = useState(1);
-  const [phase, setPhase] = useState("intro"); // intro, plan, resolving, victory
+function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = null }) {
+  // A run picked up from the mid-act save starts from what it saved (src/runSave.js);
+  // anything it didn't save starts as it would in a new run.
+  const r = resume || {};
+  const [week, setWeek] = useState(r.week ?? 1);
+  const [phase, setPhase] = useState(resume ? resumePhase("shop", r.phase) : "intro"); // intro, plan, resolving, victory
   // The floor's social structure is rolled once and never re-rolled: who is friends with
   // whom is the thing the whole act is about learning. `influence` is derived from it.
-  const [social, setSocial] = useState(() => generateSocial(ACT1_WORKERS_SEED));
+  const [social, setSocial] = useState(() => r.social ?? generateSocial(ACT1_WORKERS_SEED));
   const influence = social.influence;
-  const [workers, setWorkers] = useState(() => makeAct1Workers(social));
-  const [planEntries, setPlanEntries] = useState([]); // {key, actorId, type, targetId?}
-  const [heat, setHeat] = useState(0);
-  const [consultant, setConsultant] = useState({ active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0, perks: 0 });
-  const [perks, setPerks] = useState([]); // { id, until } — company perks currently poisoning an affinity
+  const [workers, setWorkers] = useState(() => r.workers ?? makeAct1Workers(social));
+  const [planEntries, setPlanEntries] = useState(r.planEntries ?? []); // {key, actorId, type, targetId?}
+  const [heat, setHeat] = useState(r.heat ?? 0);
+  const [consultant, setConsultant] = useState(r.consultant ?? { active: false, arrivedWeek: null, lastSetPiece: 0, raises: 0, threats: 0, perks: 0 });
+  const [perks, setPerks] = useState(r.perks ?? []); // { id, until } — company perks currently poisoning an affinity
   // Which rungs of the outsider ladder have already arrived. They never leave.
-  const [outsiders, setOutsiders] = useState([]);
+  const [outsiders, setOutsiders] = useState(r.outsiders ?? []);
   // Phase 2: the move on management's calendar, and the coordinated actions run so far.
-  const [campaign, setCampaign] = useState(newCampaign);
+  const [campaign, setCampaign] = useState(() => r.campaign ?? newCampaign());
   const [showMove, setShowMove] = useState(false);
   const [showAction, setShowAction] = useState(false);
   const [resolutionSteps, setResolutionSteps] = useState([]);
@@ -68,31 +72,52 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   // a committee card onto somebody opens the same panel with that pair locked.
   const [pairActorId, setPairActorId] = useState(null);
   // Org chart or social map. One choice for both the planning board and the playback.
-  const [boardView, setBoardView] = useState("org");
+  const [boardView, setBoardView] = useState(r.boardView ?? "org");
   const [confirmStartOver, setConfirmStartOver] = useState(false);
-  const [wonOnWeek, setWonOnWeek] = useState(null);
+  const [wonOnWeek, setWonOnWeek] = useState(r.wonOnWeek ?? null);
   // "drive" = collecting cards toward the 30% petition threshold. "campaign" = petition
   // filed, clock running to the ballot.
-  const [stage, setStage] = useState("drive");
-  const [filedWeek, setFiledWeek] = useState(null);
-  const [electionWeek, setElectionWeek] = useState(null);
-  const [voteResult, setVoteResult] = useState(null);
-  const [showFilePrompt, setShowFilePrompt] = useState(false);
+  const [stage, setStage] = useState(r.stage ?? "drive");
+  const [filedWeek, setFiledWeek] = useState(r.filedWeek ?? null);
+  const [electionWeek, setElectionWeek] = useState(r.electionWeek ?? null);
+  const [voteResult, setVoteResult] = useState(r.voteResult ?? null);
+  const [showFilePrompt, setShowFilePrompt] = useState(r.showFilePrompt ?? false);
   // The week the map last grew, and the week the reminder last showed.
-  const [mapGrewWeek, setMapGrewWeek] = useState(1);
-  const [mapNagWeek, setMapNagWeek] = useState(null);
-  const [showMapNag, setShowMapNag] = useState(false);
+  const [mapGrewWeek, setMapGrewWeek] = useState(r.mapGrewWeek ?? 1);
+  const [mapNagWeek, setMapNagWeek] = useState(r.mapNagWeek ?? null);
+  const [showMapNag, setShowMapNag] = useState(r.showMapNag ?? false);
   // Which HUD tiles have introduced themselves, and which explanation is open right now.
-  const [tipsSeen, setTipsSeen] = useState({});
+  const [tipsSeen, setTipsSeen] = useState(r.tipsSeen ?? {});
   const [openTip, setOpenTip] = useState(null);
-  const [sawFilePrompt, setSawFilePrompt] = useState(false);
+  const [sawFilePrompt, setSawFilePrompt] = useState(r.sawFilePrompt ?? false);
   // The staircase: which lesson the floor has reached, the week it got there, and whether
   // the player has turned the lessons off. Nothing in the engine reads any of it.
-  const [lesson, setLesson] = useState(0);
-  const [lessonWeek, setLessonWeek] = useState(1);
-  const [lessonsOff, setLessonsOff] = useState(false);
+  const [lesson, setLesson] = useState(r.lesson ?? 0);
+  const [lessonWeek, setLessonWeek] = useState(r.lessonWeek ?? 1);
+  const [lessonsOff, setLessonsOff] = useState(r.lessonsOff ?? false);
   const pendingRef = useRef(null);
-  const planKeyRef = useRef(0);
+  const planKeyRef = useRef(nextPlanKey(r.planEntries));
+
+  // The mid-act save. Every change to what a resume needs writes it, except on the intro
+  // (nothing has happened yet). During the playback the week is already decided, so the
+  // save carries the result with it and a reload can't roll the week again.
+  const snapshot = snapshotOf("shop", {
+    week, phase, social, workers, planEntries, heat, consultant, perks, outsiders, campaign, boardView,
+    wonOnWeek, stage, filedWeek, electionWeek, voteResult, showFilePrompt, mapGrewWeek, mapNagWeek,
+    showMapNag, tipsSeen, sawFilePrompt, lesson, lessonWeek, lessonsOff, pending: null,
+  });
+  useEffect(() => {
+    if (!onSnapshot || phase === "intro") return;
+    onSnapshot({ ...snapshot, pending: phase === "resolving" ? pendingRef.current : null });
+  }, Object.values(snapshot));
+  // A run saved mid-playback finishes that week the moment it loads.
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (!resume?.pending || resumedRef.current) return;
+    resumedRef.current = true;
+    pendingRef.current = resume.pending;
+    commitWeek();
+  }, []);
 
 
   const organizers = workers.filter(w => w.organizer && !w.burned);
@@ -238,6 +263,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
   }
 
   function startOver() {
+    if (onSnapshot) onSnapshot(null);
     setWeek(1);
     const fresh = generateSocial(ACT1_WORKERS_SEED);
     setSocial(fresh);
@@ -910,7 +936,7 @@ function ActOneGame({ onGraduate, onSkipToCompany }) {
                 : "Called at week " + week + ". There is no clock left to run down \u2014 the count stopped being reachable, so the remaining weeks would not have changed the ending. The people who were walked out are not coming back."}
             </p>
             <button
-              onClick={() => { try { localStorage.removeItem(ACT1_SAVE_KEY); } catch (err) { /* private mode */ } window.location.reload(); }}
+              onClick={() => { try { localStorage.removeItem(ACT1_SAVE_KEY); } catch (err) { /* private mode */ } if (onSnapshot) onSnapshot(null); window.location.reload(); }}
               className="border-2 border-stone-600 px-6 py-2 text-sm text-stone-200 hover:bg-stone-800 transition-colors"
             >
               START OVER
