@@ -2,48 +2,20 @@
 // address to Buttondown (which sends the welcome email) and keeps a backup row in
 // Supabase; see the permadeath-media README.
 import React, { useState } from "react";
+import { useSignup } from "../kit/react.js";
 
-const SIGNUP_URL = "https://permadeathmedia.com/api/subscribe";
+// The kit's signup (src/kit/newsletter.js) posts to the site's /api/subscribe as the
+// "union-up" source and remembers this browser under the key the game always used.
 const SIGNUP_SOURCE = "union-up";
 const SIGNUP_DONE_KEY = "union-up-newsletter";
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
-async function subscribe(email) {
-  const res = await fetch(SIGNUP_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, source: SIGNUP_SOURCE }),
-  });
-  if (res.ok) return;
-  throw new Error(`HTTP ${res.status}`);
-}
 
 export function NewsletterSignup() {
-  const [done, setDone] = useState(() => {
-    try { return !!localStorage.getItem(SIGNUP_DONE_KEY); } catch (e) { return false; }
-  });
-  const [email, setEmail] = useState("");
+  const { email, setEmail, status, error, submit } = useSignup({ source: SIGNUP_SOURCE, doneKey: SIGNUP_DONE_KEY });
   const [hp, setHp] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    const addr = email.trim().toLowerCase();
-    if (!EMAIL_RE.test(addr)) { setError("That doesn't look like an email address."); return; }
-    setError("");
-    if (hp) { setDone(true); return; } // honeypot: bots fill this, people can't
-    setBusy(true);
-    try {
-      await subscribe(addr);
-      try { localStorage.setItem(SIGNUP_DONE_KEY, addr); } catch (e) { /* storage unavailable */ }
-      setDone(true);
-    } catch (err) {
-      setError("Something went wrong. Try again in a minute.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  const done = status === "done";
+  const busy = status === "busy";
+  // A bot filled the honeypot: the kit says yes and sends nothing.
+  const handleSubmit = (e) => submit(e, { website: hp });
 
   return (
     <div className="bg-stone-950 text-stone-200 font-mono px-6 pt-6">
@@ -77,7 +49,7 @@ export function NewsletterSignup() {
                 {busy ? "SAVING…" : "SIGN UP"}
               </button>
             </div>
-            {error && <p role="alert" className="text-xs text-red-400 mt-2">{error}</p>}
+            {status === "error" && error && <p role="alert" className="text-xs text-red-400 mt-2">{error}</p>}
           </form>
         )}
       </div>

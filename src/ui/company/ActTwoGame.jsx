@@ -9,6 +9,8 @@ import { ACT2_MAX_PLEDGES, ACT2_SURVEY_COST, BLOCS, DEFECT_THRESHOLD, DEMAND_BY_
 import { ACT2_LEADER_PULL, ACT2_ONE_ON_ONES_PER_TURN, ACT2_SITDOWN_COST, ACT2_SITDOWN_LIFT, ACT2_SITDOWN_MORALE, ACT2_SITDOWN_SUPPORT, committeeWeight, makeAct2Rosters, metLeaders } from "../../engine/company/roster.js";
 import { ACT2_SITES_NEEDED, act2CastBallot, act2WinChance, act2Winnability, baseGain, baseVis, computeSolidarityScore, filingGates } from "../../engine/company/campaign.js";
 import { TRAIT_LABEL } from "../../engine/act1/constants.js";
+import { resumePhase, snapshotOf } from "../../runSave.js";
+import { stats, useRunEnd } from "../../stats.js";
 
 // Act Two's network map board. Act One's floor uses its own, larger board.
 const MAP_W = 160;
@@ -34,13 +36,15 @@ const ACT2_LAYOUT = {
   airport: { x: 44, y: 74 },
   university: { x: 116, y: 74 },
 };
-function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
+function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart, resume = null, onSnapshot = null }) {
+  // A turn picked up from the mid-act save (src/runSave.js) starts from what it saved.
+  const r = resume || {};
   // Each leader who came up from Act One is another pair of hands: one more action a
   // week. (The old +15 stamina per leader was clamped back to 100 on the first decay.)
   const weeklyBudget = ACT2_BASE_ACTIONS + recruitedLeaders.length;
   // Deployment: where each leader (by index into recruitedLeaders) is stationed.
   // Their trait bonus only applies at that specific site now, not company-wide.
-  const [leaderDeployment, setLeaderDeployment] = useState({});
+  const [leaderDeployment, setLeaderDeployment] = useState(r.leaderDeployment ?? {});
   const [armedLeader, setArmedLeader] = useState(null);
   const deployedTraitsAt = (locId) => recruitedLeaders.filter((l, i) => leaderDeployment[i] === locId).map(l => l.trait);
   const locHasTrait = (locId, t) => deployedTraitsAt(locId).includes(t);
@@ -72,46 +76,68 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     });
     if (armedLeader === idx) setArmedLeader(null);
   }
-  const [turn, setTurn] = useState(1);
-  const [phase, setPhase] = useState("intro"); // intro, allocate, resolving, escalation, gameover-win, gameover-loss
+  const [turn, setTurn] = useState(r.turn ?? 1);
+  const [phase, setPhase] = useState(resume ? resumePhase("company", r.phase) : "intro"); // intro, allocate, resolving, escalation, gameover-win, gameover-loss
   const headstart = contractHeadstart(contract);
-  const [rosters] = useState(makeAct2Rosters);
-  const [locations, setLocations] = useState(() => START_LOCATIONS.map(l => ({
+  const [rosters] = useState(() => r.rosters ?? makeAct2Rosters());
+  const [locations, setLocations] = useState(() => r.locations ?? START_LOCATIONS.map(l => ({
     ...l,
     roster: rosters[l.id],
     trueSupport: clamp(l.trueSupport + headstart),
     morale: clamp(l.morale + Math.round(headstart / 2)),
   })));
-  const [allocations, setAllocations] = useState({ downtown: 0, suburban: 0, airport: 0, university: 0 });
-  const [responses, setResponses] = useState({ downtown: {}, suburban: {}, airport: {}, university: {} });
-  const [organizer, setOrganizer] = useState({ stamina: ACT2_STAMINA_POOL, breaksTaken: 0, onBreak: 0 });
+  const [allocations, setAllocations] = useState(r.allocations ?? { downtown: 0, suburban: 0, airport: 0, university: 0 });
+  const [responses, setResponses] = useState(r.responses ?? { downtown: {}, suburban: {}, airport: {}, university: {} });
+  const [organizer, setOrganizer] = useState(r.organizer ?? { stamina: ACT2_STAMINA_POOL, breaksTaken: 0, onBreak: 0 });
   // The demand platform is set once, company-wide, the first time you file. Bloc
   // priorities are rolled at the start and stay hidden until somebody listens.
-  const [platform, setPlatform] = useState([]);
+  const [platform, setPlatform] = useState(r.platform ?? []);
   // Language already signed at the first shop. Not a promise — a document.
   const proven = provenDemands(contract);
   // The bargaining survey: one a campaign, and it re-opens a slot if it lands.
-  const [surveyPlanned, setSurveyPlanned] = useState(false);
-  const [surveyDone, setSurveyDone] = useState(false);
-  const [platformOpen, setPlatformOpen] = useState(false);
-  const [blocPriorities, setBlocPriorities] = useState(() => rollBlocPriorities());
-  const [pendingFileLoc, setPendingFileLoc] = useState(null);
-  const [moraleClimate, setMoraleClimate] = useState({ tone: "neutral", turnsLeft: 0 });
-  const [legalClimate, setLegalClimate] = useState({ tone: "neutral", turnsLeft: 0 });
-  const [employerSophistication, setEmployerSophistication] = useState(0); // 0-3, rises when firing fails to crush a location
-  const [employerEmboldened, setEmployerEmboldened] = useState(false);
-  const [escalationTarget, setEscalationTarget] = useState(null);
+  const [surveyPlanned, setSurveyPlanned] = useState(r.surveyPlanned ?? false);
+  const [surveyDone, setSurveyDone] = useState(r.surveyDone ?? false);
+  const [platformOpen, setPlatformOpen] = useState(r.platformOpen ?? false);
+  const [blocPriorities, setBlocPriorities] = useState(() => r.blocPriorities ?? rollBlocPriorities());
+  const [pendingFileLoc, setPendingFileLoc] = useState(r.pendingFileLoc ?? null);
+  const [moraleClimate, setMoraleClimate] = useState(r.moraleClimate ?? { tone: "neutral", turnsLeft: 0 });
+  const [legalClimate, setLegalClimate] = useState(r.legalClimate ?? { tone: "neutral", turnsLeft: 0 });
+  const [employerSophistication, setEmployerSophistication] = useState(r.employerSophistication ?? 0); // 0-3, rises when firing fails to crush a location
+  const [employerEmboldened, setEmployerEmboldened] = useState(r.employerEmboldened ?? false);
+  const [escalationTarget, setEscalationTarget] = useState(r.escalationTarget ?? null);
   // Sites that have already had the escalation prompt. It shows once, the first turn a
   // site is ready; after that the FILE control lives on the site's own panel and in the
   // banner above the map, so nobody is asked the same question every week.
-  const [escalationSeen, setEscalationSeen] = useState([]);
+  const [escalationSeen, setEscalationSeen] = useState(r.escalationSeen ?? []);
   const [resolutionSteps, setResolutionSteps] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
   const [selectedLoc, setSelectedLoc] = useState(null);
   const pendingRef = useRef(null);
 
   const unionizedCount = locations.filter(l => l.status === "won").length;
-  const [deadReason, setDeadReason] = useState(null);
+  const [deadReason, setDeadReason] = useState(r.deadReason ?? null);
+  // The end of the company campaign is the end of the run.
+  useRunEnd(phase === "gameover-win", "win", { act: "company", turn, won: unionizedCount });
+  useRunEnd(phase === "gameover-loss", "loss", { act: "company", turn, won: unionizedCount, reason: deadReason ? "unwinnable" : organizer.breaksTaken >= 2 ? "burnout" : "out of time" });
+
+  // The mid-act save, written on every change past the intro. During the playback the
+  // turn is already decided, so the save carries the result and a reload applies it.
+  const snapshot = snapshotOf("company", {
+    leaderDeployment, turn, phase, rosters, locations, allocations, responses, organizer, platform,
+    surveyPlanned, surveyDone, platformOpen, blocPriorities, pendingFileLoc, moraleClimate, legalClimate,
+    employerSophistication, employerEmboldened, escalationTarget, escalationSeen, deadReason, pending: null,
+  });
+  useEffect(() => {
+    if (!onSnapshot || phase === "intro") return;
+    onSnapshot({ ...snapshot, pending: phase === "resolving" ? pendingRef.current : null });
+  }, Object.values(snapshot));
+  const resumedRef = useRef(false);
+  useEffect(() => {
+    if (!resume?.pending || resumedRef.current) return;
+    resumedRef.current = true;
+    pendingRef.current = resume.pending;
+    commitResolution();
+  }, []);
   const solidarityScore = computeSolidarityScore(locations);
 
   function responseCostFor(loc, r) {
@@ -941,6 +967,10 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
 
     // The month that certifies the second shop is a win, even if it also burns the organizer out.
     const wonCount = workingLocs.filter(l => l.status === "won").length;
+    stats.milestone("company_turn", {
+      turn, won: wonCount, stamina: orgStamina, breaks: breaksTaken,
+      sites: Object.fromEntries(workingLocs.map(l => [l.id, l.status])),
+    });
     if (wonCount >= 2) {
       setPhase("gameover-win");
       return;
@@ -987,6 +1017,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
     commitFiling(locId);
   }
   function commitFiling(locId) {
+    stats.milestone("company_filed", { turn, site: locId, platform: platform.length ? [...platform].sort().join("+") : null });
     setLocations(prev => prev.map(l => {
       if (l.id !== locId) return l;
       if (!filingGates(l, turn).every(g => g.pass)) return l; // guarded in UI, shouldn't happen
@@ -1006,22 +1037,28 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart }) {
   function adoptPlatform(chosen) {
     // The first platform is not the "one change" a survey promised: that stays open.
     const first = platform.length === 0;
+    stats.choice(first ? "platform" : "platform_revised", [...chosen].sort().join("+"), { turn });
     setPlatform(chosen);
     if (!first) setPlatformOpen(false);
     if (pendingFileLoc) commitFiling(pendingFileLoc);
     else { setPendingFileLoc(null); setPhase("allocate"); }
   }
   function consolidate() {
+    stats.choice("escalation", "consolidate", { turn, site: escalationTarget });
     setEscalationTarget(null);
     setPhase("allocate");
   }
   function pivotAway(locId) {
+    stats.choice("escalation", "pivot", { turn, site: locId });
     setLocations(prev => prev.map(l => l.id === locId ? { ...l, status: "abandoned" } : l));
     setEscalationTarget(null);
     setPhase("allocate");
   }
 
   function restartGame() {
+    // Another go at the company campaign is a new run (the last one ended on its screen).
+    stats.runEnd("quit", { act: "company", turn });
+    stats.runStart({ act: "company", retry: true });
     setTurn(1);
     setLocations(START_LOCATIONS.map(l => ({
       ...l,

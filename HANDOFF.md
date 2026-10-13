@@ -188,4 +188,29 @@ not a decider.
 - The Act Two and contract turn loops are still hand ports in `sim/act2-engine.mjs` and
   `sim/contract-engine.mjs`. Extracting them the way Act One's week was is the obvious
   next engine step when either act is next touched.
+- **Mid-act save** (`src/runSave.js`, on the studio kit's `createLocalSave`, key
+  `union-up-run`). Each act takes `resume` and `onSnapshot` and writes the fields listed
+  for it in `runSave.js` on every change, so closing the tab anywhere loses nothing. Act One
+  and the company campaign roll a week before playing it back; a snapshot taken during the
+  playback carries that result as `pending` and a resume commits it, so a reload never
+  rerolls a week. The act-boundary save (`src/save.js`, `act1-progress`) is unchanged and
+  still written at each boundary. Playtest skips write to neither. A new piece of state an
+  act needs on resume goes in its list in `runSave.js` and in its `useState` initial value.
+- **The kit** is vendored at `src/kit/` (`node ../permadeath-media/kit/sync.mjs src/kit`).
+  Fix it in permadeath-media, then re-sync; don't edit the copy. Union Up runs on it for
+  saves, randomness (`engine/rng.js` wraps `createRng`; `SEED=` output is byte-identical),
+  the newsletter (`useSignup`, key `union-up-newsletter`), the lesson staircase
+  (`createLessons` in `lessons.js`, the kit's tutorial engine in scripted mode) and play
+  analytics.
+- **Analytics** (`src/stats.js`, game `union-up`): one run is a playthrough from the shop
+  to the end of the company campaign. App starts, resumes (run id kept in both saves) and
+  quits runs; the acts send `milestone` and `choice` from their handlers and end runs with
+  `useRunEnd`. Milestones: `intro_done`, `week`, `lesson`, `threshold`, `filed`,
+  `recognized`, `ballot`, `shop_done`, `contract_month`, `ratify_vote`, `decert_vote`,
+  `contract_done`, `company_turn`, `company_filed`. Choices: `lessons`, `file_at_threshold`,
+  `contract_push`, `contract_action`, `platform`, `platform_revised`, `escalation`. Playtest
+  skips mute it. Read-outs are the SQL at the bottom of permadeath-media's `game-events.sql`.
+- **Tests:** `npm test` (`node tests/run.mjs`, the kit's harness, plain node). They cover
+  the save itself and that a seeded Act One run saved and reloaded every few weeks ends
+  exactly where an uninterrupted one does.
 - Deploy: Vercel, auto-builds every pushed branch to its own preview URL.
