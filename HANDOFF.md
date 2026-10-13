@@ -197,7 +197,19 @@ not a decider.
   still written at each boundary. Playtest skips write to neither. A new piece of state an
   act needs on resume goes in its list in `runSave.js` and in its `useState` initial value.
 - **The kit** is vendored at `src/kit/` (`node ../permadeath-media/kit/sync.mjs src/kit`).
-  Fix it in permadeath-media, then re-sync; don't edit the copy.
+  Fix it in permadeath-media, then re-sync; don't edit the copy. Union Up runs on it for
+  saves, randomness (`engine/rng.js` wraps `createRng`; `SEED=` output is byte-identical),
+  the newsletter (`useSignup`, key `union-up-newsletter`), the lesson staircase
+  (`createLessons` in `lessons.js`, the kit's tutorial engine in scripted mode) and play
+  analytics.
+- **Analytics** (`src/stats.js`, game `union-up`): one run is a playthrough from the shop
+  to the end of the company campaign. App starts, resumes (run id kept in both saves) and
+  quits runs; the acts send `milestone` and `choice` from their handlers and end runs with
+  `useRunEnd`. Milestones: `intro_done`, `week`, `lesson`, `threshold`, `filed`,
+  `recognized`, `ballot`, `shop_done`, `contract_month`, `ratify_vote`, `decert_vote`,
+  `contract_done`, `company_turn`, `company_filed`. Choices: `lessons`, `file_at_threshold`,
+  `contract_push`, `contract_action`, `platform`, `platform_revised`, `escalation`. Playtest
+  skips mute it. Read-outs are the SQL at the bottom of permadeath-media's `game-events.sql`.
 - **Tests:** `npm test` (`node tests/run.mjs`, the kit's harness, plain node). They cover
   the save itself and that a seeded Act One run saved and reloaded every few weeks ends
   exactly where an uninterrupted one does.

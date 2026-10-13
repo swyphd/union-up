@@ -7,6 +7,7 @@
 // the goal is. Progress is read from the floor itself, so a lesson can never be finished
 // without the thing it teaches having happened.
 import { readOf } from "../../engine/act1/election.js";
+import { createTutorial } from "../../kit/tutorial.js";
 
 const LESSONS = [
   {
@@ -53,12 +54,25 @@ const LESSONS = [
 // Past the last lesson everything is open.
 const LESSONS_DONE = LESSONS.length;
 
-// The lesson the floor has earned, from the floor alone. The game keeps the higher of
-// this and what it already reached, so a lesson never closes again.
-function lessonFrom(workers, week) {
-  let i = 0;
-  while (i < LESSONS.length && LESSONS[i].progress(workers, week) >= LESSONS[i].need) i++;
-  return i;
+// The staircase runs on the studio kit's tutorial engine (src/kit/tutorial.js) as a
+// scripted run of goal steps: a lesson finishes when its goal holds on the floor, however
+// the player got there, and the next one opens. The game reads `index` as the lesson.
+// Progress lives in the mid-act save, not the kit's own storage.
+const LESSON_STEPS = LESSONS.map(L => ({ ...L, goal: ({ workers, week }) => L.progress(workers, week) >= L.need }));
+
+function createLessons({ lesson = 0, off = false } = {}) {
+  return createTutorial({
+    steps: LESSON_STEPS,
+    mode: "scripted",
+    persist: false,
+    initial: { status: off ? "skipped" : lesson >= LESSONS_DONE ? "done" : "active", index: lesson },
+  });
+}
+
+// The lesson the floor has earned by `week`. It only ever goes up.
+function nextLesson(lessons, workers, week) {
+  lessons.observe({ workers, week });
+  return lessons.index;
 }
 
 const ALWAYS_OPEN = ["checkin", "drop", "inoculate", "debrief", "standwith", "turnout"];
@@ -94,4 +108,4 @@ const CAMPAIGN_LESSONS = {
 const campaignLesson = (move, week, filedWeek) =>
   (move && filedWeek != null && week - filedWeek < CAMPAIGN_LESSON_WEEKS) ? CAMPAIGN_LESSONS[move.kind] || null : null;
 
-export { LESSONS, LESSONS_DONE, lessonFrom, openActions, CAMPAIGN_SCRIPT, CAMPAIGN_LESSONS, campaignLesson };
+export { LESSONS, LESSONS_DONE, LESSON_STEPS, createLessons, nextLesson, openActions, CAMPAIGN_SCRIPT, CAMPAIGN_LESSONS, campaignLesson };

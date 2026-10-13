@@ -1,5 +1,5 @@
 // Act One: the card drive and the election campaign, one shop.
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { AlertTriangle, Eye, Info, Vote, Megaphone, Network, UsersRound, X } from "lucide-react";
 import { GlobalStyle, IntroSequence, OutcomeRoster, OutcomeScreen, splitLinesByEntity } from "../shared.jsx";
 import { random } from "../../engine/rng.js";
@@ -16,6 +16,7 @@ import { ACT1_ACTION } from "../../engine/act1/actions.js";
 import { resolveWeek as runWeek } from "../../engine/act1/resolveWeek.js";
 import { ACT1_SAVE_KEY } from "../../save.js";
 import { nextPlanKey, resumePhase, snapshotOf } from "../../runSave.js";
+import { stats, useRunEnd } from "../../stats.js";
 import { ELECTION_WEEKS, readOf, recognitionChance, voteProjection } from "../../engine/act1/election.js";
 
 // What each HUD tile means, in the sentence a player needs the week it first shows up. A
@@ -35,7 +36,7 @@ import { CONSULTANT_MAX_EACH, CONSULTANT_NAME, CONSULTANT_SETPIECE_GAP, KIRKMAN_
 import { AFF_BY_ID } from "../../engine/act1/affinities.js";
 import { COORDINATED_ORDER, newCampaign, openCampaign } from "../../engine/act1/campaign.js";
 import { ActionPicker, CalendarStrip, MovePanel } from "./Campaign.jsx";
-import { CAMPAIGN_SCRIPT, LESSONS_DONE, campaignLesson, lessonFrom, openActions } from "./lessons.js";
+import { CAMPAIGN_SCRIPT, LESSONS_DONE, campaignLesson, createLessons, nextLesson, openActions } from "./lessons.js";
 import { CampaignLessonBanner, LessonBanner } from "./LessonBanner.jsx";
 
 // A reminder for a player who has stopped mapping: after this many weeks in which the map
@@ -95,6 +96,8 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
   const [lesson, setLesson] = useState(r.lesson ?? 0);
   const [lessonWeek, setLessonWeek] = useState(r.lessonWeek ?? 1);
   const [lessonsOff, setLessonsOff] = useState(r.lessonsOff ?? false);
+  // The kit's tutorial engine decides when a lesson's goal is met; `lesson` mirrors it.
+  const lessons = useMemo(() => createLessons({ lesson: r.lesson ?? 0, off: r.lessonsOff ?? false }), []);
   const pendingRef = useRef(null);
   const planKeyRef = useRef(nextPlanKey(r.planEntries));
 
@@ -226,7 +229,9 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
     setOutsiders(outsidersNext);
     setPerks(perksNext);
     setPlanEntries([]);
+    stats.milestone("week", { week, cards: w.filter(x => x.signed).length, committee: w.filter(x => x.organizer && !x.burned).length, heat: h, stage });
     if (ballot) {
+      stats.milestone("ballot", { week, won: !!ballot.won, yes: ballot.yes, no: ballot.no });
       setVoteResult(ballot);
       setWonOnWeek(week);
       setPhase(ballot.won ? "victory" : "defeat");
@@ -236,14 +241,16 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
     // The first time the petition threshold is crossed, stop and make the player choose.
     const filePromptNow = reachedThreshold && !sawFilePrompt;
     if (filePromptNow) {
+      stats.milestone("threshold", { week });
       setSawFilePrompt(true);
       setShowFilePrompt(true);
     }
     const nextWeek = week + 1;
     // The lesson the floor has earned. It only ever goes up. The sit-down opening is the
     // moment the social map starts meaning something, so the board switches to it once.
-    const earned = lessonFrom(w, nextWeek);
+    const earned = lessonsOff ? lesson : nextLesson(lessons, w, nextWeek);
     if (earned > lesson) {
+      stats.milestone("lesson", { lesson: earned, week: nextWeek });
       setLesson(earned);
       setLessonWeek(nextWeek);
       if (lesson < 1 && earned >= 1 && !lessonsOff) setBoardView("social");
@@ -264,6 +271,8 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
 
   function startOver() {
     if (onSnapshot) onSnapshot(null);
+    // A new playthrough. Mid-drive that quits the old one; after a loss it already ended.
+    if (!stats.muted) { stats.runEnd("quit", { act: "shop", week }); stats.runStart({ act: "shop" }); }
     setWeek(1);
     const fresh = generateSocial(ACT1_WORKERS_SEED);
     setSocial(fresh);
@@ -290,6 +299,7 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
     setLesson(0);
     setLessonWeek(1);
     setLessonsOff(false);
+    lessons.replay();
     setResolutionSteps([]);
     setStepIndex(0);
     setSelectedWorker(null);
@@ -321,6 +331,7 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
   const weeksToVote = electionWeek != null ? electionWeek - week : null;
 
   function fileWithNLRB() {
+    stats.milestone("filed", { week, cards: signedCount, prompted: showFilePrompt });
     setShowFilePrompt(false);
     setStage("campaign");
     setFiledWeek(week);
@@ -335,6 +346,7 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
     setCampaign(openCampaign({ workers, social, consultant: onSite, heat, campaign: opening }));
     const share = signedCount / ACT1_TOTAL_WORKERS;
     if (random() < recognitionChance(share, consultant.active, heat)) {
+      stats.milestone("recognized", { week, cards: signedCount });
       setPhase("recognized");
       setWonOnWeek(week);
     } else {
@@ -364,6 +376,9 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
   }, [phase, tilesOnKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const act1Win = act1Winnability(workers, stage, week);
+  // The two ways One Shop ends a run: the vote comes back no, or the drive dies first.
+  useRunEnd(phase === "defeat", "loss", { act: "shop", reason: "vote", week });
+  useRunEnd(phase !== "intro" && !act1Win.alive, "loss", { act: "shop", reason: act1Win.shipped ? "shipped" : "dead", week });
   const lessonsOn = !lessonsOff;
   const allowedActions = lessonsOn ? openActions(lesson) : null;
   const organizerHours = Object.fromEntries(organizers.map(o => [o.id, hoursLeftFor(o)]));
@@ -470,14 +485,14 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
           beats={ACT1_INTRO_BEATS}
           visuals={{ committee: <IntroCommitteeVisual />, influence: <IntroInfluenceVisual /> }}
           doneLabel="LET'S GO"
-          onDone={() => setPhase("plan")}
+          onDone={() => { stats.milestone("intro_done"); setPhase("plan"); }}
         />
       )}
 
       {phase === "plan" && (
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 anim-rise">
           {lessonsOn && stage === "drive" && (
-            <LessonBanner lesson={lesson} workers={workers} week={week} justUnlocked={lessonWeek === week && lesson > 0} onOff={() => setLessonsOff(true)} />
+            <LessonBanner lesson={lesson} workers={workers} week={week} justUnlocked={lessonWeek === week && lesson > 0} onOff={() => { stats.choice("lessons", "off", { lesson, week }); lessons.skip(); setLessonsOff(true); }} />
           )}
           {lessonsOn && stage === "campaign" && (
             <CampaignLessonBanner lesson={campaignLesson(move, week, filedWeek)} />
@@ -766,7 +781,7 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
               <button onClick={fileWithNLRB} className="flex-1 font-stencil text-base bg-teal-600 hover:bg-teal-500 text-stone-950 px-4 py-2.5 tracking-wide transition-colors">
                 FILE IT
               </button>
-              <button onClick={() => setShowFilePrompt(false)} className="flex-1 font-stencil text-base border-2 border-stone-600 hover:border-stone-400 text-stone-300 px-4 py-2.5 tracking-wide transition-colors">
+              <button onClick={() => { stats.choice("file_at_threshold", "wait", { week, cards: signedCount }); setShowFilePrompt(false); }} className="flex-1 font-stencil text-base border-2 border-stone-600 hover:border-stone-400 text-stone-300 px-4 py-2.5 tracking-wide transition-colors">
                 KEEP ORGANIZING
               </button>
             </div>

@@ -11,6 +11,7 @@ import { orgTier } from "../../engine/act1/committee.js";
 import { tieOn } from "../../engine/act1/affinities.js";
 import { RATING_HEX, RATING_WORD, rating } from "../../engine/act1/election.js";
 import { nextPlanKey, snapshotOf } from "../../runSave.js";
+import { stats, useRunEnd } from "../../stats.js";
 
 // =====================================================================================
 // PROTOTYPE — THE FIRST CONTRACT
@@ -97,6 +98,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit, resume = n
     const cur = issues.find(i => i.id === id);
     const cost = stalledCost(issueDef(id).costs[cur.tier + 1], stall);
     if (cur.tier >= 2 || leverage < cost) return;
+    stats.choice("contract_push", id, { month: turn, tier: cur.tier + 1, cost });
     setLeverage(l => l - cost);
     setIssues(list => list.map(i => (i.id === id ? { ...i, tier: i.tier + 1 } : i)));
   }
@@ -271,6 +273,8 @@ function ContractPrototype({ carry = null, onComplete = null, onExit, resume = n
     setLeverage(l => l + gained);
     setRungUses(usesNext);
     setStall(stallNext);
+    if (actionResult) stats.choice("contract_action", actionResult.tier.key, { month: turn, showed: actionResult.showed, total: actionResult.total, strong: actionResult.strong, payout: actionResult.payout });
+    stats.milestone("contract_month", { month: turn, gained, team: w.filter(x => x.cat).length, talks: planEntries.filter(e => e.type === "oneOnOne").length, recruits: planEntries.filter(e => e.type === "recruit").length });
     setResult({ lines, notes, action: actionResult, gained });
     setPhase("result");
   }
@@ -280,6 +284,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit, resume = n
     const no = [];
     workers.forEach(w => (random() < ratifyYesChance(w, issues) ? yes : no).push(w.name));
     setRatification({ yes: yes.length, no: no.length, passed: yes.length > no.length, month: turn });
+    stats.milestone("ratify_vote", { month: turn, passed: yes.length > no.length, yes: yes.length, no: no.length, tiers: contractTierSum(issues) });
     setLastVoteMonth(turn);
     setPhase("ratify");
   }
@@ -289,6 +294,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit, resume = n
     const drop = [];
     workers.forEach(w => (random() < keepUnionChance(w, issues) ? keep : drop).push(w.name));
     setDecert({ keep: keep.length, drop: drop.length, survived: keep.length > drop.length });
+    stats.milestone("decert_vote", { survived: keep.length > drop.length, keep: keep.length, drop: drop.length, tiers: contractTierSum(issues) });
     setPhase("decert");
   }
 
@@ -356,6 +362,9 @@ function ContractPrototype({ carry = null, onComplete = null, onExit, resume = n
   // Nobody on the team at all, from the start or by the end of a month: there is no act left.
   const noTeam = cat.length === 0 && phase === "plan";
   const deadReason = dead || (noTeam ? `There is nobody on the contract action team. The company does not have to agree with an empty room \u2014 it only has to keep booking the meeting.` : null);
+  // The contract act ends a run when the team is gone or the unit is voted out.
+  useRunEnd(!!deadReason, "loss", { act: "contract", reason: "no team", month: turn, tiers: contractTierSum(issues) });
+  useRunEnd(phase === "decert" && !!decert && !decert.survived, "loss", { act: "contract", reason: "decertified", tiers: contractTierSum(issues) });
   const overBudget = cat.some(o => hoursLeft(o) < 0) || totalUsed > totalHours;
   const poolLeft = totalHours - totalUsed;
 

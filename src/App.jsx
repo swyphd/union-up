@@ -1,6 +1,6 @@
 // Union Up. One shop, then its first contract, then the rest of the company. Each act is
 // its own component under src/ui; every number they run on lives under src/engine.
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { GlobalStyle } from "./ui/shared.jsx";
 import { NewsletterSignup } from "./ui/Newsletter.jsx";
 import { ActOneGame } from "./ui/act1/ActOneGame.jsx";
@@ -8,6 +8,7 @@ import { ContractPrototype } from "./ui/contract/ContractPrototype.jsx";
 import { ActTwoGame } from "./ui/company/ActTwoGame.jsx";
 import { ACT1_SAVE_KEY, SAVE_VERSION } from "./save.js";
 import { createRunSave, describeRun, validRun } from "./runSave.js";
+import { stats } from "./stats.js";
 
 // The mid-act save (src/runSave.js): where the run stood inside whichever act it was in.
 const runSave = createRunSave();
@@ -35,7 +36,21 @@ export default function PermadeathOrganizing() {
   const [resume, setResume] = useState(null);
   const [playtest, setPlaytest] = useState(false);
 
+  // Analytics' run. App starts one when a new playthrough begins, picks the saved one back
+  // up on a resume, and calls a run quit when the player starts over in the middle of it.
+  const started = useRef(false);
+  function startRun(props, resumeId = null) {
+    stats.mute(false);
+    stats.runStart(props, { resume: resumeId });
+  }
+
   useEffect(() => {
+    // Where a run stood when the tab closed: the act and its week or month, read from
+    // the mid-act save.
+    stats.progress(() => {
+      const r = runSave.load();
+      return r ? { act: r.act, at: r.state.week ?? r.state.turn ?? null } : {};
+    });
     const mid = runSave.load();
     if (validRun(mid)) setMidRun(mid);
     try {
@@ -59,12 +74,14 @@ export default function PermadeathOrganizing() {
     } catch (e) {
       // no prior save, or storage unavailable — just start fresh
     }
-    setAct(validRun(mid) ? "choice" : "shop");
+    if (validRun(mid)) { setAct("choice"); return; }
+    if (!started.current) { started.current = true; startRun({ act: "shop" }); }
+    setAct("shop");
   }, []);
 
   function persist(next) {
     try {
-      localStorage.setItem(ACT1_SAVE_KEY, JSON.stringify({ v: SAVE_VERSION, ...next }));
+      localStorage.setItem(ACT1_SAVE_KEY, JSON.stringify({ v: SAVE_VERSION, ...next, run: stats.run }));
     } catch (e) {
       // persistence is a convenience, not a requirement — the run continues either way
     }
@@ -77,7 +94,7 @@ export default function PermadeathOrganizing() {
     return (state) => {
       if (state === null) { runSave.clear(); return; }
       const ctx = which === "shop" ? null : { act1: act1 ? { ...act1, influence: undefined, playtest: undefined } : null, contract };
-      runSave.write({ act: which, ctx, state });
+      runSave.write({ act: which, ctx, state, run: stats.run });
     };
   }
 
@@ -89,6 +106,7 @@ export default function PermadeathOrganizing() {
     setPlaytest(false);
     setResume(state);
     setAct(which);
+    startRun({ act: which, from: "mid-act save" }, midRun.run || null);
   }
 
   // Act One is done. The floor it built goes straight into the contract fight.
@@ -99,7 +117,10 @@ export default function PermadeathOrganizing() {
     setResume(null);
     setPlaytest(!save);
     // The shop is finished; the contract act writes its own mid-act save from here.
-    if (save) runSave.clear();
+    if (save) {
+      stats.milestone("shop_done", { week: payload.week, leaders: payload.leaders.length });
+      runSave.clear();
+    } else stats.mute(true);
     // The weight map is derived from the friendships; there is no reason to write it twice.
     if (save) persist({ act1: { ...payload, influence: undefined }, contract: null });
     setAct("contract");
@@ -110,6 +131,7 @@ export default function PermadeathOrganizing() {
     setContract(result);
     setResume(null);
     if (act1 && !act1.playtest && !playtest) {
+      stats.milestone("contract_done", { tiers: result.tiers, ratified: !!result.ratified, leaders: (result.leaders || []).length });
       persist({ act1: { ...act1, influence: undefined }, contract: result });
       runSave.clear();
     }
@@ -117,6 +139,9 @@ export default function PermadeathOrganizing() {
   }
 
   function handleFullRestart() {
+    // Starting over in the middle of a run quits it; after an ending the run is already over.
+    if (stats.run && !playtest) stats.runEnd("quit", { act });
+    startRun({ act: "shop" });
     setAct1(null);
     setContract(null);
     try { localStorage.removeItem(ACT1_SAVE_KEY); } catch (e) { /* nothing saved, or storage unavailable */ }
@@ -177,7 +202,9 @@ export default function PermadeathOrganizing() {
                   setResume(null);
                   setPlaytest(false);
                   // A v1 save has no floor to bargain on, so it can only rejoin at the company.
-                  setAct(hasContract || !hasFloor ? "company" : "contract");
+                  const next = hasContract || !hasFloor ? "company" : "contract";
+                  setAct(next);
+                  startRun({ act: next, from: "act save" }, savedRun.run || null);
                 }}
                 className={boundaryClass}
               >
@@ -187,7 +214,7 @@ export default function PermadeathOrganizing() {
               </button>
               {hasContract && hasFloor && (
                 <button
-                  onClick={() => { setAct1(savedRun.act1); setContract(null); setResume(null); setPlaytest(false); setAct("contract"); }}
+                  onClick={() => { setAct1(savedRun.act1); setContract(null); setResume(null); setPlaytest(false); setAct("contract"); startRun({ act: "contract", from: "act save", again: true }, savedRun.run || null); }}
                   className="text-sm text-stone-500 hover:text-stone-300 underline block w-full mb-2"
                 >
                   Bargain that first contract again instead
@@ -216,7 +243,7 @@ export default function PermadeathOrganizing() {
       <ActOneGame
         onGraduate={handleGraduate}
         // The playtest skips stay: they jump ahead without touching the real run's saves.
-        onSkipToCompany={() => { setContract(null); setResume(null); setPlaytest(true); setAct("company"); }}
+        onSkipToCompany={() => { setContract(null); setResume(null); setPlaytest(true); stats.mute(true); setAct("company"); }}
         resume={resume}
         onSnapshot={snapshotFor("shop")}
       />

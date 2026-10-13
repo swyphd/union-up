@@ -10,6 +10,7 @@ import { ACT2_LEADER_PULL, ACT2_ONE_ON_ONES_PER_TURN, ACT2_SITDOWN_COST, ACT2_SI
 import { ACT2_SITES_NEEDED, act2CastBallot, act2WinChance, act2Winnability, baseGain, baseVis, computeSolidarityScore, filingGates } from "../../engine/company/campaign.js";
 import { TRAIT_LABEL } from "../../engine/act1/constants.js";
 import { resumePhase, snapshotOf } from "../../runSave.js";
+import { stats, useRunEnd } from "../../stats.js";
 
 // Act Two's network map board. Act One's floor uses its own, larger board.
 const MAP_W = 160;
@@ -115,6 +116,9 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart, res
 
   const unionizedCount = locations.filter(l => l.status === "won").length;
   const [deadReason, setDeadReason] = useState(r.deadReason ?? null);
+  // The end of the company campaign is the end of the run.
+  useRunEnd(phase === "gameover-win", "win", { act: "company", turn, won: unionizedCount });
+  useRunEnd(phase === "gameover-loss", "loss", { act: "company", turn, won: unionizedCount, reason: deadReason ? "unwinnable" : organizer.breaksTaken >= 2 ? "burnout" : "out of time" });
 
   // The mid-act save, written on every change past the intro. During the playback the
   // turn is already decided, so the save carries the result and a reload applies it.
@@ -963,6 +967,10 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart, res
 
     // The month that certifies the second shop is a win, even if it also burns the organizer out.
     const wonCount = workingLocs.filter(l => l.status === "won").length;
+    stats.milestone("company_turn", {
+      turn, won: wonCount, stamina: orgStamina, breaks: breaksTaken,
+      sites: Object.fromEntries(workingLocs.map(l => [l.id, l.status])),
+    });
     if (wonCount >= 2) {
       setPhase("gameover-win");
       return;
@@ -1009,6 +1017,7 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart, res
     commitFiling(locId);
   }
   function commitFiling(locId) {
+    stats.milestone("company_filed", { turn, site: locId, platform: platform.length ? [...platform].sort().join("+") : null });
     setLocations(prev => prev.map(l => {
       if (l.id !== locId) return l;
       if (!filingGates(l, turn).every(g => g.pass)) return l; // guarded in UI, shouldn't happen
@@ -1028,22 +1037,28 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart, res
   function adoptPlatform(chosen) {
     // The first platform is not the "one change" a survey promised: that stays open.
     const first = platform.length === 0;
+    stats.choice(first ? "platform" : "platform_revised", [...chosen].sort().join("+"), { turn });
     setPlatform(chosen);
     if (!first) setPlatformOpen(false);
     if (pendingFileLoc) commitFiling(pendingFileLoc);
     else { setPendingFileLoc(null); setPhase("allocate"); }
   }
   function consolidate() {
+    stats.choice("escalation", "consolidate", { turn, site: escalationTarget });
     setEscalationTarget(null);
     setPhase("allocate");
   }
   function pivotAway(locId) {
+    stats.choice("escalation", "pivot", { turn, site: locId });
     setLocations(prev => prev.map(l => l.id === locId ? { ...l, status: "abandoned" } : l));
     setEscalationTarget(null);
     setPhase("allocate");
   }
 
   function restartGame() {
+    // Another go at the company campaign is a new run (the last one ended on its screen).
+    stats.runEnd("quit", { act: "company", turn });
+    stats.runStart({ act: "company", retry: true });
     setTurn(1);
     setLocations(START_LOCATIONS.map(l => ({
       ...l,

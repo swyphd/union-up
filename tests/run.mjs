@@ -3,4 +3,5 @@
 import { report } from '../src/kit/test/harness.js';
 import './save.test.mjs';
 import './resume.test.mjs';
+import './kit.test.mjs';
 await report();
