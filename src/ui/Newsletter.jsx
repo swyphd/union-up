@@ -42,7 +42,7 @@ export function NewsletterSignup() {
               <input
                 id="newsletter-email" type="email" inputMode="email" autoComplete="email"
                 placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} required
-                className="flex-1 min-w-0 bg-stone-900 border border-stone-700 focus:border-amber-400 focus:outline-none text-stone-100 text-sm px-3 py-2"
+                className="flex-1 min-w-[10rem] bg-stone-900 border border-stone-700 focus:border-amber-400 focus:outline-none text-stone-100 text-sm px-3 py-2"
               />
               <input
                 type="text" name="website" value={hp} onChange={e => setHp(e.target.value)}

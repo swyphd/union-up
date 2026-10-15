@@ -106,7 +106,10 @@ export default function PermadeathOrganizing() {
     setPlaytest(false);
     setResume(state);
     setAct(which);
-    startRun({ act: which, from: "mid-act save" }, midRun.run || null);
+    // A save taken at an ending carries no run (src/stats.js useRunEnd): that run is over,
+    // and opening its last screen again is not a new one.
+    if (midRun.run) startRun({ act: which, from: "mid-act save" }, midRun.run);
+    else stats.mute(false);
   }
 
   // Act One is done. The floor it built goes straight into the contract fight.
@@ -256,7 +259,7 @@ export default function PermadeathOrganizing() {
     <div>
       {content}
       {act !== "loading" && <NewsletterSignup />}
-      <div className="text-center text-sm text-stone-600 py-4">
+      <div className="text-center text-sm text-stone-600 py-4 bg-stone-950">
         A <a href="https://permadeathmedia.com" target="_blank" rel="noopener noreferrer" className="hover:text-stone-400 transition-colors">Permadeath Studio</a> game
       </div>
     </div>

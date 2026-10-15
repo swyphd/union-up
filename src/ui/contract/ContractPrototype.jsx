@@ -54,6 +54,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit, resume = n
   // has had another month of bargaining.
   const [lastVoteMonth, setLastVoteMonth] = useState(r.lastVoteMonth ?? 0);
   const [selected, setSelected] = useState(null);
+  const [confirmExit, setConfirmExit] = useState(false);
   const planKey = useRef(nextPlanKey(r.planEntries));
 
   // The mid-act save. A month's result is applied the moment it's rolled, so saving on
@@ -378,7 +379,7 @@ function ContractPrototype({ carry = null, onComplete = null, onExit, resume = n
             {carry ? "ACT TWO — CERTIFICATION IS NOT AGREEMENT" : "PROTOTYPE SLICE — NOT A FINISHED ACT"}
           </div>
         </div>
-        <div className="flex items-center gap-4 sm:gap-6 text-sm sm:text-base">
+        <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-sm sm:text-base">
           <div className="text-center">
             <div className="text-stone-500 text-xs">MONTH</div>
             <div className="text-lg font-bold text-stone-100">{Math.min(turn, CONTRACT_MONTHS)} / {CONTRACT_MONTHS}</div>
@@ -835,10 +836,20 @@ function ContractPrototype({ carry = null, onComplete = null, onExit, resume = n
         );
       })()}
 
-      <div className="fixed bottom-2 right-2 z-40">
-        <button onClick={onExit} className="text-xs text-stone-600 hover:text-stone-400 underline transition-colors">
-          {carry ? "Start over from the shop floor" : "Leave the prototype"}
-        </button>
+      <div className="px-4 pb-3 sm:p-0 sm:fixed sm:bottom-2 sm:right-2 z-40">
+        {/* Starting over throws away the shop and this contract with it, so it asks first,
+            the way Act One's Start Over does. */}
+        {confirmExit ? (
+          <div className="flex items-center gap-2 bg-stone-900 border border-stone-700 px-2 py-1.5 text-xs">
+            <span className="text-stone-500">{carry ? "Start over from the shop floor? This contract goes too." : "Leave the prototype?"}</span>
+            <button onClick={onExit} className="text-red-400 hover:text-red-300 font-bold">YES</button>
+            <button onClick={() => setConfirmExit(false)} className="text-stone-500 hover:text-stone-300">CANCEL</button>
+          </div>
+        ) : (
+          <button onClick={() => setConfirmExit(true)} className="text-xs text-stone-600 hover:text-stone-400 underline transition-colors">
+            {carry ? "Start over from the shop floor" : "Leave the prototype"}
+          </button>
+        )}
       </div>
     </div>
   );
