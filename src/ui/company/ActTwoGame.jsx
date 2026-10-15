@@ -1496,11 +1496,11 @@ function ActTwoGame({ recruitedLeaders = [], contract = null, onFullRestart, res
           </p>
           {phase === "gameover-loss" && deadReason && turn < TOTAL_TURNS && (
             <p className="text-red-400/80 text-sm mb-6 leading-relaxed border border-red-900/60 bg-red-950/20 px-4 py-3">
-              Called at month {turn} of {TOTAL_TURNS}. There were months left on the clock, but not enough shops left to reach {ACT2_SITES_NEEDED}
+              Called at month {turn} of {TOTAL_TURNS}. There were months left on the clock, but not enough shops left to reach {ACT2_SITES_NEEDED}{" "}
               — so the rest of the calendar wouldn't have changed the ending. Nothing here resets.
             </p>
           )}
-          <div className="grid grid-cols-4 gap-2 mb-8 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-8 text-sm">
             {locations.map(l => (
               <div key={l.id} className="border border-stone-800 p-2">
                 <div className="text-stone-500 mb-1">{l.name}</div>

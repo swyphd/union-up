@@ -404,14 +404,14 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
           const staleSoon = workers.filter(x => x.signed && cardStaleSoon(x, week)).length;
           const weeksLeft = ACT1_SHIP_WEEK - week;
           return (
-            <div className="flex items-center gap-3 sm:gap-5 text-sm sm:text-base">
+            <div className="flex flex-wrap items-center gap-3 sm:gap-5 text-sm sm:text-base">
               <Tile id="week" label="WEEK">
                 <div className={`text-lg font-bold ${weeksLeft <= 4 ? "text-red-500" : weeksLeft <= 8 ? "text-amber-400" : "text-stone-100"}`}>
                   {week} <span className="text-stone-600 text-sm">of</span> {ACT1_SHIP_WEEK}
                 </div>
                 {staleSoon > 0
                   ? <div className="text-[10px] text-amber-400 font-bold">{staleSoon} card{staleSoon === 1 ? "" : "s"} going stale</div>
-                  : <div className="text-[10px] text-stone-600">{weeksLeft} week{weeksLeft === 1 ? "" : "s"} until the game ships</div>}
+                  : <div className="text-[10px] text-stone-600">{weeksLeft > 0 ? `${weeksLeft} week${weeksLeft === 1 ? "" : "s"} until the game ships` : weeksLeft === 0 ? "the game ships this week" : "the game has shipped"}</div>}
               </Tile>
               <Tile id="cards" label="CARDS SIGNED">
                 <div className={`text-lg font-bold ${signedCount >= ACT1_CARDS_NEEDED ? "text-teal-400" : "text-amber-400"}`}>{signedCount} / {ACT1_CARDS_NEEDED}</div>
@@ -922,7 +922,7 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
       )}
 
       {phase !== "intro" && (
-        <div className="fixed bottom-2 left-2 z-40">
+        <div className="px-4 pb-2 sm:p-0 sm:fixed sm:bottom-2 sm:left-2 z-40">
           {confirmStartOver ? (
             <div className="flex items-center gap-2 bg-stone-900 border border-stone-700 px-2 py-1.5 text-xs">
               <span className="text-stone-500">Restart Act One from scratch?</span>
@@ -961,7 +961,7 @@ function ActOneGame({ onGraduate, onSkipToCompany, resume = null, onSnapshot = n
       )}
 
       {phase !== "intro" && (
-        <div className="fixed bottom-2 right-2 z-40">
+        <div className="px-4 pb-3 sm:p-0 sm:fixed sm:bottom-2 sm:right-2 z-40">
           <button
             onClick={() => graduate(false)}
             title="Jumps straight to the first contract without saving over your real Act One progress."

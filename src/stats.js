@@ -9,7 +9,7 @@
 // say it again) and `useRunEnd` for the endings they draw.
 //
 // Playtest skips mute it: a run that jumped ahead isn't a run anybody played.
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { createAnalytics } from "./kit/analytics.js";
 
 // The commit Vercel built, or "dev" (vite.config.js defines it).
@@ -39,10 +39,12 @@ export const stats = {
 };
 
 // Ends the run the first time `over` turns true while this act is on screen. An act that
-// loads already over (a resumed save of a lost run) doesn't end it a second time.
+// loads already over (a resumed save of a lost run) doesn't end it a second time. A layout
+// effect, so the run is closed before the act's mid-act save (an ordinary effect) writes
+// the run id: a save taken at an ending carries none, and resuming it starts no run.
 export function useRunEnd(over, outcome, props) {
   const was = useRef(over);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (over && !was.current) stats.runEnd(outcome, props);
     was.current = over;
   }, [over]);
